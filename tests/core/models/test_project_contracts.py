@@ -123,6 +123,66 @@ def test_rejects_self_connecting_door() -> None:
     assert "door endpoints must reference two different spaces" in str(error.value)
 
 
+def test_rejects_self_connecting_open_passage() -> None:
+    with pytest.raises(ValidationError) as error:
+        OpenPassage(
+            id="passage_1",
+            space_a_id="space_1",
+            space_b_id="space_1",
+            direction=PassageDirection.BIDIRECTIONAL,
+        )
+
+    assert "open passage endpoints must reference two different spaces" in str(error.value)
+
+
+def test_rejects_self_connecting_vertical_connector() -> None:
+    with pytest.raises(ValidationError) as error:
+        VerticalConnector(
+            id="vertical_1",
+            connector_type=VerticalConnectorType.STAIR,
+            space_a_id="space_1",
+            space_b_id="space_1",
+            direction=PassageDirection.BIDIRECTIONAL,
+        )
+
+    assert "vertical connector endpoints must reference two different spaces" in str(error.value)
+
+
+def test_rejects_entry_point_with_unknown_space_reference() -> None:
+    with pytest.raises(ValidationError) as error:
+        _project(entry_points=[_entry(space_id="missing_space")])
+
+    assert "space_id 'missing_space'" in str(error.value)
+
+
+@pytest.mark.parametrize("link_kind", ["door", "open_passage", "vertical_connector"])
+def test_rejects_link_with_unknown_space_a_reference(link_kind: str) -> None:
+    if link_kind == "door":
+        with pytest.raises(ValidationError) as error:
+            _project(doors=[_door(space_a_id="missing_space", space_b_id="space_1")])
+    elif link_kind == "open_passage":
+        passage = OpenPassage(
+            id="passage_1",
+            space_a_id="missing_space",
+            space_b_id="space_1",
+            direction=PassageDirection.BIDIRECTIONAL,
+        )
+        with pytest.raises(ValidationError) as error:
+            _project(open_passages=[passage])
+    else:
+        connector = VerticalConnector(
+            id="vertical_1",
+            connector_type=VerticalConnectorType.STAIR,
+            space_a_id="missing_space",
+            space_b_id="space_1",
+            direction=PassageDirection.BIDIRECTIONAL,
+        )
+        with pytest.raises(ValidationError) as error:
+            _project(vertical_connectors=[connector])
+
+    assert "space_a_id 'missing_space'" in str(error.value)
+
+
 def test_allows_multiple_entry_points() -> None:
     project = _project(
         entry_points=[
