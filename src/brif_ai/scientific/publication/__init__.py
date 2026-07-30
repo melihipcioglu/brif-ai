@@ -11,13 +11,19 @@ from brif_ai.scientific.publication.models import (
     PublicationValidationRequest,
     QuestionPublicationResult,
 )
+from brif_ai.scientific.publication.preflight import (
+    PublicationPreflightResult,
+    run_publication_preflight,
+)
 
 __all__ = [
     "PublicationIssue",
     "PublicationIssueCode",
     "PublicationIssueSeverity",
     "PublicationObjectType",
+    "PublicationPreflightResult",
     "PublicationValidationReport",
     "PublicationValidationRequest",
     "QuestionPublicationResult",
+    "run_publication_preflight",
 ]
