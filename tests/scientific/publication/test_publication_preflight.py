@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 
+import brif_ai.scientific.publication
 from brif_ai.conversation.models import (
     AnswerType,
     ConversationModule,
@@ -22,9 +23,12 @@ from brif_ai.scientific.publication import (
     PublicationIssueSeverity,
     PublicationObjectType,
     PublicationValidationRequest,
+)
+from brif_ai.scientific.publication._issues import _finalize_issues, _IssueDraft
+from brif_ai.scientific.publication.preflight import (
+    _collect_publication_preflight,
     run_publication_preflight,
 )
-from brif_ai.scientific.publication.preflight import _finalize_issues, _IssueDraft
 
 UTC_TIME = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)  # noqa: UP017
 
@@ -581,3 +585,95 @@ def test_source_metadata_does_not_affect_preflight_result() -> None:
     assert len(res1.issues) == len(res2.issues)
     assert len(res1.approved_questions) == len(res2.approved_questions)
     assert res1.approved_questions[0].id == res2.approved_questions[0].id
+
+
+def test_collect_preflight_returns_issue_drafts_without_final_ids() -> None:
+    rev = _make_revision("r1", question_id="unknown_q")
+    registry = _make_registry(revisions=[rev])
+    request = _make_request(registry=registry)
+
+    approved_questions, drafts = _collect_publication_preflight(request)
+
+    assert isinstance(approved_questions, tuple)
+    assert isinstance(drafts, tuple)
+    assert len(drafts) == 1
+
+    draft = drafts[0]
+    assert isinstance(draft, _IssueDraft)
+    assert not hasattr(draft, "id")
+    assert draft.code is PublicationIssueCode.REGISTRY_QUESTION_NOT_FOUND_IN_CATALOG
+
+
+def test_public_preflight_finalizes_collected_drafts_once() -> None:
+    rev = _make_revision("r1", question_id="unknown_q")
+    registry = _make_registry(revisions=[rev])
+    request = _make_request(registry=registry)
+
+    approved_questions, drafts = _collect_publication_preflight(request)
+    result = run_publication_preflight(request)
+
+    assert result.approved_questions == approved_questions
+    assert len(result.issues) == len(drafts)
+    assert result.issues[0].id == "publication_issue_0001"
+    assert result.issues[0].code == drafts[0].code
+
+
+def test_shared_issue_finalizer_preserves_existing_ordering() -> None:
+    draft_error = _IssueDraft(
+        code=PublicationIssueCode.NO_APPROVED_QUESTIONS,
+        severity=PublicationIssueSeverity.ERROR,
+        object_type=PublicationObjectType.QUESTION_CATALOG,
+        object_id="cat1",
+        message="Synthetic error message",
+    )
+    draft_critical = _IssueDraft(
+        code=PublicationIssueCode.REGISTRY_CATALOG_ID_MISMATCH,
+        severity=PublicationIssueSeverity.CRITICAL,
+        object_type=PublicationObjectType.SCIENTIFIC_CONTENT_REGISTRY,
+        object_id="reg1",
+        message="Synthetic critical message",
+    )
+
+    issues = _finalize_issues([draft_error, draft_critical])
+
+    assert len(issues) == 2
+    assert issues[0].severity is PublicationIssueSeverity.CRITICAL
+    assert issues[0].id == "publication_issue_0001"
+    assert issues[1].severity is PublicationIssueSeverity.ERROR
+    assert issues[1].id == "publication_issue_0002"
+
+
+def test_shared_issue_finalizer_is_deterministic() -> None:
+    draft1 = _IssueDraft(
+        code=PublicationIssueCode.NO_APPROVED_QUESTIONS,
+        severity=PublicationIssueSeverity.ERROR,
+        object_type=PublicationObjectType.QUESTION_CATALOG,
+        object_id="cat1",
+        message="Synthetic message 1",
+    )
+    draft2 = _IssueDraft(
+        code=PublicationIssueCode.REGISTRY_CATALOG_ID_MISMATCH,
+        severity=PublicationIssueSeverity.CRITICAL,
+        object_type=PublicationObjectType.SCIENTIFIC_CONTENT_REGISTRY,
+        object_id="reg1",
+        message="Synthetic message 2",
+    )
+
+    result1 = _finalize_issues([draft1, draft2])
+    result2 = _finalize_issues([draft1, draft2])
+
+    assert result1 == result2
+
+
+def test_shared_issue_helpers_are_not_public_exports() -> None:
+    pkg = brif_ai.scientific.publication
+    private_symbols = [
+        "_IssueDraft",
+        "_finalize_issues",
+        "_issue_draft_sort_key",
+        "_collect_publication_preflight",
+        "_SEVERITY_ORDER",
+    ]
+    for symbol in private_symbols:
+        assert not hasattr(pkg, symbol)
+        assert symbol not in pkg.__all__

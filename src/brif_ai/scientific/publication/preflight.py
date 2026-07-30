@@ -24,6 +24,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from brif_ai.conversation.models import QuestionDefinition, QuestionStatus
+from brif_ai.scientific.publication._issues import _finalize_issues, _IssueDraft
 from brif_ai.scientific.publication.common import (
     PublicationIssueCode,
     PublicationIssueSeverity,
@@ -33,13 +34,6 @@ from brif_ai.scientific.publication.models import (
     PublicationIssue,
     PublicationValidationRequest,
 )
-
-_SEVERITY_ORDER: dict[PublicationIssueSeverity, int] = {
-    PublicationIssueSeverity.CRITICAL: 0,
-    PublicationIssueSeverity.ERROR: 1,
-    PublicationIssueSeverity.WARNING: 2,
-    PublicationIssueSeverity.INFO: 3,
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,83 +48,13 @@ class PublicationPreflightResult:
         return len(self.approved_questions) > 0 and not any(issue.blocking for issue in self.issues)
 
 
-@dataclass(frozen=True, slots=True)
-class _IssueDraft:
-    code: PublicationIssueCode
-    severity: PublicationIssueSeverity
-    object_type: PublicationObjectType
-    object_id: str
-    question_id: str | None = None
-    question_content_revision_id: str | None = None
-    message: str = ""
-    related_object_ids: tuple[str, ...] = ()
-
-
-def _issue_draft_sort_key(
-    draft: _IssueDraft,
-) -> tuple[int, tuple[int, str], tuple[int, str], str, str]:
-    return (
-        _SEVERITY_ORDER[draft.severity],
-        (0, "") if draft.question_id is None else (1, draft.question_id),
-        (0, "")
-        if draft.question_content_revision_id is None
-        else (1, draft.question_content_revision_id),
-        draft.code.value,
-        draft.object_id,
-    )
-
-
-def _finalize_issues(drafts: list[_IssueDraft]) -> tuple[PublicationIssue, ...]:
-    seen_keys: set[tuple[object, ...]] = set()
-    deduped_drafts: list[_IssueDraft] = []
-    for draft in drafts:
-        key = (
-            draft.code,
-            draft.object_id,
-            draft.question_id,
-            draft.question_content_revision_id,
-            draft.related_object_ids,
-        )
-        if key not in seen_keys:
-            seen_keys.add(key)
-            deduped_drafts.append(draft)
-
-    sorted_drafts = sorted(deduped_drafts, key=_issue_draft_sort_key)
-
-    issues: list[PublicationIssue] = []
-    for index, draft in enumerate(sorted_drafts, start=1):
-        issue_id = f"publication_issue_{index:04d}"
-        issues.append(
-            PublicationIssue(
-                id=issue_id,
-                code=draft.code,
-                severity=draft.severity,
-                object_type=draft.object_type,
-                object_id=draft.object_id,
-                question_id=draft.question_id,
-                question_content_revision_id=draft.question_content_revision_id,
-                message=draft.message,
-                related_object_ids=list(draft.related_object_ids),
-            )
-        )
-    return tuple(issues)
-
-
-def run_publication_preflight(
+def _collect_publication_preflight(
     request: PublicationValidationRequest,
-) -> PublicationPreflightResult:
-    """Executes preflight checks on a publication validation request.
-
-    Preflight yalnız katalog ve registry bağını ve temel dış referansları doğrular.
-    - Bir sorunun bilimsel olarak valide olduğunu söylemez.
-    - Soru içeriği seçmez.
-    - Evidence yeterliliğini kontrol etmez.
-    - Kaynak kullanım iznini kontrol etmez.
-    - Uzman review veya pilot değerlendirmesini kontrol etmez.
-    - PublicationValidationReport üretmez.
-    - AI confidence veya evidence score kullanmaz.
-    - source_metadata alanını okumaz.
-    """
+) -> tuple[
+    tuple[QuestionDefinition, ...],
+    tuple[_IssueDraft, ...],
+]:
+    """Collects candidate approved questions and preflight issue drafts without finalization."""
     catalog = request.catalog
     registry = request.registry
 
@@ -170,10 +94,7 @@ def run_publication_preflight(
         )
 
     if binding_issues:
-        return PublicationPreflightResult(
-            approved_questions=(),
-            issues=_finalize_issues(binding_issues),
-        )
+        return (), tuple(binding_issues)
 
     issue_drafts: list[_IssueDraft] = []
 
@@ -240,8 +161,27 @@ def run_publication_preflight(
                 )
             )
 
+    return tuple(approved_questions_list), tuple(issue_drafts)
+
+
+def run_publication_preflight(
+    request: PublicationValidationRequest,
+) -> PublicationPreflightResult:
+    """Executes preflight checks on a publication validation request.
+
+    Preflight yalnız katalog ve registry bağını ve temel dış referansları doğrular.
+    - Bir sorunun bilimsel olarak valide olduğunu söylemez.
+    - Soru içeriği seçmez.
+    - Evidence yeterliliğini kontrol etmez.
+    - Kaynak kullanım iznini kontrol etmez.
+    - Uzman review veya pilot değerlendirmesini kontrol etmez.
+    - PublicationValidationReport üretmez.
+    - AI confidence veya evidence score kullanmaz.
+    - source_metadata alanını okumaz.
+    """
+    approved_questions, issue_drafts = _collect_publication_preflight(request)
     final_issues = _finalize_issues(issue_drafts)
     return PublicationPreflightResult(
-        approved_questions=tuple(approved_questions_list),
+        approved_questions=approved_questions,
         issues=final_issues,
     )
