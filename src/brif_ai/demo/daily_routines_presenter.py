@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
-from brif_ai.conversation.daily_routines.enums import InvalidAnswerError
+from brif_ai.conversation.daily_routines.enums import InvalidSessionStateError
 from brif_ai.conversation.daily_routines.runtime_models import (
     DailyRoutinesSessionResult,
     StepPrompt,
@@ -28,14 +28,16 @@ class PromptViewModel:
 
     step_id: str
     is_ui_control: bool
-    title: str
+    input_kind: Literal["single_choice", "multiple_choice", "free_text"]
     prompt_text: str
     respondent_instruction: str
-    is_multiselect: bool
     options: list[UIOption]
     existing_answer: str | list[str] | None
     stale_reconfirmation: bool
     stale_warning_text: str | None
+    min_selected_items: int | None = None
+    max_selected_items: int | None = None
+    canonical_value_order: list[str] | None = None
 
 
 @dataclass(frozen=True)
@@ -52,27 +54,47 @@ class DailyRoutinesPresenter:
     @staticmethod
     def build_prompt_view_model(prompt: StepPrompt) -> PromptViewModel:
         """Adapt a StepPrompt object into a PromptViewModel for presentation."""
-        is_multiselect = (
-            prompt.question_definition is not None
-            and str(prompt.question_definition.answer_type) == "MULTIPLE_CHOICE"
-        )
-
-        title: str
+        input_kind: Literal["single_choice", "multiple_choice", "free_text"]
         prompt_text: str
         respondent_instruction: str
+        min_selected_items: int | None = None
+        max_selected_items: int | None = None
+        canonical_value_order: list[str] | None = None
 
-        if not prompt.is_ui_control:
-            title = f"Soru ID: {prompt.step_id}"
-            if prompt.wording_variant:
-                prompt_text = prompt.wording_variant.prompt_text
-                respondent_instruction = prompt.wording_variant.respondent_instruction
-            else:
-                prompt_text = prompt.content_key
-                respondent_instruction = ""
+        if prompt.is_ui_control:
+            if prompt.ui_control_definition is None:
+                raise InvalidSessionStateError("Missing UI control definition for prompt step.")
+            input_kind = "single_choice"
+            prompt_text = prompt.ui_control_definition.purpose
+            respondent_instruction = "Düzeltmek istediğiniz bölümü seçin."
         else:
-            title = "Cevap Düzeltme Seçimi"
-            prompt_text = "Lütfen düzeltmek veya incelemek istediğiniz bölümü seçin:"
-            respondent_instruction = "Aşağıdaki seçeneklerden birini işaretleyerek devam edin."
+            if prompt.wording_variant is None:
+                raise InvalidSessionStateError(
+                    f"Wording variant missing for prompt step '{prompt.step_id}'."
+                )
+
+            prompt_text = prompt.wording_variant.prompt_text
+            respondent_instruction = prompt.wording_variant.respondent_instruction
+
+            if prompt.question_definition is not None:
+                ans_type = str(prompt.question_definition.answer_type)
+                if ans_type == "MULTIPLE_CHOICE":
+                    input_kind = "multiple_choice"
+                    min_selected_items = getattr(
+                        prompt.question_definition, "min_selected_items", 1
+                    )
+                    max_selected_items = getattr(
+                        prompt.question_definition, "max_selected_items", 4
+                    )
+                    canonical_value_order = getattr(
+                        prompt.question_definition, "canonical_value_order", None
+                    )
+                elif ans_type == "FREE_TEXT":
+                    input_kind = "free_text"
+                else:
+                    input_kind = "single_choice"
+            else:
+                input_kind = "single_choice"
 
         ui_options: list[UIOption] = []
         if prompt.options:
@@ -85,6 +107,9 @@ class DailyRoutinesPresenter:
                     )
                 )
 
+        if canonical_value_order is None and ui_options:
+            canonical_value_order = [o.value for o in ui_options]
+
         stale_warning: str | None = None
         if prompt.stale_reconfirmation:
             stale_warning = (
@@ -95,48 +120,81 @@ class DailyRoutinesPresenter:
         return PromptViewModel(
             step_id=prompt.step_id,
             is_ui_control=prompt.is_ui_control,
-            title=title,
+            input_kind=input_kind,
             prompt_text=prompt_text,
             respondent_instruction=respondent_instruction,
-            is_multiselect=is_multiselect,
             options=ui_options,
             existing_answer=prompt.existing_answer,
             stale_reconfirmation=prompt.stale_reconfirmation,
             stale_warning_text=stale_warning,
+            min_selected_items=min_selected_items,
+            max_selected_items=max_selected_items,
+            canonical_value_order=canonical_value_order,
         )
 
     @staticmethod
-    def convert_ui_single_choice(selected_value: str | None, prompt: StepPrompt) -> str:
+    def convert_ui_single_choice(view_model: PromptViewModel, selected_value: str | None) -> str:
         """Validate and convert UI single choice selection into runtime answer payload."""
         if not selected_value or not selected_value.strip():
-            raise InvalidAnswerError("Lütfen devam etmek için bir seçenek belirleyin.")
+            raise ValueError("Lütfen devam etmek için bir seçenek belirleyin.")
 
-        valid_values = {str(opt.value) for opt in (prompt.options or [])}
+        valid_values = {opt.value for opt in view_model.options}
         if selected_value not in valid_values:
-            raise InvalidAnswerError(
+            raise ValueError(
                 f"Geçersiz seçim: {selected_value!r}. Lütfen sunulan seçeneklerden birini seçin."
             )
 
         return selected_value
 
     @staticmethod
-    def convert_ui_multi_choice(selected_values: list[str] | None, prompt: StepPrompt) -> list[str]:
-        """Validate and convert UI multi choice selection into runtime answer payload."""
+    def convert_ui_multi_choice(
+        view_model: PromptViewModel, selected_values: list[str] | None
+    ) -> list[str]:
+        """Validate and convert UI multi choice selection into canonical runtime answer payload."""
         if not selected_values:
-            raise InvalidAnswerError("Lütfen devam etmek için en az bir seçenek seçin.")
+            raise ValueError("Lütfen devam etmek için en az bir seçenek seçin.")
 
-        valid_values = {str(opt.value) for opt in (prompt.options or [])}
+        # Duplicate check
+        if len(selected_values) != len(set(selected_values)):
+            raise ValueError("Çoklu seçimde tekrar eden değer seçilemez.")
+
+        valid_values = {opt.value for opt in view_model.options}
         for val in selected_values:
             if val not in valid_values:
-                raise InvalidAnswerError(
+                raise ValueError(
                     f"Geçersiz seçim: {val!r}. Lütfen sunulan seçeneklerden tercih yapın."
                 )
 
-        return selected_values
+        min_allowed = view_model.min_selected_items or 1
+        max_allowed = view_model.max_selected_items or 4
+
+        if len(selected_values) < min_allowed:
+            raise ValueError(f"En az {min_allowed} seçenek seçilmelidir.")
+        if len(selected_values) > max_allowed:
+            raise ValueError(f"En fazla {max_allowed} seçenek seçilebilir.")
+
+        # Sort into canonical order
+        order_reference = view_model.canonical_value_order or [o.value for o in view_model.options]
+        order_map = {val: idx for idx, val in enumerate(order_reference)}
+        sorted_values = sorted(selected_values, key=lambda v: order_map.get(v, 999))
+
+        return sorted_values
+
+    @staticmethod
+    def convert_ui_free_text(view_model: PromptViewModel, text: str | None) -> str:
+        """Validate and convert UI free text input into runtime answer payload."""
+        if not text or not text.strip():
+            raise ValueError("Serbest metin alanı boş bırakılamaz.")
+
+        return text.strip()
 
     @staticmethod
     def build_summary_view_model(result: DailyRoutinesSessionResult) -> SummaryViewModel:
-        """Adapt a completed session result into a SummaryViewModel."""
+        """Adapt a completed session result into a SummaryViewModel.
+
+        Preserves Turkish characters via ensure_ascii=False.
+        """
+
         answers_dict: dict[str, Any] = {}
         for q_id, rec in result.active_answers.items():
             answers_dict[q_id] = {
