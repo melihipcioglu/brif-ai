@@ -570,6 +570,7 @@ def load_daily_routines_content_pack_from_dict(
 ) -> DailyRoutinesContentPack:
     """Helper to validate raw dict as DailyRoutinesContentPack."""
     from brif_ai.conversation.daily_routines.loader import validate_cross_file_integrity
+
     try:
         pack = DailyRoutinesContentPack.model_validate(raw_pack)
     except Exception as err:
