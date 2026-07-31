@@ -29,6 +29,7 @@ from brif_ai.conversation.daily_routines import (
 )
 from brif_ai.conversation.daily_routines.models import (
     DailyRoutinesQuestionDefinition,
+    QuestionWordingVariant,
 )
 from brif_ai.conversation.daily_routines.runtime_models import StepPrompt
 from brif_ai.conversation.models.common import (
@@ -258,6 +259,43 @@ def test_normal_question_wording_usage_and_missing_wording_rejection(
 
     with pytest.raises(InvalidSessionStateError, match="Wording variant missing"):
         DailyRoutinesPresenter.build_prompt_view_model(bad_prompt)
+
+    # Create dummy MULTIPLE_CHOICE StepPrompt missing multi_select_contract
+    bad_multi_prompt = StepPrompt(
+        step_id="q_multi_test",
+        is_ui_control=False,
+        active_branch=WordingBranch.STABLE,
+        content_key="key",
+        question_definition=DailyRoutinesQuestionDefinition(
+            id="q_multi_test",
+            module=ConversationModule.DAILY_ROUTINES,
+            purpose="Test purpose",
+            content_key="key",
+            answer_type=AnswerType.MULTIPLE_CHOICE,
+            required=True,
+            output_target_ids=["target_1"],
+            allowed_follow_up_question_ids=[],
+            applicable_stakeholder_roles=["resident"],
+            display_order=1,
+            source_metadata="test",
+            status=QuestionStatus.APPROVED,
+            option_set_id="day_period",
+        ),
+        ui_control_definition=None,
+        wording_variant=QuestionWordingVariant(
+            branch=WordingBranch.STABLE,
+            prompt_text="Multi text",
+            respondent_instruction="Inst",
+        ),
+        option_set=None,
+        options=[],
+        existing_answer=None,
+        stale_reconfirmation=False,
+        multi_select_contract=None,  # Missing!
+    )
+
+    with pytest.raises(InvalidSessionStateError, match="MultiSelectContract missing"):
+        DailyRoutinesPresenter.build_prompt_view_model(bad_multi_prompt)
 
 
 # -----------------------------------------------------------------------------

@@ -80,15 +80,17 @@ class DailyRoutinesPresenter:
                 ans_type = str(prompt.question_definition.answer_type)
                 if ans_type == "MULTIPLE_CHOICE":
                     input_kind = "multiple_choice"
-                    min_selected_items = getattr(
-                        prompt.question_definition, "min_selected_items", 1
-                    )
-                    max_selected_items = getattr(
-                        prompt.question_definition, "max_selected_items", 4
-                    )
-                    canonical_value_order = getattr(
-                        prompt.question_definition, "canonical_value_order", None
-                    )
+                    if prompt.multi_select_contract is None:
+                        raise InvalidSessionStateError(
+                            f"MultiSelectContract missing for prompt step '{prompt.step_id}'."
+                        )
+                    contract = prompt.multi_select_contract
+                    min_selected_items = contract.min_selected_items
+                    max_selected_items = contract.max_selected_items
+                    canonical_value_order = [
+                        str(item.value) if hasattr(item, "value") else str(item)
+                        for item in contract.canonical_order
+                    ]
                 elif ans_type == "FREE_TEXT":
                     input_kind = "free_text"
                 else:
@@ -106,9 +108,6 @@ class DailyRoutinesPresenter:
                         helper_text=opt.helper_text,
                     )
                 )
-
-        if canonical_value_order is None and ui_options:
-            canonical_value_order = [o.value for o in ui_options]
 
         stale_warning: str | None = None
         if prompt.stale_reconfirmation:
@@ -194,7 +193,6 @@ class DailyRoutinesPresenter:
 
         Preserves Turkish characters via ensure_ascii=False.
         """
-
         answers_dict: dict[str, Any] = {}
         for q_id, rec in result.active_answers.items():
             answers_dict[q_id] = {

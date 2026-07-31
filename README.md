@@ -22,8 +22,9 @@ python -m pip install -e ".[dev]"
 ```powershell
 python -m ruff check .
 python -m ruff format --check .
-python -m mypy src tests
+python -m mypy src tests apps
 python -m pytest
+
 ```
 
 ## Streamlit Demo
