@@ -8,7 +8,8 @@ from enum import Enum
 if sys.version_info >= (3, 11):  # noqa: UP036
     from enum import StrEnum
 else:  # pragma: no cover
-    class StrEnum(str, Enum):
+
+    class StrEnum(str, Enum):  # noqa: UP042
         pass
 
 

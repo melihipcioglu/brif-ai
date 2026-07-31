@@ -2,41 +2,45 @@
 
 from __future__ import annotations
 
+import importlib.resources
 from pathlib import Path
 from typing import Any
 
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 from brif_ai.conversation.daily_routines.enums import (
     DayPeriod,
     FunctionalDomain,
     FunctionalDomainStatus,
-    HouseholdVariationStatus,
-    SummaryConfirmation,
     WordingBranch,
 )
 from brif_ai.conversation.daily_routines.models import (
     DailyRoutinesContentPack,
     DomainApplicabilityRule,
-
-    FlowRule,
-
     MultiSelectContract,
-    OptionSet,
-
-    QuestionDefinition,
-    QuestionWording,
-    SummaryTemplate,
-    UIStateControlDefinition,
 )
 
-DEFAULT_CONTENTPACK_DIR = (
-    Path(__file__).parents[4] / "contentpacks" / "tr" / "daily_routines" / "v0"
-)
+ALLOWED_TERMINAL_TARGETS: set[str] = {"module_complete"}
 
 
 class ContentPackValidationError(ValueError):
     """Raised when cross-file validation of content pack fails."""
+
+
+def get_default_contentpack_dir() -> Path:
+    """Resolve default contentpack path using importlib.resources."""
+    try:
+        ref = importlib.resources.files("brif_ai").joinpath(
+            "contentpacks", "tr", "daily_routines", "v0"
+        )
+        return Path(str(ref))
+    except Exception as err:
+        fallback = Path(__file__).parents[2] / "contentpacks" / "tr" / "daily_routines" / "v0"
+        if fallback.exists():
+            return fallback
+        raise ContentPackValidationError(
+            f"Failed to locate package resources content pack: {err}"
+        ) from err
 
 
 def load_daily_routines_content_pack(
@@ -44,12 +48,14 @@ def load_daily_routines_content_pack(
 ) -> DailyRoutinesContentPack:
     """Load and validate the Daily Routines v0 content pack from YAML files."""
     if contentpack_dir is None:
-        contentpack_dir = DEFAULT_CONTENTPACK_DIR
+        contentpack_dir = get_default_contentpack_dir()
     else:
         contentpack_dir = Path(contentpack_dir)
 
     if not contentpack_dir.exists():
-        raise ContentPackValidationError(f"Content pack directory does not exist: {contentpack_dir}")
+        raise ContentPackValidationError(
+            f"Content pack directory does not exist: {contentpack_dir}"
+        )
 
     questions_raw = _load_yaml(contentpack_dir / "questions.yaml")
     option_sets_raw = _load_yaml(contentpack_dir / "option_sets.yaml")
@@ -57,6 +63,7 @@ def load_daily_routines_content_pack(
     flow_rules_raw = _load_yaml(contentpack_dir / "flow_rules.yaml")
     summary_templates_raw = _load_yaml(contentpack_dir / "summary_templates.yaml")
     applicability_raw = _load_yaml(contentpack_dir / "applicability.yaml")
+    invalidation_rules_raw = _load_yaml(contentpack_dir / "invalidation_rules.yaml")
 
     raw_pack = {
         "schema_version": questions_raw.get("schema_version", "v0"),
@@ -69,6 +76,7 @@ def load_daily_routines_content_pack(
         "conditional_routes": flow_rules_raw.get("conditional_routes", []),
         "summary_templates": summary_templates_raw.get("summary_templates", {}),
         "domain_applicability_rules": applicability_raw.get("domain_applicability_rules", {}),
+        "invalidation_rules": invalidation_rules_raw.get("invalidation_rules", []),
     }
 
     try:
@@ -87,6 +95,7 @@ def validate_cross_file_integrity(pack: DailyRoutinesContentPack) -> None:
     _validate_wording_branch_coverage(pack)
     _validate_multi_select_contract(pack.multi_select_contract)
     _validate_flow_rule_references_and_routing(pack)
+    _validate_invalidation_rules(pack)
     _validate_domain_applicability(pack.domain_applicability_rules)
 
 
@@ -109,7 +118,9 @@ def _validate_unique_ids(pack: DailyRoutinesContentPack) -> None:
 
     for ui in pack.ui_state_controls:
         if ui.id in seen_q_ids:
-            raise ContentPackValidationError(f"UI state control id {ui.id!r} collides with question id")
+            raise ContentPackValidationError(
+                f"UI state control id {ui.id!r} collides with question id"
+            )
         seen_q_ids.add(ui.id)
 
     seen_opt_set_ids: set[str] = set()
@@ -123,6 +134,12 @@ def _validate_unique_ids(pack: DailyRoutinesContentPack) -> None:
         if rule.rule_id in seen_rule_ids:
             raise ContentPackValidationError(f"Duplicate flow rule id {rule.rule_id!r}")
         seen_rule_ids.add(rule.rule_id)
+
+    seen_inv_ids: set[str] = set()
+    for inv in pack.invalidation_rules:
+        if inv.rule_id in seen_inv_ids:
+            raise ContentPackValidationError(f"Duplicate invalidation rule id {inv.rule_id!r}")
+        seen_inv_ids.add(inv.rule_id)
 
 
 def _validate_option_set_references(pack: DailyRoutinesContentPack) -> None:
@@ -174,7 +191,8 @@ def _validate_multi_select_contract(contract: MultiSelectContract) -> None:
     ]
     if contract.canonical_order != expected_canonical:
         raise ContentPackValidationError(
-            f"MultiSelectContract canonical_order must be {expected_canonical}, got {contract.canonical_order}"
+            f"MultiSelectContract canonical_order must be {expected_canonical}, "
+            f"got {contract.canonical_order}"
         )
 
 
@@ -192,57 +210,62 @@ def _validate_flow_rule_references_and_routing(pack: DailyRoutinesContentPack) -
         if ui.option_set_id in option_sets_by_id:
             valid_option_values_by_question[ui.id] = option_sets_by_id[ui.option_set_id]
 
-    # Include placeholder generic templates
-    placeholder_source = "DOMAIN_STATUS_QUESTION"
-    valid_option_values_by_question[placeholder_source] = {
-        opt.value for opt in FunctionalDomainStatus
-    }
-
     for rule in pack.flow_rules:
-        if (
-            rule.source_question_id not in valid_q_ids
-            and rule.source_question_id != placeholder_source
-        ):
+        if rule.source_question_id not in valid_q_ids:
             raise ContentPackValidationError(
-                f"Flow rule {rule.rule_id!r} references unknown source_question_id {rule.source_question_id!r}"
+                f"Flow rule {rule.rule_id!r} references unknown source_question_id "
+                f"{rule.source_question_id!r}"
             )
 
-        if (
-            rule.target_question_id is not None
-            and rule.target_question_id not in valid_q_ids
-            and rule.target_question_id != "DOMAIN_PERIODS_QUESTION"
-            and rule.target_question_id != "NEXT_DOMAIN_OR_HOUSEHOLD_STATUS"
-        ):
+        if rule.source_question_id in valid_option_values_by_question:
+            allowed_opts = valid_option_values_by_question[rule.source_question_id]
+            if rule.expected_value not in allowed_opts:
+                raise ContentPackValidationError(
+                    f"Flow rule {rule.rule_id!r} expected_value {rule.expected_value!r} "
+                    f"not found in OptionSet for question {rule.source_question_id!r}"
+                )
+
+        if rule.target_question_id is not None and rule.target_question_id not in valid_q_ids:
             raise ContentPackValidationError(
-                f"Flow rule {rule.rule_id!r} references unknown target_question_id {rule.target_question_id!r}"
+                f"Flow rule {rule.rule_id!r} references unknown target_question_id "
+                f"{rule.target_question_id!r}"
             )
 
-        if rule.target_module is not None and rule.target_module != "module_complete":
+        if rule.target_module is not None and rule.target_module not in ALLOWED_TERMINAL_TARGETS:
             raise ContentPackValidationError(
-                f"Flow rule {rule.rule_id!r} specifies unknown target_module {rule.target_module!r}"
+                f"Flow rule {rule.rule_id!r} specifies unknown terminal target_module "
+                f"{rule.target_module!r}"
             )
 
-    # Check key specific routing rules
-    rule_map = {r.rule_id: r for r in pack.flow_rules}
 
-    if "fr_hh_material_difference" in rule_map:
-        r = rule_map["fr_hh_material_difference"]
-        if r.target_question_id != "q_daily_routines_functional_space_household_variation_detail":
+def _validate_invalidation_rules(pack: DailyRoutinesContentPack) -> None:
+    valid_q_ids = {q.id for q in pack.questions} | {ui.id for ui in pack.ui_state_controls}
+
+    seen_signature_targets: dict[tuple[str, str, str | None, str], str] = {}
+
+    for inv in pack.invalidation_rules:
+        if inv.source_question_id not in valid_q_ids:
             raise ContentPackValidationError(
-                "material_difference_reported must route to household_variation_detail"
+                f"Invalidation rule {inv.rule_id!r} references unknown source_question_id "
+                f"{inv.source_question_id!r}"
             )
 
-    if "fr_confirm_no" in rule_map:
-        r = rule_map["fr_confirm_no"]
-        if r.target_question_id != "bp_ui_room_use_correction_selector":
-            raise ContentPackValidationError(
-                "rejected_for_correction must route to bp_ui_room_use_correction_selector"
-            )
+        for target_id in inv.target_question_ids:
+            if target_id not in valid_q_ids:
+                raise ContentPackValidationError(
+                    f"Invalidation rule {inv.rule_id!r} references unknown target_question_id "
+                    f"{target_id!r}"
+                )
 
-    if "fr_confirm_yes" in rule_map:
-        r = rule_map["fr_confirm_yes"]
-        if r.target_module != "module_complete":
-            raise ContentPackValidationError("confirmed must specify target_module module_complete")
+            key = (inv.trigger_event, inv.source_question_id, inv.trigger_value, target_id)
+            if key in seen_signature_targets:
+                prev_rule_id = seen_signature_targets[key]
+                if prev_rule_id != inv.rule_id:
+                    raise ContentPackValidationError(
+                        f"Conflicting invalidation rule {inv.rule_id!r} collides with "
+                        f"{prev_rule_id!r} for target {target_id!r}"
+                    )
+            seen_signature_targets[key] = inv.rule_id
 
 
 def _validate_domain_applicability(rule: DomainApplicabilityRule) -> None:
@@ -261,9 +284,8 @@ def is_option_allowed_for_domain(
     pack: DailyRoutinesContentPack, domain: FunctionalDomain, option_value: str
 ) -> bool:
     """Check if an option value is allowed for a specific domain based on applicability rules."""
-    if option_value == FunctionalDomainStatus.FUNCTIONAL_DOMAIN_NOT_RELEVANT_TO_HOUSEHOLD.value:
-        allow_list = (
-            pack.domain_applicability_rules.functional_domain_not_relevant_to_household.allowed_domains
-        )
-        return allow_list.get(domain, True)
+    not_relevant = FunctionalDomainStatus.FUNCTIONAL_DOMAIN_NOT_RELEVANT_TO_HOUSEHOLD.value
+    if option_value == not_relevant:
+        rules = pack.domain_applicability_rules.functional_domain_not_relevant_to_household
+        return rules.allowed_domains.get(domain, True)
     return True

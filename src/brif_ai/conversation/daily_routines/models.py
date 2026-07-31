@@ -4,25 +4,23 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from pydantic import Field, StringConstraints, field_validator, model_validator
-
+from pydantic import (
+    Field,
+    StrictBool,
+    StrictStr,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 from brif_ai.conversation.daily_routines.enums import (
     AnswerValidityState,
     CorrectionTarget,
-    DayPeriod,
-
     DayPatternStatus,
-
+    DayPeriod,
     FunctionalDomain,
-
-    FunctionalDomainStatus,
-
     HouseholdVariationStatus,
-
     RecurringDayContext,
-
-    SummaryConfirmation,
     TargetClosureEffect,
     WordingBranch,
 )
@@ -32,16 +30,12 @@ from brif_ai.core.models.common import ContractModel, NonEmptyString, ObjectId
 ShortText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=250)]
 
 
-
 class OptionDefinition(ContractModel):
     id: ObjectId
     value: StrictStr
     display_label: NonEmptyString
     helper_text: NonEmptyString
     display_order: int = Field(ge=1)
-
-
-from pydantic import StrictBool, StrictStr
 
 
 class OptionSet(ContractModel):
@@ -111,7 +105,6 @@ class DailyRoutinesQuestionDefinition(ContractModel):
 
 
 QuestionDefinition = DailyRoutinesQuestionDefinition
-
 
 
 class UIStateControlDefinition(ContractModel):
@@ -195,6 +188,16 @@ class AnswerRecord(ContractModel):
     validity_state: AnswerValidityState = AnswerValidityState.ACTIVE
 
 
+class InvalidationRule(ContractModel):
+    rule_id: ObjectId
+    trigger_event: NonEmptyString
+    source_question_id: ObjectId
+    trigger_value: StrictStr | None = None
+    target_question_ids: list[ObjectId] = Field(min_length=1)
+    new_validity_state: AnswerValidityState
+    active_branch_effect: WordingBranch | None = None
+
+
 class DailyRoutinesContentPack(ContractModel):
     schema_version: NonEmptyString
     questions: list[DailyRoutinesQuestionDefinition] = Field(min_length=1)
@@ -206,4 +209,4 @@ class DailyRoutinesContentPack(ContractModel):
     conditional_routes: list[ConditionalRoute] = Field(min_length=1)
     summary_templates: SummaryTemplate
     domain_applicability_rules: DomainApplicabilityRule
-
+    invalidation_rules: list[InvalidationRule] = Field(min_length=1)

@@ -19,6 +19,7 @@ from brif_ai.conversation.daily_routines.invalidation import (
 )
 from brif_ai.conversation.daily_routines.loader import (
     ContentPackValidationError,
+    get_default_contentpack_dir,
     is_option_allowed_for_domain,
     load_daily_routines_content_pack,
     validate_cross_file_integrity,
@@ -29,6 +30,7 @@ from brif_ai.conversation.daily_routines.models import (
     DailyRoutinesQuestionDefinition,
     DomainApplicabilityRule,
     FlowRule,
+    InvalidationRule,
     MultiSelectContract,
     OptionDefinition,
     OptionSet,
@@ -53,6 +55,7 @@ __all__ = [
     "FunctionalDomainStatus",
     "HouseholdVariationStatus",
     "InvalidationEngine",
+    "InvalidationRule",
     "MultiSelectContract",
     "OptionDefinition",
     "OptionSet",
@@ -65,6 +68,7 @@ __all__ = [
     "TargetClosureEffect",
     "UIStateControlDefinition",
     "WordingBranch",
+    "get_default_contentpack_dir",
     "is_option_allowed_for_domain",
     "load_daily_routines_content_pack",
     "validate_cross_file_integrity",
