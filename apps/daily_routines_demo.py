@@ -149,7 +149,6 @@ def main() -> None:
                             selected_payload, step_prompt
                         )
 
-
                     # Runtime execution
                     runtime.process_answer(validated_payload)
 
