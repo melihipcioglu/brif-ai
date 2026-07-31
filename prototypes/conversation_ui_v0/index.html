@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BRIF.AI — Mimari İhtiyaç Analizi Prototipi</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Top Header Bar -->
+    <header class="app-header">
+      <div class="header-brand">
+        <span class="brand-logo">BRIF<span class="brand-dot">.</span>AI</span>
+        <span class="brand-subtitle">Mimari İhtiyaç Analizi</span>
+      </div>
+
+      <div class="header-project">
+        <span class="project-tag">Proje:</span>
+        <span class="project-name">Yeni Konut Projesi</span>
+        <span class="project-badge">Konut</span>
+      </div>
+
+      <div class="header-meta">
+        <div class="status-indicator">
+          <span class="status-dot green"></span>
+          <span class="status-text">Oturum Aktif</span>
+        </div>
+        <div class="save-indicator">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          <span>Kaydedildi</span>
+        </div>
+        <div class="user-avatar" title="Kullanıcı Profili">
+          <span>MK</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="main-workspace">
+      <!-- Left Column: Chat Conversation Stream -->
+      <section class="chat-section">
+        <div class="chat-messages" id="chatMessages">
+          <!-- Initial Conversation Message 1 (AI) -->
+          <div class="message ai-message">
+            <div class="message-avatar">AI</div>
+            <div class="message-content">
+              <div class="message-sender">BRIF.AI Mimari Danışman</div>
+              <div class="message-text">
+                Yeni evinizde günlük yaşamınızı ve mekân kullanımı ritminizi biraz anlamak istiyorum. Ev hafta içinde genellikle nasıl kullanılıyor?
+              </div>
+            </div>
+          </div>
+
+          <!-- Initial Conversation Message 2 (User) -->
+          <div class="message user-message">
+            <div class="message-avatar user">MK</div>
+            <div class="message-content">
+              <div class="message-sender">Siz</div>
+              <div class="message-text">
+                Ben çoğu gün ofisteyim. Eşim evden çalışıyor. Çocuklar okuldan dört gibi geliyor.
+              </div>
+            </div>
+          </div>
+
+          <!-- Initial Conversation Message 3 (AI) -->
+          <div class="message ai-message" id="latestAiMessage">
+            <div class="message-avatar">AI</div>
+            <div class="message-content">
+              <div class="message-sender">BRIF.AI Mimari Danışman</div>
+              <div class="message-text">
+                Anladım. Eviniz gün içinde tamamen boş kalmıyor ve öğleden sonra kullanım yoğunluğu artıyor. Eşiniz çalışırken sessizlik ve akustik izolasyon kritik mi, yoksa ortak yaşam alanına yakın olmayı mı tercih ediyor?
+              </div>
+
+              <!-- Suggestion Chips / Quick Replies -->
+              <div class="suggestion-chips" id="suggestionChips">
+                <button class="chip-btn" data-reply="Eşim çalışırken sessizlik ve tam konsantrasyon istiyor, ayrı alan şart.">
+                  Sessiz ve ayrı olsun
+                </button>
+                <button class="chip-btn" data-reply="Gündüz ortak alanla iletişimde olmayı, salona yakın çalışmayı seviyor.">
+                  Ortak alana yakın olsun
+                </button>
+                <button class="chip-btn" data-reply="Esnek bir kurgu istiyoruz; hem kapatılabilen hem de açılabilen bir alan.">
+                  İkisi arasında dengeli olsun
+                </button>
+                <button class="chip-btn" data-reply="Bu konuda henüz karar vermedik, mimari seçenekleri değerlendirebiliriz.">
+                  Emin değilim
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chat Input Footer -->
+        <div class="chat-input-container">
+          <form class="chat-form" id="chatForm">
+            <div class="input-wrapper">
+              <textarea 
+                id="userInput" 
+                placeholder="Yanıtınızı buraya yazın veya bir öneri çipine tıklayın..." 
+                rows="2"
+              ></textarea>
+              <div class="input-actions">
+                <button type="button" class="icon-btn" id="voiceBtn" title="Sesli Yanıt Ver (Demo)">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                    <line x1="12" y1="19" x2="12" y2="22"></line>
+                  </svg>
+                </button>
+                <button type="submit" class="send-btn" id="sendBtn" title="Gönder">
+                  <span>Gönder</span>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="input-hint">
+              💡 Örnek vererek anlatabilirsiniz (Örn: "Sabahları mutfakta kahve içerken bahçeyi görmek istiyorum").
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- Right Column: Dynamic Insight Panel -->
+      <aside class="panel-section">
+        <div class="panel-header">
+          <div class="panel-title-group">
+            <h2 class="panel-title" id="panelTitle">Sizi nasıl anladım?</h2>
+            <p class="panel-subtitle" id="panelSubtitle">Sohbetinizden çıkarılan canlı mimari profil</p>
+          </div>
+          <button class="toggle-view-btn" id="toggleViewBtn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+            </svg>
+            <span id="toggleBtnText">Mimar Önizlemesi</span>
+          </button>
+        </div>
+
+        <div class="panel-scroll-content">
+          <!-- VIEW 1: Client Understanding View -->
+          <div class="view-container active" id="clientView">
+            
+            <!-- Section: Yaşam Düzeni -->
+            <div class="insight-group">
+              <div class="group-header">
+                <h3>Yaşam Düzeni</h3>
+                <span class="group-count" id="routineCount">3 Madde</span>
+              </div>
+              <div class="cards-list" id="routineCards">
+                <div class="insight-card">
+                  <div class="card-top">
+                    <span class="card-text">Ev gün içinde tamamen boş kalmıyor</span>
+                    <span class="badge badge-confirmed">Kesinleşti</span>
+                  </div>
+                  <div class="card-detail">Eşiniz gün boyu evden çalışıyor.</div>
+                </div>
+
+                <div class="insight-card">
+                  <div class="card-top">
+                    <span class="card-text">Öğleden sonra çocuklarla kullanım yoğunluğu artıyor</span>
+                    <span class="badge badge-confirmed">Kesinleşti</span>
+                  </div>
+                  <div class="card-detail">Çocuklar 16:00 sonrası ortak alanları aktif kullanıyor.</div>
+                </div>
+
+                <div class="insight-card">
+                  <div class="card-top">
+                    <span class="card-text">Hafta içi ve hafta sonu düzenleri farklı</span>
+                    <span class="badge badge-probable">Muhtemel</span>
+                  </div>
+                  <div class="card-detail">Hafta sonu tüm aile evde toplanıyor.</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Section: Öncelikler -->
+            <div class="insight-group">
+              <div class="group-header">
+                <h3>Öncelikler</h3>
+                <span class="group-count" id="priorityCount">3 Madde</span>
+              </div>
+              <div class="cards-list" id="priorityCards">
+                <div class="insight-card">
+                  <div class="card-top">
+                    <span class="card-text">Evden çalışma için akustik mahremiyet</span>
+                    <span class="badge badge-pending">Teyit bekliyor</span>
+                  </div>
+                  <div class="card-detail">Çalışma alanının ses izolasyon ihtiyacı değerlendiriliyor.</div>
+                </div>
+
+                <div class="insight-card">
+                  <div class="card-top">
+                    <span class="card-text">Çocuklarla görsel bağlantının korunması</span>
+                    <span class="badge badge-confirmed">Kesinleşti</span>
+                  </div>
+                  <div class="card-detail">Gündüz yaşam alanında görüş açısı önemli.</div>
+                </div>
+
+                <div class="insight-card">
+                  <div class="card-top">
+                    <span class="card-text">Ortak kullanım alanlarında esneklik</span>
+                    <span class="badge badge-probable">Muhtemel</span>
+                  </div>
+                  <div class="card-detail">Çok işlevli mobilya ve bölücü panel imkânı.</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Section: Henüz Netleşmeyenler -->
+            <div class="insight-group">
+              <div class="group-header">
+                <h3>Henüz Netleşmeyenler</h3>
+                <span class="group-count" id="pendingCount">3 Madde</span>
+              </div>
+              <div class="cards-list" id="pendingCards">
+                <div class="insight-card highlight-pending">
+                  <div class="card-top">
+                    <span class="card-text">Çalışma alanının salonla ilişkisi</span>
+                    <span class="badge badge-conflict">Çelişki var</span>
+                  </div>
+                  <div class="card-detail">Tam ayrışma mı yoksa yarı açık temas mı istendiği belirsiz.</div>
+                </div>
+
+                <div class="insight-card">
+                  <div class="card-top">
+                    <span class="card-text">Misafir kullanım sıklığı ve yatılı ağırlama</span>
+                    <span class="badge badge-pending">Teyit bekliyor</span>
+                  </div>
+                  <div class="card-detail">Konuk odası veya dönüştürülebilir oda ihtiyacı.</div>
+                </div>
+
+                <div class="insight-card">
+                  <div class="card-top">
+                    <span class="card-text">Yatak odalarının gündüz kullanımı</span>
+                    <span class="badge badge-probable">Muhtemel</span>
+                  </div>
+                  <div class="card-detail">Çocukların ders ve oyun alanlarının dağılımı.</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Interactive Confirmation Box -->
+            <div class="confirmation-box" id="confirmationBox">
+              <div class="confirmation-header">
+                <span class="confirmation-icon">💡</span>
+                <span class="confirmation-title">Teyit Gereken Yorum</span>
+              </div>
+              <div class="confirmation-body" id="confirmationText">
+                "Çalışma alanının tamamen izole edilmesinden çok, gerektiğinde kapatılabilen esnek bir kapıyla ortak yaşama yakın olması tercih ediliyor olabilir."
+              </div>
+              <div class="confirmation-actions" id="confirmationActions">
+                <button class="action-btn accept" id="confirmCorrectBtn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                  <span>Doğru</span>
+                </button>
+                <button class="action-btn edit" id="confirmEditBtn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                  </svg>
+                  <span>Düzenle</span>
+                </button>
+                <button class="action-btn reject" id="confirmRejectBtn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                  <span>Yanlış Anladın</span>
+                </button>
+              </div>
+              
+              <!-- Inline Editor Area (Hidden by default) -->
+              <div class="inline-editor hidden" id="inlineEditor">
+                <textarea id="editInput" rows="2" placeholder="Düzeltmek istediğiniz mimari yorumu yazın..."></textarea>
+                <div class="editor-buttons">
+                  <button class="editor-btn cancel" id="cancelEditBtn">İptal</button>
+                  <button class="editor-btn save" id="saveEditBtn">Kaydet ve Güncelle</button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- VIEW 2: Architect Brief View (Toggled) -->
+          <div class="view-container hidden" id="architectView">
+            <div class="arch-banner">
+              <div class="arch-banner-title">🏛️ Mimar Sentez Raporu</div>
+              <div class="arch-banner-desc">Bu bölüm, kullanıcı anlatımının teknik mimari gereksinimlere dönüştürülmüş profesyonel analizidir.</div>
+            </div>
+
+            <!-- Architect Brief Section: Doğrulanmış Brief -->
+            <div class="arch-section">
+              <h3 class="arch-section-title">Doğrulanmış Brief</h3>
+              <div class="arch-card-list">
+                <div class="arch-card">
+                  <div class="arch-card-header">
+                    <span class="arch-label">Hane Yapısı & Gündüz Yoğunluğu</span>
+                    <span class="confidence-tag high">Yüksek Güven</span>
+                  </div>
+                  <div class="arch-body">
+                    2 yetişkin + çocuk(lar). Hafta içi gün içi aktif evden çalışma kullanımı (1 yetişkin) ve 16:00 sonrası yüksek sirkülasyon.
+                  </div>
+                </div>
+
+                <div class="arch-card">
+                  <div class="arch-card-header">
+                    <span class="arch-label">Mekânsal Akustik İhtiyaçlar</span>
+                    <span class="confidence-tag medium">Orta Güven</span>
+                  </div>
+                  <div class="arch-body">
+                    Çalışma alanında 35-45 dB bandında ses yalıtımı ve online toplantılar için arka plan görsel kontrolü talebi.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Architect Brief Section: Tasarım Açısından Anlamı -->
+            <div class="arch-section">
+              <h3 class="arch-section-title">Tasarım Açısından Anlamı</h3>
+              <div class="arch-card-list">
+                <div class="arch-card">
+                  <div class="arch-card-header">
+                    <span class="arch-label">Bölücü Eleman & Geçiş Kurgusu</span>
+                    <span class="confidence-tag high">Yüksek Güven</span>
+                  </div>
+                  <div class="arch-body">
+                    Çalışma odası salon/mutfaktan tamamen koparılmamalı; cam/ahşap sürgülü kapı ile şeffaf-akustik esneklik sağlanmalı.
+                  </div>
+                </div>
+
+                <div class="arch-card">
+                  <div class="arch-card-header">
+                    <span class="arch-label">Görsel Temas & Çocuk Görüş Açısı</span>
+                    <span class="confidence-tag high">Yüksek Güven</span>
+                  </div>
+                  <div class="arch-body">
+                    Mutfak-çalışma ve çocuk oyun bölgesi arasında en az 120 derece kesintisiz görüş açısı korunmalı.
+                  </div>
+                </div>
+
+                <div class="arch-card">
+                  <div class="arch-card-header">
+                    <span class="arch-label">Dönüştürülebilir Mobilya & Depolama</span>
+                    <span class="confidence-tag requires">Teyit Gerekli</span>
+                  </div>
+                  <div class="arch-body">
+                    Gündüz çalışma masa düzeninin akşam aile oturma alanına taşmaması için gömme depolama modülü öneriliyor.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Architect Brief Section: Güven Düzeyi Dağılımı -->
+            <div class="arch-section">
+              <h3 class="arch-section-title">Güven Düzeyi Dağılımı</h3>
+              <div class="confidence-summary">
+                <div class="stat-bar">
+                  <div class="bar-segment high" style="width: 55%;" title="Yüksek Güven: %55"></div>
+                  <div class="bar-segment medium" style="width: 30%;" title="Orta Güven: %30"></div>
+                  <div class="bar-segment requires" style="width: 15%;" title="Teyit Gerekli: %15"></div>
+                </div>
+                <div class="stat-labels">
+                  <span class="stat-item"><span class="dot high"></span> %55 Yüksek</span>
+                  <span class="stat-item"><span class="dot medium"></span> %30 Orta</span>
+                  <span class="stat-item"><span class="dot requires"></span> %15 Teyit Gerekli</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
