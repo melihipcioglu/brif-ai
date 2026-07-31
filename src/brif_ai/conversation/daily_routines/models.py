@@ -208,12 +208,6 @@ class AnswerRecord(ContractModel):
     validity_state: AnswerValidityState = AnswerValidityState.ACTIVE
 
 
-class SessionState(ContractModel):
-    answers: dict[ObjectId, AnswerRecord] = Field(default_factory=dict)
-    active_branch: WordingBranch = WordingBranch.STABLE
-    correction_target: CorrectionTarget | None = None
-
-
 class InvalidationRule(ContractModel):
     rule_id: ObjectId
     trigger_event: NonEmptyString

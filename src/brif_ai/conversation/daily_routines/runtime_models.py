@@ -9,6 +9,7 @@ from brif_ai.conversation.daily_routines.enums import (
     TargetClosureEffect,
     WordingBranch,
 )
+from brif_ai.conversation.daily_routines.invalidation import SessionState
 from brif_ai.conversation.daily_routines.models import (
     AnswerRecord,
     DailyRoutinesQuestionDefinition,
@@ -16,7 +17,6 @@ from brif_ai.conversation.daily_routines.models import (
     OptionDefinition,
     OptionSet,
     QuestionWordingVariant,
-    SessionState,
     UIStateControlDefinition,
 )
 from brif_ai.core.models.common import ContractModel, NonEmptyString, ObjectId
@@ -65,7 +65,7 @@ class SessionStepResult(ContractModel):
     next_step_id: ObjectId | None
     terminal_target: NonEmptyString | None
     status: SessionStatus
-    target_closure_effect: TargetClosureEffect
+    target_closure_effect: TargetClosureEffect | None = None
     summary_lines: list[NonEmptyString] = Field(default_factory=list)
 
 

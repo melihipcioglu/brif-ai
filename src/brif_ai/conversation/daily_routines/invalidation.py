@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import Field
+
 from brif_ai.conversation.daily_routines.enums import (
     AnswerValidityState,
     CorrectionReturnPolicy,
@@ -22,11 +24,16 @@ from brif_ai.conversation.daily_routines.enums import (
 from brif_ai.conversation.daily_routines.models import (
     AnswerRecord,
     DailyRoutinesContentPack,
-    SessionState,
     SummaryTemplate,
 )
 from brif_ai.conversation.models.common import AnswerType
-from brif_ai.core.models.common import ObjectId
+from brif_ai.core.models.common import ContractModel, ObjectId
+
+
+class SessionState(ContractModel):
+    answers: dict[ObjectId, AnswerRecord] = Field(default_factory=dict)
+    active_branch: WordingBranch = WordingBranch.STABLE
+    correction_target: CorrectionTarget | None = None
 
 
 class InvalidationEngine:

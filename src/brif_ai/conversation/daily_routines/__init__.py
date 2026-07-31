@@ -19,7 +19,10 @@ from brif_ai.conversation.daily_routines.enums import (
     TargetClosureEffect,
     WordingBranch,
 )
-from brif_ai.conversation.daily_routines.invalidation import InvalidationEngine
+from brif_ai.conversation.daily_routines.invalidation import (
+    InvalidationEngine,
+    SessionState,
+)
 from brif_ai.conversation.daily_routines.loader import (
     ContentPackValidationError,
     load_daily_routines_content_pack,
@@ -35,7 +38,6 @@ from brif_ai.conversation.daily_routines.models import (
     OptionSet,
     QuestionDefinition,
     QuestionWording,
-    SessionState,
     SummaryTemplate,
     UIStateControlDefinition,
 )

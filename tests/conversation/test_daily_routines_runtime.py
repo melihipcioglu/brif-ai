@@ -110,6 +110,10 @@ def test_ui_control_prompt_generation(content_pack: DailyRoutinesContentPack) ->
     assert prompt.wording_variant is None
     assert prompt.option_set is not None
 
+    # Answering UI control returns target_closure_effect is None
+    res = runtime.process_answer(CorrectionTarget.DAY_PATTERN)
+    assert res.target_closure_effect is None
+
 
 def test_wording_variant_branch_selection(content_pack: DailyRoutinesContentPack) -> None:
     """Verify STABLE branch selects STABLE wording variant and IRREGULAR selects IRREGULAR variant."""

@@ -194,13 +194,9 @@ class DailyRoutinesRuntime:
             if not matched_rule:
                 matched_rule = self._rules_by_source_any.get(curr_id)
 
-        target_closure_effect: TargetClosureEffect
-        if matched_rule:
-            target_closure_effect = matched_rule.target_closure_effect
-        elif curr_id == "bp_ui_room_use_correction_selector":
-            target_closure_effect = TargetClosureEffect.REQUIRES_CORRECTION
-        else:
-            raise InvalidSessionStateError(f"No matching flow rule found for step {curr_id!r}")
+        target_closure_effect: TargetClosureEffect | None = (
+            matched_rule.target_closure_effect if matched_rule else None
+        )
 
         if next_step == "module_complete":
             # Check stale answer protection before completing session
