@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 from brif_ai.conversation.daily_routines.enums import (
@@ -33,7 +34,7 @@ from brif_ai.conversation.daily_routines.runtime_models import (
 
 
 class DailyRoutinesRuntime:
-    """Orchestrates prompts, option filtering, answer processing, state persistence, and completion state."""
+    """Orchestrates prompts, option filtering, answer processing, and state persistence."""
 
     def __init__(
         self,
@@ -113,17 +114,21 @@ class DailyRoutinesRuntime:
                 )
             wording_variant = next(
                 (v for v in wording_obj.variants if v.branch == active_branch),
-                wording_obj.variants[0],
+                None,
             )
+            if not wording_variant:
+                raise InvalidSessionStateError(
+                    f"No wording variant found for question {curr_id!r} under branch "
+                    f"{active_branch_str!r}"
+                )
 
         option_set_obj: OptionSet | None = None
         options: list[OptionDefinition] | None = None
         if option_set_id and option_set_id in self._option_sets_by_id:
-            option_set_obj = self._option_sets_by_id[option_set_id]
-            raw_options = option_set_obj.options
+            raw_option_set = self._option_sets_by_id[option_set_id]
             filtered_options: list[OptionDefinition] = []
 
-            for opt in raw_options:
+            for opt in raw_option_set.options:
                 opt_val_str = str(opt.value)
                 if (
                     (curr_id.endswith("_sleeping_status") or curr_id.endswith("_bathroom_status"))
@@ -142,6 +147,7 @@ class DailyRoutinesRuntime:
                 filtered_options.append(opt)
 
             options = filtered_options
+            option_set_obj = raw_option_set.model_copy(update={"options": filtered_options})
 
         existing_answer: str | list[str] | None = None
         stale_reconfirmation = False
@@ -170,7 +176,7 @@ class DailyRoutinesRuntime:
         )
 
     def process_answer(self, answer: Any) -> SessionStepResult:
-        """Validate and record answer, resolve next step, check stale completion, and return result."""
+        """Validate and record answer atomically, resolve next step, and check stale completion."""
         if self.state.status == SessionStatus.COMPLETED:
             raise InvalidSessionStateError("Cannot process answer for a completed session")
 
@@ -181,55 +187,63 @@ class DailyRoutinesRuntime:
         if curr_id not in self._questions_by_id and curr_id not in self._ui_controls_by_id:
             raise InvalidAnswerError(f"Unknown current step ID: {curr_id!r}")
 
-        self.engine.record_answer(self.state.session_state, curr_id, answer)
+        # Atomic execution snapshot rollback protection
+        state_snapshot = copy.deepcopy(self.state)
 
-        next_step = self.engine.resolve_next_step(self.state.session_state, curr_id)
+        try:
+            self.engine.record_answer(self.state.session_state, curr_id, answer)
 
-        # Lookup exact matched FlowRule for target_closure_effect
-        matched_rule = None
-        ans_record = self.state.session_state.answers.get(curr_id)
-        if ans_record:
-            if isinstance(ans_record.value, str):
-                matched_rule = self._rules_by_source_and_value.get((curr_id, ans_record.value))
-            if not matched_rule:
-                matched_rule = self._rules_by_source_any.get(curr_id)
+            next_step = self.engine.resolve_next_step(self.state.session_state, curr_id)
 
-        target_closure_effect: TargetClosureEffect | None = (
-            matched_rule.target_closure_effect if matched_rule else None
-        )
+            # Lookup exact matched FlowRule for target_closure_effect
+            matched_rule = None
+            ans_record = self.state.session_state.answers.get(curr_id)
+            if ans_record:
+                if isinstance(ans_record.value, str):
+                    matched_rule = self._rules_by_source_and_value.get((curr_id, ans_record.value))
+                if not matched_rule:
+                    matched_rule = self._rules_by_source_any.get(curr_id)
 
-        if next_step == "module_complete":
-            # Check stale answer protection before completing session
-            for q_id, rec in self.state.session_state.answers.items():
-                if rec.validity_state == AnswerValidityState.STALE_REQUIRES_RECONFIRMATION:
-                    raise InvalidSessionStateError(
-                        f"Cannot complete session with stale answer for question {q_id!r}"
-                    )
-
-            self.state.status = SessionStatus.COMPLETED
-            self.state.current_step_id = None
-            self.state.terminal_target = "module_complete"
-            summary_lines = self.engine.generate_summary(self.state.session_state)
-
-            return SessionStepResult(
-                answered_step_id=curr_id,
-                next_step_id=None,
-                terminal_target="module_complete",
-                status=SessionStatus.COMPLETED,
-                target_closure_effect=target_closure_effect,
-                summary_lines=summary_lines,
+            target_closure_effect: TargetClosureEffect | None = (
+                matched_rule.target_closure_effect if matched_rule else None
             )
 
-        else:
-            self.state.current_step_id = next_step
-            return SessionStepResult(
-                answered_step_id=curr_id,
-                next_step_id=next_step,
-                terminal_target=None,
-                status=SessionStatus.IN_PROGRESS,
-                target_closure_effect=target_closure_effect,
-                summary_lines=[],
-            )
+            if next_step == "module_complete":
+                # Check stale answer protection before completing session
+                for q_id, rec in self.state.session_state.answers.items():
+                    if rec.validity_state == AnswerValidityState.STALE_REQUIRES_RECONFIRMATION:
+                        raise InvalidSessionStateError(
+                            f"Cannot complete session with stale answer for question {q_id!r}"
+                        )
+
+                self.state.status = SessionStatus.COMPLETED
+                self.state.current_step_id = None
+                self.state.terminal_target = "module_complete"
+                summary_lines = self.engine.generate_summary(self.state.session_state)
+
+                return SessionStepResult(
+                    answered_step_id=curr_id,
+                    next_step_id=None,
+                    terminal_target="module_complete",
+                    status=SessionStatus.COMPLETED,
+                    target_closure_effect=target_closure_effect,
+                    summary_lines=summary_lines,
+                )
+
+            else:
+                self.state.current_step_id = next_step
+                return SessionStepResult(
+                    answered_step_id=curr_id,
+                    next_step_id=next_step,
+                    terminal_target=None,
+                    status=SessionStatus.IN_PROGRESS,
+                    target_closure_effect=target_closure_effect,
+                    summary_lines=[],
+                )
+
+        except Exception:
+            self.state = state_snapshot
+            raise
 
     def get_result(self) -> DailyRoutinesSessionResult:
         """Return structured session result summary for both in-progress and completed sessions."""

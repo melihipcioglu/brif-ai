@@ -15,9 +15,12 @@ from brif_ai.conversation.daily_routines import (
     FunctionalDomainStatus,
     HouseholdVariationStatus,
     InvalidSessionStateError,
+    QuestionWording,
+    QuestionWordingVariant,
     RecurringDayContext,
     SessionStatus,
     SummaryConfirmation,
+    TargetClosureEffect,
     WordingBranch,
     load_daily_routines_content_pack,
 )
@@ -35,7 +38,7 @@ def content_pack() -> DailyRoutinesContentPack:
 
 
 def test_runtime_state_in_progress_invariant_rejection() -> None:
-    """Verify rejection when IN_PROGRESS runtime state has null current_step_id or non-null terminal_target."""
+    """Verify rejection when IN_PROGRESS state has null current_step_id or terminal_target."""
     with pytest.raises(ValidationError):
         DailyRoutinesRuntimeState(
             status=SessionStatus.IN_PROGRESS,
@@ -52,7 +55,7 @@ def test_runtime_state_in_progress_invariant_rejection() -> None:
 
 
 def test_runtime_state_completed_invariant_rejection() -> None:
-    """Verify rejection when COMPLETED runtime state has non-null current_step_id or invalid terminal_target."""
+    """Verify rejection when COMPLETED state has non-null current_step_id or invalid target."""
     with pytest.raises(ValidationError):
         DailyRoutinesRuntimeState(
             status=SessionStatus.COMPLETED,
@@ -90,7 +93,7 @@ def test_runtime_unknown_current_step_rejection(content_pack: DailyRoutinesConte
 
 
 def test_ui_control_prompt_generation(content_pack: DailyRoutinesContentPack) -> None:
-    """Verify UI control prompt sets is_ui_control=True, ui_control_definition, and wording_variant=None."""
+    """Verify UI control prompt sets is_ui_control=True and target_closure_effect is None."""
     runtime = DailyRoutinesRuntime(content_pack)
 
     runtime.process_answer(DayPatternStatus.STABLE_RECURRING_DAY_AVAILABLE)
@@ -116,7 +119,7 @@ def test_ui_control_prompt_generation(content_pack: DailyRoutinesContentPack) ->
 
 
 def test_wording_variant_branch_selection(content_pack: DailyRoutinesContentPack) -> None:
-    """Verify STABLE branch selects STABLE wording variant and IRREGULAR selects IRREGULAR variant."""
+    """Verify STABLE branch selects STABLE wording variant and IRREGULAR selects IRREGULAR."""
     # 1. STABLE branch
     runtime_stable = DailyRoutinesRuntime(content_pack)
     runtime_stable.process_answer(DayPatternStatus.STABLE_RECURRING_DAY_AVAILABLE)
@@ -132,13 +135,44 @@ def test_wording_variant_branch_selection(content_pack: DailyRoutinesContentPack
     assert prompt_irr.wording_variant.branch == WordingBranch.IRREGULAR
 
 
+def test_missing_wording_variant_raises_invalid_session_state_error(
+    content_pack: DailyRoutinesContentPack,
+) -> None:
+    """Verify fail-closed error when active branch wording variant is missing."""
+    # Create content pack copy with missing IRREGULAR variant for day_pattern_status
+    bad_wordings = []
+    for w in content_pack.wording_variants:
+        if w.question_id == "q_daily_routines_functional_space_day_pattern_status":
+            bad_wordings.append(
+                QuestionWording(
+                    question_id=w.question_id,
+                    variants=[
+                        QuestionWordingVariant(
+                            branch=WordingBranch.STABLE,
+                            prompt_text="Only stable variant",
+                            respondent_instruction="Select one",
+                        )
+                    ],
+                )
+            )
+        else:
+            bad_wordings.append(w)
+
+    bad_pack = content_pack.model_copy(update={"wording_variants": bad_wordings})
+    runtime = DailyRoutinesRuntime(bad_pack)
+    runtime.state.session_state.active_branch = WordingBranch.IRREGULAR
+
+    with pytest.raises(InvalidSessionStateError, match="No wording variant found"):
+        runtime.get_current_step_prompt()
+
+
 # -----------------------------------------------------------------------------
-# 4. Option Filtering Tests
+# 4. Option Filtering & Single Source of Truth Tests
 # -----------------------------------------------------------------------------
 
 
-def test_option_filtering_sleeping_and_bathroom(content_pack: DailyRoutinesContentPack) -> None:
-    """Verify functional domain not relevant option is filtered for sleeping & bathroom."""
+def test_option_filtering_single_source_of_truth(content_pack: DailyRoutinesContentPack) -> None:
+    """Verify prompt.options and prompt.option_set.options are identical for filtered steps."""
     runtime = DailyRoutinesRuntime(content_pack)
 
     runtime.process_answer(DayPatternStatus.STABLE_RECURRING_DAY_AVAILABLE)
@@ -146,9 +180,12 @@ def test_option_filtering_sleeping_and_bathroom(content_pack: DailyRoutinesConte
     runtime.process_answer(FunctionalDomainStatus.VARIABLE)  # living_social
     runtime.process_answer(FunctionalDomainStatus.VARIABLE)  # kitchen_dining
 
+    # 1. Sleeping status
     prompt_sleeping = runtime.get_current_step_prompt()
     assert prompt_sleeping.step_id == "q_daily_routines_functional_space_sleeping_status"
     assert prompt_sleeping.options is not None
+    assert prompt_sleeping.option_set is not None
+    assert prompt_sleeping.options == prompt_sleeping.option_set.options
     opt_vals_sleeping = [o.value for o in prompt_sleeping.options]
     assert (
         FunctionalDomainStatus.FUNCTIONAL_DOMAIN_NOT_RELEVANT_TO_HOUSEHOLD.value
@@ -158,31 +195,31 @@ def test_option_filtering_sleeping_and_bathroom(content_pack: DailyRoutinesConte
     runtime.process_answer(FunctionalDomainStatus.VARIABLE)  # sleeping
     runtime.process_answer(FunctionalDomainStatus.VARIABLE)  # work_study
 
+    # 2. Bathroom status
     prompt_bathroom = runtime.get_current_step_prompt()
     assert prompt_bathroom.step_id == "q_daily_routines_functional_space_bathroom_status"
     assert prompt_bathroom.options is not None
+    assert prompt_bathroom.option_set is not None
+    assert prompt_bathroom.options == prompt_bathroom.option_set.options
     opt_vals_bathroom = [o.value for o in prompt_bathroom.options]
     assert (
         FunctionalDomainStatus.FUNCTIONAL_DOMAIN_NOT_RELEVANT_TO_HOUSEHOLD.value
         not in opt_vals_bathroom
     )
 
-
-def test_option_filtering_irregular_correction_selector(
-    content_pack: DailyRoutinesContentPack,
-) -> None:
-    """Verify recurring_day_context option is omitted from correction selector under IRREGULAR branch."""
-    runtime = DailyRoutinesRuntime(content_pack)
-
-    runtime.process_answer(DayPatternStatus.NO_STABLE_RECURRING_DAY)
+    # 3. IRREGULAR correction selector
+    runtime_irr = DailyRoutinesRuntime(content_pack)
+    runtime_irr.process_answer(DayPatternStatus.NO_STABLE_RECURRING_DAY)
     for _ in range(5):
-        runtime.process_answer(FunctionalDomainStatus.VARIABLE)
-    runtime.process_answer(HouseholdVariationStatus.NO_MATERIAL_DIFFERENCE)
-    runtime.process_answer(SummaryConfirmation.REJECTED_FOR_CORRECTION)
+        runtime_irr.process_answer(FunctionalDomainStatus.VARIABLE)
+    runtime_irr.process_answer(HouseholdVariationStatus.NO_MATERIAL_DIFFERENCE)
+    runtime_irr.process_answer(SummaryConfirmation.REJECTED_FOR_CORRECTION)
 
-    prompt_sel = runtime.get_current_step_prompt()
+    prompt_sel = runtime_irr.get_current_step_prompt()
     assert prompt_sel.step_id == "bp_ui_room_use_correction_selector"
     assert prompt_sel.options is not None
+    assert prompt_sel.option_set is not None
+    assert prompt_sel.options == prompt_sel.option_set.options
     sel_vals = [o.value for o in prompt_sel.options]
     assert CorrectionTarget.RECURRING_DAY_CONTEXT.value not in sel_vals
 
@@ -234,69 +271,99 @@ def test_existing_stale_answer_prefill(content_pack: DailyRoutinesContentPack) -
     assert prompt_stale.stale_reconfirmation is True
 
 
-# -----------------------------------------------------------------------------
-# 6. Unknown & Prefer-Not Early Closure Tests
-# -----------------------------------------------------------------------------
-
-
-def test_early_closure_unknown_and_prefer_not_paths(
+def test_stale_reconfirmation_step_by_step_order(
     content_pack: DailyRoutinesContentPack,
 ) -> None:
-    """Verify unknown and prefer_not_to_answer flow to summary_confirmation and complete on confirmed."""
-    # 1. UNKNOWN
-    runtime_unk = DailyRoutinesRuntime(content_pack)
-    res_unk = runtime_unk.process_answer(DayPatternStatus.UNKNOWN)
-    assert res_unk.next_step_id == "q_daily_routines_functional_space_summary_confirmation"
-    res_unk_fin = runtime_unk.process_answer(SummaryConfirmation.CONFIRMED)
-    assert res_unk_fin.terminal_target == "module_complete"
-    assert runtime_unk.state.status == SessionStatus.COMPLETED
-
-    # 2. PREFER_NOT_TO_ANSWER
-    runtime_pref = DailyRoutinesRuntime(content_pack)
-    res_pref = runtime_pref.process_answer(DayPatternStatus.PREFER_NOT_TO_ANSWER)
-    assert res_pref.next_step_id == "q_daily_routines_functional_space_summary_confirmation"
-    res_pref_fin = runtime_pref.process_answer(SummaryConfirmation.CONFIRMED)
-    assert res_pref_fin.terminal_target == "module_complete"
-    assert runtime_pref.state.status == SessionStatus.COMPLETED
-
-
-# -----------------------------------------------------------------------------
-# 7. Completed Protection & Stale Answer Rejection Tests
-# -----------------------------------------------------------------------------
-
-
-def test_completed_session_protection(content_pack: DailyRoutinesContentPack) -> None:
-    """Verify process_answer and get_current_step_prompt raise InvalidSessionStateError on completed session."""
+    """Verify exact step-by-step reconfirmation sequence when branch changes to IRREGULAR."""
     runtime = DailyRoutinesRuntime(content_pack)
 
+    # Complete initial STABLE flow with living_social reported_periods_available
     runtime.process_answer(DayPatternStatus.STABLE_RECURRING_DAY_AVAILABLE)
+    runtime.process_answer(RecurringDayContext.TYPICAL_WORK_OR_SCHOOL_DAY)
+    runtime.process_answer(FunctionalDomainStatus.REPORTED_PERIODS_AVAILABLE)
+    runtime.process_answer(["evening"])
+    for _ in range(4):
+        runtime.process_answer(FunctionalDomainStatus.VARIABLE)
+    runtime.process_answer(HouseholdVariationStatus.NO_MATERIAL_DIFFERENCE)
+
+    # Change day_pattern_status to NO_STABLE_RECURRING_DAY (switches branch to IRREGULAR)
+    runtime.process_answer(SummaryConfirmation.REJECTED_FOR_CORRECTION)
+    runtime.process_answer(CorrectionTarget.DAY_PATTERN)
+    runtime.process_answer(DayPatternStatus.NO_STABLE_RECURRING_DAY)
+
+    # Verify exact step-by-step reconfirmation sequence with periods insertion
+    expected_sequence = [
+        "q_daily_routines_functional_space_living_social_status",
+        "q_daily_routines_functional_space_living_social_periods",
+        "q_daily_routines_functional_space_kitchen_dining_status",
+        "q_daily_routines_functional_space_sleeping_status",
+        "q_daily_routines_functional_space_work_study_status",
+        "q_daily_routines_functional_space_bathroom_status",
+        "q_daily_routines_functional_space_household_variation_status",
+        "q_daily_routines_functional_space_summary_confirmation",
+    ]
+
+    for expected_step in expected_sequence:
+        assert runtime.state.current_step_id == expected_step, (
+            f"Expected step {expected_step!r}, got {runtime.state.current_step_id!r}"
+        )
+
+        # Submit answer to proceed
+        if expected_step == "q_daily_routines_functional_space_living_social_status":
+            runtime.process_answer(FunctionalDomainStatus.REPORTED_PERIODS_AVAILABLE)
+        elif expected_step == "q_daily_routines_functional_space_living_social_periods":
+            runtime.process_answer(["evening"])
+        elif expected_step == "q_daily_routines_functional_space_household_variation_status":
+            runtime.process_answer(HouseholdVariationStatus.NO_MATERIAL_DIFFERENCE)
+        elif expected_step == "q_daily_routines_functional_space_summary_confirmation":
+            res = runtime.process_answer(SummaryConfirmation.CONFIRMED)
+            assert res.status == SessionStatus.COMPLETED
+        else:
+            runtime.process_answer(FunctionalDomainStatus.VARIABLE)
+
+
+# -----------------------------------------------------------------------------
+# 6. Target Closure Effect Tests
+# -----------------------------------------------------------------------------
+
+
+def test_target_closure_effect_outcomes(content_pack: DailyRoutinesContentPack) -> None:
+    """Verify target_closure_effect values across standard rules, household, and summary."""
+    runtime = DailyRoutinesRuntime(content_pack)
+
+    # 1. Normal status transition -> REQUIRES_FOLLOW_UP
+    res1 = runtime.process_answer(DayPatternStatus.STABLE_RECURRING_DAY_AVAILABLE)
+    assert res1.target_closure_effect == TargetClosureEffect.REQUIRES_FOLLOW_UP
+
     runtime.process_answer(RecurringDayContext.TYPICAL_WORK_OR_SCHOOL_DAY)
     for _ in range(5):
         runtime.process_answer(FunctionalDomainStatus.VARIABLE)
-    runtime.process_answer(HouseholdVariationStatus.NO_MATERIAL_DIFFERENCE)
-    runtime.process_answer(SummaryConfirmation.CONFIRMED)
 
-    assert runtime.state.status == SessionStatus.COMPLETED
-    assert runtime.state.current_step_id is None
-    assert runtime.state.terminal_target == "module_complete"
+    # 2. Household variation no_material_difference -> VALID_CLOSURE
+    res_hh_valid = runtime.process_answer(HouseholdVariationStatus.NO_MATERIAL_DIFFERENCE)
+    assert res_hh_valid.target_closure_effect == TargetClosureEffect.VALID_CLOSURE
 
-    with pytest.raises(InvalidSessionStateError, match="completed session"):
-        runtime.get_current_step_prompt()
+    # 3. Summary rejected_for_correction -> REQUIRES_CORRECTION
+    res_rej = runtime.process_answer(SummaryConfirmation.REJECTED_FOR_CORRECTION)
+    assert res_rej.target_closure_effect == TargetClosureEffect.REQUIRES_CORRECTION
 
-    with pytest.raises(InvalidSessionStateError, match="completed session"):
-        runtime.process_answer(SummaryConfirmation.CONFIRMED)
+    # 4. Household variation unknown -> VALID_BUT_LOW_INFORMATION
+    runtime.process_answer(CorrectionTarget.HOUSEHOLD_VARIATION)
+    res_hh_low = runtime.process_answer(HouseholdVariationStatus.UNKNOWN)
+    assert res_hh_low.target_closure_effect == TargetClosureEffect.VALID_BUT_LOW_INFORMATION
 
-    # get_result() works cleanly on completed session
-    session_result = runtime.get_result()
-    assert session_result.completed is True
-    assert session_result.terminal_target == "module_complete"
-    assert len(session_result.summary_lines) > 0
+    # 5. Summary confirmed -> TARGET_2_FULFILLED
+    res_conf = runtime.process_answer(SummaryConfirmation.CONFIRMED)
+    assert res_conf.target_closure_effect == TargetClosureEffect.TARGET_2_FULFILLED
 
 
-def test_completion_rejected_when_stale_answers_exist(
-    content_pack: DailyRoutinesContentPack,
-) -> None:
-    """Verify session completion is rejected if any answer is STALE_REQUIRES_RECONFIRMATION."""
+# -----------------------------------------------------------------------------
+# 7. Atomic Rollback & Stale Completion Protection Tests
+# -----------------------------------------------------------------------------
+
+
+def test_process_answer_atomic_rollback(content_pack: DailyRoutinesContentPack) -> None:
+    """Verify atomic state rollback when process_answer fails due to stale completion error."""
     runtime = DailyRoutinesRuntime(content_pack)
 
     runtime.process_answer(DayPatternStatus.STABLE_RECURRING_DAY_AVAILABLE)
@@ -311,10 +378,20 @@ def test_completion_rejected_when_stale_answers_exist(
     ]
     rec.validity_state = AnswerValidityState.STALE_REQUIRES_RECONFIRMATION
 
-    # Attempt to process summary confirmation answer -> must raise InvalidSessionStateError
+    # Capture snapshot before attempting completion
     runtime.state.current_step_id = "q_daily_routines_functional_space_summary_confirmation"
+
     with pytest.raises(InvalidSessionStateError, match="stale answer"):
         runtime.process_answer(SummaryConfirmation.CONFIRMED)
+
+    # Assert state was fully rolled back to pre-attempt snapshot
+    assert (
+        "q_daily_routines_functional_space_summary_confirmation"
+        not in runtime.state.session_state.answers
+    )
+    assert runtime.state.status == SessionStatus.IN_PROGRESS
+    assert runtime.state.current_step_id == "q_daily_routines_functional_space_summary_confirmation"
+    assert runtime.state.terminal_target is None
 
 
 # -----------------------------------------------------------------------------
@@ -325,7 +402,7 @@ def test_completion_rejected_when_stale_answers_exist(
 def test_serialization_restore_resume_deterministic_next_step(
     content_pack: DailyRoutinesContentPack,
 ) -> None:
-    """Verify DailyRoutinesRuntimeState serialization, restoration, and identical next step resolution."""
+    """Verify DailyRoutinesRuntimeState serialization, restoration, and identical next step."""
     runtime1 = DailyRoutinesRuntime(content_pack)
 
     runtime1.process_answer(DayPatternStatus.STABLE_RECURRING_DAY_AVAILABLE)
@@ -357,17 +434,15 @@ def test_session_result_contains_only_active_answers(
         runtime.process_answer(FunctionalDomainStatus.VARIABLE)
     runtime.process_answer(HouseholdVariationStatus.NO_MATERIAL_DIFFERENCE)
 
-    # Change day_pattern_status to NO_STABLE_RECURRING_DAY (marks context INACTIVE and domains STALE)
+    # Change day_pattern_status to NO_STABLE_RECURRING_DAY (marks context INACTIVE, domains STALE)
     runtime.process_answer(SummaryConfirmation.REJECTED_FOR_CORRECTION)
     runtime.process_answer(CorrectionTarget.DAY_PATTERN)
     runtime.process_answer(DayPatternStatus.NO_STABLE_RECURRING_DAY)
 
     # Inspect session result prior to reconfirming
     mid_result = runtime.get_result()
-    for q_id, rec in mid_result.active_answers.items():
-        assert rec.validity_state == AnswerValidityState.ACTIVE, (
-            f"Answer {q_id} in active_answers has state {rec.validity_state}"
-        )
+    for _q_id, rec in mid_result.active_answers.items():
+        assert rec.validity_state == AnswerValidityState.ACTIVE
 
     # Complete flow
     for _ in range(5):

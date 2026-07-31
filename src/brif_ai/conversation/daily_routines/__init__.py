@@ -38,6 +38,7 @@ from brif_ai.conversation.daily_routines.models import (
     OptionSet,
     QuestionDefinition,
     QuestionWording,
+    QuestionWordingVariant,
     SummaryTemplate,
     UIStateControlDefinition,
 )
@@ -76,6 +77,7 @@ __all__ = [
     "OptionSet",
     "QuestionDefinition",
     "QuestionWording",
+    "QuestionWordingVariant",
     "RecurringDayContext",
     "RouteMatchType",
     "SessionState",
