@@ -157,7 +157,7 @@ def main() -> None:
                 )
 
             else:
-                # Single-choice radio selection: default to None if no existing answer
+                # Single-choice radio selection: stored_widget_value holds raw option.value
                 default_idx: int | None = None
                 target_value: str | None = None
 
@@ -191,11 +191,9 @@ def main() -> None:
             )
 
             if submitted:
-                # Save raw widget selection in session state widget_values
+                # Save raw payload (option.value for single choice) in widget_values
                 st.session_state["widget_values"][prompt_vm.step_id] = (
-                    chosen_labels
-                    if prompt_vm.input_kind == "multiple_choice"
-                    else (selected_payload if prompt_vm.input_kind == "free_text" else chosen_label)
+                    chosen_labels if prompt_vm.input_kind == "multiple_choice" else selected_payload
                 )
 
                 try:
@@ -235,14 +233,19 @@ def main() -> None:
                     st.session_state["error_message"] = None
                     st.rerun()
 
-                except ValueError as exc:
-                    st.session_state["error_message"] = str(exc)
-                    st.rerun()
-                except (InvalidAnswerError, InvalidSessionStateError):
+                except InvalidAnswerError:
                     st.session_state["error_message"] = (
                         "Geçersiz veya zaman aşımına uğramış bir yanıt tespit edildi. "
                         "Lütfen seçiminizi gözden geçirin."
                     )
+                    st.rerun()
+                except InvalidSessionStateError:
+                    st.session_state["error_message"] = (
+                        "Oturum durumunda uyumsuzluk tespit edildi. Lütfen işlemi tekrarlayın."
+                    )
+                    st.rerun()
+                except ValueError as exc:
+                    st.session_state["error_message"] = str(exc)
                     st.rerun()
                 except Exception:
                     st.session_state["error_message"] = (

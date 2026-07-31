@@ -421,3 +421,32 @@ def test_streamlit_headless_startup_and_health_check() -> None:
 
     # Assert Streamlit server started cleanly and responded to health check
     assert health_ok, f"Streamlit failed health check on port {port}. Stderr:\n{stderr}"
+
+
+# -----------------------------------------------------------------------------
+# 10. Streamlit AppTest Interaction & Single Choice Persistence Test
+# -----------------------------------------------------------------------------
+
+
+def test_streamlit_apptest_single_choice_unselected_and_error_preservation() -> None:
+    """Verify Streamlit AppTest for unselected radio, error display, and value preservation."""
+    from streamlit.testing.v1 import AppTest
+
+    at = AppTest.from_file("apps/daily_routines_demo.py").run()
+    assert not at.exception
+
+    # Initially, radio option exists and has no selection in session state
+    assert len(at.radio) > 0
+    radio = at.radio[0]
+
+    # Submitting without choosing anything produces Turkish error message
+    at.button[0].click().run()
+    assert len(at.error) > 0
+    assert "Lütfen devam etmek için bir seçenek belirleyin." in at.error[0].value
+    assert not at.exception
+
+    # Select a valid option and submit form
+    target_label = radio.options[0]
+    radio.set_value(target_label)
+    at.button[0].click().run()
+    assert not at.exception
