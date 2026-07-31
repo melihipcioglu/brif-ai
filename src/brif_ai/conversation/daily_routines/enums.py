@@ -1,4 +1,4 @@
-"""Enums for BRIF.AI Daily Routines v0 content pack contracts."""
+"""Enums and custom exception types for BRIF.AI Daily Routines v0 content pack contracts."""
 
 from __future__ import annotations
 
@@ -11,6 +11,14 @@ else:  # pragma: no cover
 
     class StrEnum(str, Enum):  # noqa: UP042
         pass
+
+
+class InvalidAnswerError(ValueError):
+    """Raised when an answer violates runtime validation rules."""
+
+
+class FlowResolutionError(RuntimeError):
+    """Raised when deterministic flow resolution fails."""
 
 
 class DayPatternStatus(StrEnum):

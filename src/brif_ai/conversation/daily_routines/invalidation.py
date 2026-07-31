@@ -12,9 +12,11 @@ from brif_ai.conversation.daily_routines.enums import (
     CorrectionTarget,
     DayPatternStatus,
     DayPeriod,
+    FlowResolutionError,
     FunctionalDomain,
     FunctionalDomainStatus,
     HouseholdVariationStatus,
+    InvalidAnswerError,
     RecurringDayContext,
     RouteMatchType,
     WordingBranch,
@@ -24,6 +26,7 @@ from brif_ai.conversation.daily_routines.models import (
     DailyRoutinesContentPack,
     SummaryTemplate,
 )
+from brif_ai.conversation.models.common import AnswerType
 from brif_ai.core.models.common import ContractModel, ObjectId
 
 
@@ -38,11 +41,97 @@ class InvalidationEngine:
 
     def __init__(self, content_pack: DailyRoutinesContentPack) -> None:
         self.pack = content_pack
+        self.questions_by_id = {q.id: q for q in content_pack.questions}
+        self.ui_controls_by_id = {ui.id: ui for ui in content_pack.ui_state_controls}
+        self.option_sets_by_id = {
+            os.id: {opt.value for opt in os.options} for os in content_pack.option_sets
+        }
+
+    def validate_answer(self, session: SessionState, question_id: str, value: Any) -> None:
+        """Validate answer against schema, option sets, answer types, and applicability rules."""
+        if question_id not in self.questions_by_id and question_id not in self.ui_controls_by_id:
+            raise InvalidAnswerError(f"Unknown question or UI control id: {question_id!r}")
+
+        # 1. UI Control Validation
+        if question_id in self.ui_controls_by_id:
+            ui = self.ui_controls_by_id[question_id]
+            val_str = str(value.value if hasattr(value, "value") else value)
+            allowed_opts = self.option_sets_by_id.get(ui.option_set_id, set())
+            if val_str not in allowed_opts:
+                raise InvalidAnswerError(
+                    f"Value {val_str!r} not allowed for UI control {question_id!r}"
+                )
+
+            # Specific check for recurring_day_context in IRREGULAR branch
+            if (
+                val_str == CorrectionTarget.RECURRING_DAY_CONTEXT.value
+                and session.active_branch == WordingBranch.IRREGULAR
+            ):
+                raise InvalidAnswerError(
+                    "recurring_day_context correction is only available in STABLE branch"
+                )
+            return
+
+        # 2. Question Definition Validation
+        q_def = self.questions_by_id[question_id]
+        if q_def.answer_type == AnswerType.SINGLE_CHOICE:
+            if isinstance(value, list):
+                raise InvalidAnswerError(
+                    f"SINGLE_CHOICE question {question_id!r} expects string value, got list"
+                )
+            val_str = str(value.value if hasattr(value, "value") else value)
+            if not q_def.option_set_id or q_def.option_set_id not in self.option_sets_by_id:
+                raise InvalidAnswerError(f"Missing option set for question {question_id!r}")
+            allowed_opts = self.option_sets_by_id[q_def.option_set_id]
+            if val_str not in allowed_opts:
+                raise InvalidAnswerError(
+                    f"Value {val_str!r} not found in OptionSet for question {question_id!r}"
+                )
+
+            # Domain Applicability Rule Validation
+            not_relevant = FunctionalDomainStatus.FUNCTIONAL_DOMAIN_NOT_RELEVANT_TO_HOUSEHOLD.value
+            if val_str == not_relevant:
+                for domain in [FunctionalDomain.SLEEPING, FunctionalDomain.BATHROOM]:
+                    if question_id.endswith(f"_{domain.value}_status"):
+                        msg = (
+                            "functional_domain_not_relevant_to_household is disallowed "
+                            f"for domain {domain.value!r}"
+                        )
+                        raise InvalidAnswerError(msg)
+
+        elif q_def.answer_type == AnswerType.MULTIPLE_CHOICE:
+            if not isinstance(value, list):
+                raise InvalidAnswerError(f"MULTIPLE_CHOICE question {question_id!r} expects a list")
+            if not (1 <= len(value) <= 4):
+                msg = f"MULTIPLE_CHOICE question {question_id!r} requires 1 to 4 items"
+                raise InvalidAnswerError(msg)
+
+            str_items = [str(v.value if hasattr(v, "value") else v) for v in value]
+            if len(set(str_items)) != len(str_items):
+                raise InvalidAnswerError(
+                    f"MULTIPLE_CHOICE question {question_id!r} contains duplicate items"
+                )
+            valid_periods = {p.value for p in DayPeriod}
+            for item in str_items:
+                if item not in valid_periods:
+                    raise InvalidAnswerError(
+                        f"Invalid period value {item!r} for question {question_id!r}"
+                    )
+
+        elif q_def.answer_type == AnswerType.FREE_TEXT:
+            if not isinstance(value, str):
+                raise InvalidAnswerError(f"FREE_TEXT question {question_id!r} expects string value")
+            if not value.strip():
+                raise InvalidAnswerError(
+                    f"FREE_TEXT question {question_id!r} cannot be empty or whitespace"
+                )
 
     def record_answer(
         self, session: SessionState, question_id: ObjectId, value: Any
     ) -> SessionState:
-        """Record or update an answer, applying invalidation rules from content pack."""
+        """Record or update an answer, applying strict validation and invalidation rules."""
+        self.validate_answer(session, question_id, value)
+
         val_str: str | list[str]
         if isinstance(value, list):
             val_str = [str(v.value if hasattr(v, "value") else v) for v in value]
@@ -64,25 +153,31 @@ class InvalidationEngine:
         return session
 
     def resolve_next_step(self, session: SessionState, current_question_id: str) -> str:
-        """Deterministically resolve the next question ID or terminal module target."""
+        """Deterministically resolve next question ID or terminal module target (fail-closed)."""
+        if (
+            current_question_id not in self.questions_by_id
+            and current_question_id not in self.ui_controls_by_id
+        ):
+            raise FlowResolutionError(f"Unknown current_question_id: {current_question_id!r}")
+
         # 1. UI Correction Selector Step
         if current_question_id == "bp_ui_room_use_correction_selector":
             ans = session.answers.get("bp_ui_room_use_correction_selector")
-            if ans and ans.validity_state == AnswerValidityState.ACTIVE:
-                sel_val = str(ans.value)
-                for cr in self.pack.conditional_routes:
-                    if cr.selector_value.value == sel_val:
-                        session.correction_target = cr.selector_value
-                        target_id = cr.target_question_id
-                        # If policy is RECONFIRM_STALE_THEN_SUMMARY, check if stale answers exist
-                        if cr.return_policy == CorrectionReturnPolicy.RECONFIRM_STALE_THEN_SUMMARY:
-                            stale_q = self._find_first_stale_question(session)
-                            if stale_q:
-                                return stale_q
-                        return target_id
-            return "q_daily_routines_functional_space_summary_confirmation"
+            if not ans or ans.validity_state != AnswerValidityState.ACTIVE:
+                raise FlowResolutionError("No active answer for UI correction selector")
+            sel_val = str(ans.value)
+            for cr in self.pack.conditional_routes:
+                if cr.selector_value.value == sel_val:
+                    session.correction_target = cr.selector_value
+                    target_id = cr.target_question_id
+                    if cr.return_policy == CorrectionReturnPolicy.RECONFIRM_STALE_THEN_SUMMARY:
+                        stale_q = self._find_first_stale_question(session)
+                        if stale_q:
+                            return stale_q
+                    return target_id
+            raise FlowResolutionError(f"No conditional route found for selector value {sel_val!r}")
 
-        # 2. Check if completing a correction flow step
+        # 2. Correction Mode Resolution
         if session.correction_target is not None:
             cond_route = next(
                 (
@@ -94,14 +189,12 @@ class InvalidationEngine:
             )
             if cond_route:
                 if cond_route.return_policy == CorrectionReturnPolicy.RESOLVE_BY_FLOW:
-                    # Domain correction or household correction
                     ans = session.answers.get(current_question_id)
                     if ans and ans.validity_state == AnswerValidityState.ACTIVE:
                         if (
                             str(ans.value)
                             == FunctionalDomainStatus.REPORTED_PERIODS_AVAILABLE.value
                         ):
-                            # Proceed to periods question
                             domain = self._extract_domain_from_question_id(current_question_id)
                             if domain:
                                 return f"q_daily_routines_functional_space_{domain}_periods"
@@ -109,10 +202,8 @@ class InvalidationEngine:
                             str(ans.value)
                             == HouseholdVariationStatus.MATERIAL_DIFFERENCE_REPORTED.value
                         ):
-                            # Proceed to detail question
                             return "q_daily_routines_functional_space_household_variation_detail"
 
-                    # Return to summary after domain status or after periods/detail
                     session.correction_target = None
                     return "q_daily_routines_functional_space_summary_confirmation"
 
@@ -135,30 +226,40 @@ class InvalidationEngine:
         # 3. Standard Flow Resolution via FlowRules
         ans = session.answers.get(current_question_id)
         if not ans or ans.validity_state != AnswerValidityState.ACTIVE:
-            # Fallback to summary if answer not available
-            return "q_daily_routines_functional_space_summary_confirmation"
+            raise FlowResolutionError(f"No active answer for question {current_question_id!r}")
 
         rules_for_q = [
             r for r in self.pack.flow_rules if r.source_question_id == current_question_id
         ]
+        matching_rules = []
         for rule in rules_for_q:
             if rule.match_type == RouteMatchType.EXACT_OPTION:
                 if str(ans.value) == rule.expected_value:
-                    return rule.target_question_id or rule.target_module or ""
+                    matching_rules.append(rule)
 
             elif rule.match_type == RouteMatchType.ANY_VALID_MULTISELECT:
-                if isinstance(ans.value, list) and len(ans.value) > 0:
-                    return rule.target_question_id or rule.target_module or ""
+                if isinstance(ans.value, list) and 1 <= len(ans.value) <= 4:
+                    matching_rules.append(rule)
 
             elif (
                 rule.match_type == RouteMatchType.NON_EMPTY_TEXT
                 and isinstance(ans.value, str)
                 and len(ans.value.strip()) > 0
             ):
-                return rule.target_question_id or rule.target_module or ""
+                matching_rules.append(rule)
 
-        # Default fallback
-        return "q_daily_routines_functional_space_summary_confirmation"
+        if not matching_rules:
+            raise FlowResolutionError(
+                f"No matching flow rule found for question {current_question_id!r}"
+            )
+        if len(matching_rules) > 1:
+            cnt = len(matching_rules)
+            raise FlowResolutionError(
+                f"Multiple matching flow rules ({cnt}) for question {current_question_id!r}"
+            )
+
+        matched_rule = matching_rules[0]
+        return matched_rule.target_question_id or matched_rule.target_module or ""
 
     def _find_first_stale_question(self, session: SessionState) -> str | None:
         """Find the first question in canonical flow order marked STALE_REQUIRES_RECONFIRMATION."""
@@ -364,7 +465,6 @@ class InvalidationEngine:
 
     def format_canonical_periods(self, periods: list[str], templates: SummaryTemplate) -> str:
         """Sort period values in canonical chronological order and format multi-period text."""
-
         order_map = {
             DayPeriod.MORNING.value: 1,
             DayPeriod.MIDDAY_AFTERNOON.value: 2,

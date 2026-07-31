@@ -227,7 +227,7 @@ flow_rules:
     target_closure_effect: "REQUIRES_FOLLOW_UP"
     follow_up_required: true
 
-  # --- Sleeping Status --- (Excluding functional_domain_not_relevant_to_household per applicability rule)
+  # --- Sleeping Status ---
   - rule_id: "fr_sleeping_status_periods"
     source_question_id: "q_daily_routines_functional_space_sleeping_status"
     match_type: "EXACT_OPTION"
@@ -351,7 +351,7 @@ flow_rules:
     target_closure_effect: "REQUIRES_FOLLOW_UP"
     follow_up_required: true
 
-  # --- Bathroom Status --- (Excluding functional_domain_not_relevant_to_household per applicability rule)
+  # --- Bathroom Status ---
   - rule_id: "fr_bathroom_status_periods"
     source_question_id: "q_daily_routines_functional_space_bathroom_status"
     match_type: "EXACT_OPTION"
@@ -415,7 +415,7 @@ flow_rules:
     match_type: "EXACT_OPTION"
     expected_value: "no_material_difference"
     target_question_id: "q_daily_routines_functional_space_summary_confirmation"
-    target_closure_effect: "TARGET_2_FULFILLED"
+    target_closure_effect: "VALID_CLOSURE"
     follow_up_required: false
 
   - rule_id: "fr_household_variation_reported"
@@ -431,7 +431,7 @@ flow_rules:
     match_type: "EXACT_OPTION"
     expected_value: "unknown"
     target_question_id: "q_daily_routines_functional_space_summary_confirmation"
-    target_closure_effect: "TARGET_2_FULFILLED"
+    target_closure_effect: "VALID_BUT_LOW_INFORMATION"
     follow_up_required: false
 
   - rule_id: "fr_household_variation_prefer_not"
@@ -439,7 +439,7 @@ flow_rules:
     match_type: "EXACT_OPTION"
     expected_value: "prefer_not_to_answer"
     target_question_id: "q_daily_routines_functional_space_summary_confirmation"
-    target_closure_effect: "TARGET_2_FULFILLED"
+    target_closure_effect: "VALID_BUT_LOW_INFORMATION"
     follow_up_required: false
 
   - rule_id: "fr_household_variation_single_person"
@@ -447,7 +447,7 @@ flow_rules:
     match_type: "EXACT_OPTION"
     expected_value: "not_applicable_single_person_household"
     target_question_id: "q_daily_routines_functional_space_summary_confirmation"
-    target_closure_effect: "TARGET_2_FULFILLED"
+    target_closure_effect: "VALID_CLOSURE"
     follow_up_required: false
 
   # --- Household Variation Detail ---
@@ -456,7 +456,7 @@ flow_rules:
     match_type: "NON_EMPTY_TEXT"
     expected_value: null
     target_question_id: "q_daily_routines_functional_space_summary_confirmation"
-    target_closure_effect: "TARGET_2_FULFILLED"
+    target_closure_effect: "VALID_CLOSURE"
     follow_up_required: false
 
   # --- Summary Confirmation ---
@@ -465,7 +465,7 @@ flow_rules:
     match_type: "EXACT_OPTION"
     expected_value: "confirmed"
     target_module: "module_complete"
-    target_closure_effect: "VALID_CLOSURE"
+    target_closure_effect: "TARGET_2_FULFILLED"
     follow_up_required: false
 
   - rule_id: "fr_summary_confirmation_rejected"

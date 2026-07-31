@@ -14,6 +14,7 @@ from brif_ai.conversation.daily_routines.enums import (
     FunctionalDomain,
     FunctionalDomainStatus,
     RouteMatchType,
+    TargetClosureEffect,
     WordingBranch,
 )
 from brif_ai.conversation.daily_routines.models import (
@@ -98,6 +99,7 @@ def validate_cross_file_integrity(pack: DailyRoutinesContentPack) -> None:
     _validate_wording_branch_coverage(pack)
     _validate_multi_select_contract(pack.multi_select_contract)
     _validate_domain_applicability(pack.domain_applicability_rules)
+    _validate_target_closure_effects(pack)
     _validate_flow_rule_references_and_routing(pack)
     _validate_invalidation_rules(pack)
 
@@ -211,6 +213,29 @@ def _validate_domain_applicability(rule: DomainApplicabilityRule) -> None:
         )
 
 
+def _validate_target_closure_effects(pack: DailyRoutinesContentPack) -> None:
+    rules_map = {r.rule_id: r for r in pack.flow_rules}
+    expected = {
+        "fr_household_variation_no_diff": TargetClosureEffect.VALID_CLOSURE,
+        "fr_household_variation_reported": TargetClosureEffect.REQUIRES_FOLLOW_UP,
+        "fr_household_variation_unknown": TargetClosureEffect.VALID_BUT_LOW_INFORMATION,
+        "fr_household_variation_prefer_not": TargetClosureEffect.VALID_BUT_LOW_INFORMATION,
+        "fr_household_variation_single_person": TargetClosureEffect.VALID_CLOSURE,
+        "fr_household_variation_detail_complete": TargetClosureEffect.VALID_CLOSURE,
+        "fr_summary_confirmation_confirmed": TargetClosureEffect.TARGET_2_FULFILLED,
+        "fr_summary_confirmation_rejected": TargetClosureEffect.REQUIRES_CORRECTION,
+    }
+    for rule_id, exp_effect in expected.items():
+        if rule_id in rules_map:
+            act_effect = rules_map[rule_id].target_closure_effect
+            if act_effect != exp_effect:
+                msg = (
+                    f"FlowRule {rule_id!r} has incorrect target_closure_effect "
+                    f"{act_effect!r}, expected {exp_effect!r}"
+                )
+                raise ContentPackValidationError(msg)
+
+
 def is_option_allowed_for_domain(
     pack: DailyRoutinesContentPack, domain: FunctionalDomain, option_value: str
 ) -> bool:
@@ -227,7 +252,6 @@ def _validate_flow_rule_references_and_routing(pack: DailyRoutinesContentPack) -
     option_sets_by_id = {os.id: {opt.value for opt in os.options} for os in pack.option_sets}
     question_by_id = {q.id: q for q in pack.questions}
 
-    # 1. References & Duplicate/Conflicting Matcher Check
     seen_matchers: set[tuple[str, RouteMatchType, str | None]] = set()
 
     for rule in pack.flow_rules:
@@ -270,7 +294,6 @@ def _validate_flow_rule_references_and_routing(pack: DailyRoutinesContentPack) -
                 f"{rule.target_module!r}"
             )
 
-    # 2. Route Completeness for Questions
     flow_rules_by_source: dict[str, list[Any]] = {}
     for r in pack.flow_rules:
         flow_rules_by_source.setdefault(r.source_question_id, []).append(r)
@@ -282,7 +305,6 @@ def _validate_flow_rule_references_and_routing(pack: DailyRoutinesContentPack) -
                 raise ContentPackValidationError(f"Question {q.id!r} missing option set")
             all_opts = option_sets_by_id[q.option_set_id]
 
-            # Determine applicability filter for domain status questions
             expected_opts = set(all_opts)
             for domain in [FunctionalDomain.SLEEPING, FunctionalDomain.BATHROOM]:
                 if q.id.endswith(f"_{domain.value}_status"):
@@ -318,7 +340,6 @@ def _validate_flow_rule_references_and_routing(pack: DailyRoutinesContentPack) -
                     f"Question {q.id!r} requires 1 NON_EMPTY_TEXT rule, got {cnt}"
                 )
 
-    # 3. Conditional Routes Validation
     seen_selectors: set[CorrectionTarget] = set()
     for cr in pack.conditional_routes:
         if cr.selector_value in seen_selectors:
@@ -333,12 +354,10 @@ def _validate_flow_rule_references_and_routing(pack: DailyRoutinesContentPack) -
                 f"Conditional route {sel_val!r} unknown target_id {target_id!r}"
             )
 
-    # 4. Reachability & Orphan Question Check via BFS
     initial_q_id = "q_daily_routines_functional_space_day_pattern_status"
     visited_ids: set[str] = set()
     queue = [initial_q_id]
 
-    # Pre-add target questions reachable via conditional routes (correction selector)
     for cr in pack.conditional_routes:
         queue.append(cr.target_question_id)
 
