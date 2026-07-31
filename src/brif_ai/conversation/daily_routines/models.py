@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated
 
 from pydantic import (
     Field,
@@ -23,7 +23,6 @@ from brif_ai.conversation.daily_routines.enums import (
     HouseholdVariationStatus,
     RecurringDayContext,
     RouteMatchType,
-    SessionStatus,
     TargetClosureEffect,
     WordingBranch,
 )
@@ -237,27 +236,3 @@ class DailyRoutinesContentPack(ContractModel):
     summary_templates: SummaryTemplate
     domain_applicability_rules: DomainApplicabilityRule
     invalidation_rules: list[InvalidationRule] = Field(min_length=1)
-
-
-class StepPrompt(ContractModel):
-    question_id: ObjectId
-    content_key: NonEmptyString
-    wording: QuestionWordingVariant | None = None
-    options: list[OptionDefinition] | None = None
-    existing_answer: Any | None = None
-    multi_select_contract: MultiSelectContract | None = None
-
-
-class SessionStepResult(ContractModel):
-    answered_step_id: ObjectId
-    next_step_id: ObjectId | None
-    terminal_target: NonEmptyString | None
-    summary: list[StrictStr] | None = None
-    target_closure_effect: TargetClosureEffect | None = None
-
-
-class DailyRoutinesRuntimeState(ContractModel):
-    session_state: SessionState = Field(default_factory=SessionState)
-    current_step_id: ObjectId | None = "q_daily_routines_functional_space_day_pattern_status"
-    status: SessionStatus = SessionStatus.IN_PROGRESS
-    terminal_target: NonEmptyString | None = None

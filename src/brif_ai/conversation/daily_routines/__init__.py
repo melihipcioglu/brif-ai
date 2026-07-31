@@ -28,7 +28,6 @@ from brif_ai.conversation.daily_routines.models import (
     AnswerRecord,
     ConditionalRoute,
     DailyRoutinesContentPack,
-    DailyRoutinesRuntimeState,
     FlowRule,
     InvalidationRule,
     MultiSelectContract,
@@ -37,12 +36,16 @@ from brif_ai.conversation.daily_routines.models import (
     QuestionDefinition,
     QuestionWording,
     SessionState,
-    SessionStepResult,
-    StepPrompt,
     SummaryTemplate,
     UIStateControlDefinition,
 )
 from brif_ai.conversation.daily_routines.runtime import DailyRoutinesRuntime
+from brif_ai.conversation.daily_routines.runtime_models import (
+    DailyRoutinesRuntimeState,
+    DailyRoutinesSessionResult,
+    SessionStepResult,
+    StepPrompt,
+)
 
 __all__ = [
     "AnswerRecord",
@@ -54,6 +57,7 @@ __all__ = [
     "DailyRoutinesContentPack",
     "DailyRoutinesRuntime",
     "DailyRoutinesRuntimeState",
+    "DailyRoutinesSessionResult",
     "DayPatternStatus",
     "DayPeriod",
     "FlowResolutionError",

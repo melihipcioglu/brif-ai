@@ -11,22 +11,29 @@ from brif_ai.conversation.daily_routines.enums import (
     InvalidAnswerError,
     InvalidSessionStateError,
     SessionStatus,
+    TargetClosureEffect,
     WordingBranch,
 )
 from brif_ai.conversation.daily_routines.invalidation import InvalidationEngine
 from brif_ai.conversation.daily_routines.loader import load_daily_routines_content_pack
 from brif_ai.conversation.daily_routines.models import (
     DailyRoutinesContentPack,
-    DailyRoutinesRuntimeState,
+    DailyRoutinesQuestionDefinition,
     OptionDefinition,
+    OptionSet,
     QuestionWordingVariant,
+    UIStateControlDefinition,
+)
+from brif_ai.conversation.daily_routines.runtime_models import (
+    DailyRoutinesRuntimeState,
+    DailyRoutinesSessionResult,
     SessionStepResult,
     StepPrompt,
 )
 
 
 class DailyRoutinesRuntime:
-    """Orchestrates prompts, option filtering, answer processing, and completion state."""
+    """Orchestrates prompts, option filtering, answer processing, state persistence, and completion state."""
 
     def __init__(
         self,
@@ -46,9 +53,24 @@ class DailyRoutinesRuntime:
             for r in self.pack.flow_rules
             if r.expected_value
         }
+        self._rules_by_source_any = {
+            r.source_question_id: r for r in self.pack.flow_rules if r.expected_value is None
+        }
+
+        # Validate restored IN_PROGRESS state current_step_id
+        if self.state.status == SessionStatus.IN_PROGRESS:
+            curr_id = self.state.current_step_id
+            if (
+                not curr_id
+                or curr_id not in self._questions_by_id
+                and curr_id not in self._ui_controls_by_id
+            ):
+                raise InvalidSessionStateError(
+                    f"Restored IN_PROGRESS state has invalid current_step_id: {curr_id!r}"
+                )
 
     def get_current_step_prompt(self) -> StepPrompt:
-        """Construct current step prompt with option filtering and existing answer prefill."""
+        """Construct current step prompt with detailed metadata, option filtering, and prefill."""
         if self.state.status == SessionStatus.COMPLETED:
             raise InvalidSessionStateError("Cannot get step prompt for a completed session")
 
@@ -59,11 +81,14 @@ class DailyRoutinesRuntime:
         if curr_id not in self._questions_by_id and curr_id not in self._ui_controls_by_id:
             raise InvalidAnswerError(f"Unknown current step ID: {curr_id!r}")
 
+        is_ui_control = curr_id in self._ui_controls_by_id
+        q_def: DailyRoutinesQuestionDefinition | None = None
+        ui_def: UIStateControlDefinition | None = None
         content_key: str
         option_set_id: str | None = None
         multi_select_contract = None
 
-        if curr_id in self._questions_by_id:
+        if not is_ui_control:
             q_def = self._questions_by_id[curr_id]
             content_key = q_def.content_key
             option_set_id = q_def.option_set_id
@@ -74,13 +99,13 @@ class DailyRoutinesRuntime:
             content_key = ui_def.content_key
             option_set_id = ui_def.option_set_id
 
-        wording_variant: QuestionWordingVariant | None = None
         active_branch = self.state.session_state.active_branch
         active_branch_str = str(
             active_branch.value if hasattr(active_branch, "value") else active_branch
         )
 
-        if curr_id in self._questions_by_id:
+        wording_variant: QuestionWordingVariant | None = None
+        if not is_ui_control:
             wording_obj = self._wordings_by_id.get(curr_id)
             if not wording_obj:
                 raise InvalidSessionStateError(
@@ -91,9 +116,11 @@ class DailyRoutinesRuntime:
                 wording_obj.variants[0],
             )
 
+        option_set_obj: OptionSet | None = None
         options: list[OptionDefinition] | None = None
         if option_set_id and option_set_id in self._option_sets_by_id:
-            raw_options = self._option_sets_by_id[option_set_id].options
+            option_set_obj = self._option_sets_by_id[option_set_id]
+            raw_options = option_set_obj.options
             filtered_options: list[OptionDefinition] = []
 
             for opt in raw_options:
@@ -116,25 +143,34 @@ class DailyRoutinesRuntime:
 
             options = filtered_options
 
-        existing_answer: Any | None = None
+        existing_answer: str | list[str] | None = None
+        stale_reconfirmation = False
         record = self.state.session_state.answers.get(curr_id)
-        if record and record.validity_state in (
-            AnswerValidityState.ACTIVE,
-            AnswerValidityState.STALE_REQUIRES_RECONFIRMATION,
-        ):
-            existing_answer = record.value
+        if record:
+            if record.validity_state == AnswerValidityState.ACTIVE:
+                existing_answer = record.value
+                stale_reconfirmation = False
+            elif record.validity_state == AnswerValidityState.STALE_REQUIRES_RECONFIRMATION:
+                existing_answer = record.value
+                stale_reconfirmation = True
 
         return StepPrompt(
-            question_id=curr_id,
+            step_id=curr_id,
+            is_ui_control=is_ui_control,
+            question_definition=q_def,
+            ui_control_definition=ui_def,
             content_key=content_key,
-            wording=wording_variant,
+            wording_variant=wording_variant,
+            option_set=option_set_obj,
             options=options,
             existing_answer=existing_answer,
+            active_branch=active_branch,
+            stale_reconfirmation=stale_reconfirmation,
             multi_select_contract=multi_select_contract,
         )
 
     def process_answer(self, answer: Any) -> SessionStepResult:
-        """Validate and record answer, resolve next step, and update runtime state."""
+        """Validate and record answer, resolve next step, check stale completion, and return result."""
         if self.state.status == SessionStatus.COMPLETED:
             raise InvalidSessionStateError("Cannot process answer for a completed session")
 
@@ -149,14 +185,31 @@ class DailyRoutinesRuntime:
 
         next_step = self.engine.resolve_next_step(self.state.session_state, curr_id)
 
-        target_closure_effect = None
+        # Lookup exact matched FlowRule for target_closure_effect
+        matched_rule = None
         ans_record = self.state.session_state.answers.get(curr_id)
-        if ans_record and isinstance(ans_record.value, str):
-            matched_rule = self._rules_by_source_and_value.get((curr_id, ans_record.value))
-            if matched_rule:
-                target_closure_effect = matched_rule.target_closure_effect
+        if ans_record:
+            if isinstance(ans_record.value, str):
+                matched_rule = self._rules_by_source_and_value.get((curr_id, ans_record.value))
+            if not matched_rule:
+                matched_rule = self._rules_by_source_any.get(curr_id)
+
+        target_closure_effect: TargetClosureEffect
+        if matched_rule:
+            target_closure_effect = matched_rule.target_closure_effect
+        elif curr_id == "bp_ui_room_use_correction_selector":
+            target_closure_effect = TargetClosureEffect.REQUIRES_CORRECTION
+        else:
+            raise InvalidSessionStateError(f"No matching flow rule found for step {curr_id!r}")
 
         if next_step == "module_complete":
+            # Check stale answer protection before completing session
+            for q_id, rec in self.state.session_state.answers.items():
+                if rec.validity_state == AnswerValidityState.STALE_REQUIRES_RECONFIRMATION:
+                    raise InvalidSessionStateError(
+                        f"Cannot complete session with stale answer for question {q_id!r}"
+                    )
+
             self.state.status = SessionStatus.COMPLETED
             self.state.current_step_id = None
             self.state.terminal_target = "module_complete"
@@ -166,8 +219,9 @@ class DailyRoutinesRuntime:
                 answered_step_id=curr_id,
                 next_step_id=None,
                 terminal_target="module_complete",
-                summary=summary_lines,
+                status=SessionStatus.COMPLETED,
                 target_closure_effect=target_closure_effect,
+                summary_lines=summary_lines,
             )
 
         else:
@@ -176,6 +230,29 @@ class DailyRoutinesRuntime:
                 answered_step_id=curr_id,
                 next_step_id=next_step,
                 terminal_target=None,
-                summary=None,
+                status=SessionStatus.IN_PROGRESS,
                 target_closure_effect=target_closure_effect,
+                summary_lines=[],
             )
+
+    def get_result(self) -> DailyRoutinesSessionResult:
+        """Return structured session result summary for both in-progress and completed sessions."""
+        active_answers = {
+            q_id: rec
+            for q_id, rec in self.state.session_state.answers.items()
+            if rec.validity_state == AnswerValidityState.ACTIVE
+        }
+        summary_lines = (
+            self.engine.generate_summary(self.state.session_state)
+            if self.state.status == SessionStatus.COMPLETED
+            else []
+        )
+
+        return DailyRoutinesSessionResult(
+            status=self.state.status,
+            runtime_state=self.state,
+            active_answers=active_answers,
+            summary_lines=summary_lines,
+            completed=self.state.status == SessionStatus.COMPLETED,
+            terminal_target=self.state.terminal_target,
+        )
