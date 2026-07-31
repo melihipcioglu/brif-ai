@@ -1,0 +1,291 @@
+# BRIF.AI Daily Routines v0 Questions Catalog
+schema_version: "v0"
+
+questions:
+  - id: "q_daily_routines_functional_space_day_pattern_status"
+    module: "DAILY_ROUTINES"
+    purpose: "Evdeki günlük zaman akışının belirli aralıklarla tekrarlanan bir gün düzenine sahip olup olmadığını saptamak."
+    content_key: "daily_routines.functional_space.day_pattern_status"
+    answer_type: "SINGLE_CHOICE"
+    required: true
+    output_target_ids:
+      - "cand_construct_functional_space_use_temporal_patterns"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_recurring_day_context"
+      - "q_daily_routines_functional_space_living_social_status"
+      - "q_daily_routines_functional_space_summary_confirmation"
+    applicable_stakeholder_roles:
+      - "RESPONDENT"
+    display_order: 1
+    source_metadata: "BRIF.AI Scientific Content Development v0"
+    status: "DRAFT"
+    option_set_id: "os_day_pattern_status"
+
+  - id: "q_daily_routines_functional_space_recurring_day_context"
+    module: "DAILY_ROUTINES"
+    purpose: "Evdeki alan kullanımlarını tanımlamak için esas alınacak tekrarlanan gün durumunu saptamak."
+    content_key: "daily_routines.functional_space.recurring_day_context"
+    answer_type: "SINGLE_CHOICE"
+    required: true
+    output_target_ids:
+      - "cand_construct_functional_space_use_temporal_patterns"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_other_day_context_detail"
+      - "q_daily_routines_functional_space_living_social_status"
+    applicable_stakeholder_roles:
+      - "RESPONDENT"
+    display_order: 2
+    source_metadata: "BRIF.AI Scientific Content Development v0"
+    status: "DRAFT"
+    option_set_id: "os_recurring_day_context"
+
+  - id: "q_daily_routines_functional_space_other_day_context_detail"
+    module: "DAILY_ROUTINES"
+    purpose: "Diğer seçeneği seçildiğinde tekrarlanan gün durumunun niteliğini kısa serbest metin olarak almak."
+    content_key: "daily_routines.functional_space.other_day_context_detail"
+    answer_type: "FREE_TEXT"
+    required: false
+    output_target_ids:
+      - "cand_construct_functional_space_use_temporal_patterns"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_living_social_status"
+    applicable_stakeholder_roles:
+      - "RESPONDENT"
+    display_order: 3
+    source_metadata: "BRIF.AI Scientific Content Development v0"
+    status: "DRAFT"
+    option_set_id: null
+
+  - id: "q_daily_routines_functional_space_living_social_status"
+    module: "DAILY_ROUTINES"
+    purpose: "Seçilen tipik veya genel gün düzeninde yaşam ve sosyal etkileşim alanının kullanım durumunu saptamak."
+    content_key: "daily_routines.functional_space.living_social_status"
+    answer_type: "SINGLE_CHOICE"
+    required: true
+    output_target_ids:
+      - "cand_construct_functional_space_use_temporal_patterns"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_living_social_periods"
+      - "q_daily_routines_functional_space_kitchen_dining_status"
+    applicable_stakeholder_roles:
+      - "RESPONDENT"
+    display_order: 4
+    source_metadata: "BRIF.AI Scientific Content Development v0"
+    status: "DRAFT"
+    option_set_id: "os_functional_domain_status"
+
+  - id: "q_daily_routines_functional_space_living_social_periods"
+    module: "DAILY_ROUTINES"
+    purpose: "Yaşam ve sosyal etkileşim alanının kullanıldığı zaman dönemlerini çoklu seçimle saptamak."
+    content_key: "daily_routines.functional_space.living_social_periods"
+    answer_type: "MULTIPLE_CHOICE"
+    required: true
+    output_target_ids:
+      - "cand_construct_functional_space_use_temporal_patterns"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_kitchen_dining_status"
+    applicable_stakeholder_roles:
+      - "RESPONDENT"
+    display_order: 5
+    source_metadata: "BRIF.AI Scientific Content Development v0"
+    status: "DRAFT"
+    option_set_id: "os_day_period"
+
+  - id: "q_daily_routines_functional_space_kitchen_dining_status"
+    module: "DAILY_ROUTINES"
+    purpose: "Seçilen tipik veya genel gün düzeninde yemek hazırlama ve yemek yeme alanının kullanım durumunu saptamak."
+    content_key: "daily_routines.functional_space.kitchen_dining_status"
+    answer_type: "SINGLE_CHOICE"
+    required: true
+    output_target_ids:
+      - "cand_construct_functional_space_use_temporal_patterns"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_kitchen_dining_periods"
+      - "q_daily_routines_functional_space_sleeping_status"
+    applicable_stakeholder_roles:
+      - "RESPONDENT"
+    display_order: 6
+    source_metadata: "BRIF.AI Scientific Content Development v0"
+    status: "DRAFT"
+    option_set_id: "os_functional_domain_status"
+
+  - id: "q_daily_routines_functional_space_kitchen_dining_periods"
+    module: "DAILY_ROUTINES"
+    purpose: "Yemek hazırlama ve yemek yeme alanının kullanıldığı zaman dönemlerini çoklu seçimle saptamak."
+    content_key: "daily_routines.functional_space.kitchen_dining_periods"
+    answer_type: "MULTIPLE_CHOICE"
+    required: true
+    output_target_ids:
+      - "cand_construct_functional_space_use_temporal_patterns"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_sleeping_status"
+    applicable_stakeholder_roles:
+      - "RESPONDENT"
+    display_order: 7
+    source_metadata: "BRIF.AI Scientific Content Development v0"
+    status: "DRAFT"
+    option_set_id: "os_day_period"
+
+  - id: "q_daily_routines_functional_space_sleeping_status"
+    module: "DAILY_ROUTINES"
+    purpose: "Seçilen tipik veya genel gün düzeninde uyku ve kişisel dinlenme alanlarının kullanım durumunu saptamak."
+    content_key: "daily_routines.functional_space.sleeping_status"
+    answer_type: "SINGLE_CHOICE"
+    required: true
+    output_target_ids:
+      - "cand_construct_functional_space_use_temporal_patterns"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_sleeping_periods"
+      - "q_daily_routines_functional_space_work_study_status"
+    applicable_stakeholder_roles:
+      - "RESPONDENT"
+    display_order: 8
+    source_metadata: "BRIF.AI Scientific Content Development v0"
+    status: "DRAFT"
+    option_set_id: "os_functional_domain_status"
+
+  - id: "q_daily_routines_functional_space_sleeping_periods"
+    module: "DAILY_ROUTINES"
+    purpose: "Uyku ve kişisel dinlenme alanlarının kullanıldığı zaman dönemlerini çoklu seçimle saptamak."
+    content_key: "daily_routines.functional_space.sleeping_periods"
+    answer_type: "MULTIPLE_CHOICE"
+    required: true
+    output_target_ids:
+      - "cand_construct_functional_space_use_temporal_patterns"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_work_study_status"
+    applicable_stakeholder_roles:
+      - "RESPONDENT"
+    display_order: 9
+    source_metadata: "BRIF.AI Scientific Content Development v0"
+    status: "DRAFT"
+    option_set_id: "os_day_period"
+
+  - id: "q_daily_routines_functional_space_work_study_status"
+    module: "DAILY_ROUTINES"
+    purpose: "Seçilen tipik veya genel gün düzeninde çalışma ve öğrenme alanının kullanım durumunu saptamak."
+    content_key: "daily_routines.functional_space.work_study_status"
+    answer_type: "SINGLE_CHOICE"
+    required: true
+    output_target_ids:
+      - "cand_construct_functional_space_use_temporal_patterns"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_work_study_periods"
+      - "q_daily_routines_functional_space_bathroom_status"
+    applicable_stakeholder_roles:
+      - "RESPONDENT"
+    display_order: 10
+    source_metadata: "BRIF.AI Scientific Content Development v0"
+    status: "DRAFT"
+    option_set_id: "os_functional_domain_status"
+
+  - id: "q_daily_routines_functional_space_work_study_periods"
+    module: "DAILY_ROUTINES"
+    purpose: "Çalışma ve öğrenme alanının kullanıldığı zaman dönemlerini çoklu seçimle saptamak."
+    content_key: "daily_routines.functional_space.work_study_periods"
+    answer_type: "MULTIPLE_CHOICE"
+    required: true
+    output_target_ids:
+      - "cand_construct_functional_space_use_temporal_patterns"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_bathroom_status"
+    applicable_stakeholder_roles:
+      - "RESPONDENT"
+    display_order: 11
+    source_metadata: "BRIF.AI Scientific Content Development v0"
+    status: "DRAFT"
+    option_set_id: "os_day_period"
+
+  - id: "q_daily_routines_functional_space_bathroom_status"
+    module: "DAILY_ROUTINES"
+    purpose: "Seçilen tipik veya genel gün düzeninde banyo ve kişisel bakım alanlarının kullanım durumunu saptamak."
+    content_key: "daily_routines.functional_space.bathroom_status"
+    answer_type: "SINGLE_CHOICE"
+    required: true
+    output_target_ids:
+      - "cand_construct_functional_space_use_temporal_patterns"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_bathroom_periods"
+      - "q_daily_routines_functional_space_household_variation_status"
+    applicable_stakeholder_roles:
+      - "RESPONDENT"
+    display_order: 12
+    source_metadata: "BRIF.AI Scientific Content Development v0"
+    status: "DRAFT"
+    option_set_id: "os_functional_domain_status"
+
+  - id: "q_daily_routines_functional_space_bathroom_periods"
+    module: "DAILY_ROUTINES"
+    purpose: "Banyo ve kişisel bakım alanlarının kullanıldığı zaman dönemlerini çoklu seçimle saptamak."
+    content_key: "daily_routines.functional_space.bathroom_periods"
+    answer_type: "MULTIPLE_CHOICE"
+    required: true
+    output_target_ids:
+      - "cand_construct_functional_space_use_temporal_patterns"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_household_variation_status"
+    applicable_stakeholder_roles:
+      - "RESPONDENT"
+    display_order: 13
+    source_metadata: "BRIF.AI Scientific Content Development v0"
+    status: "DRAFT"
+    option_set_id: "os_day_period"
+
+  - id: "q_daily_routines_functional_space_household_variation_status"
+    module: "DAILY_ROUTINES"
+    purpose: "Hane içindeki diğer bireylerin alan kullanım dönemlerinin yanıtlayıcı ile fark gösterip göstermediğini saptamak."
+    content_key: "daily_routines.functional_space.household_variation_status"
+    answer_type: "SINGLE_CHOICE"
+    required: true
+    output_target_ids:
+      - "cand_construct_functional_space_use_temporal_patterns"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_household_variation_detail"
+      - "q_daily_routines_functional_space_summary_confirmation"
+    applicable_stakeholder_roles:
+      - "RESPONDENT"
+    display_order: 14
+    source_metadata: "BRIF.AI Scientific Content Development v0"
+    status: "DRAFT"
+    option_set_id: "os_household_variation_status"
+
+  - id: "q_daily_routines_functional_space_household_variation_detail"
+    module: "DAILY_ROUTINES"
+    purpose: "Belirgin hane farkı bildirildiğinde farkın niteliğini kısa serbest metin olarak almak."
+    content_key: "daily_routines.functional_space.household_variation_detail"
+    answer_type: "FREE_TEXT"
+    required: false
+    output_target_ids:
+      - "cand_construct_functional_space_use_temporal_patterns"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_summary_confirmation"
+    applicable_stakeholder_roles:
+      - "RESPONDENT"
+    display_order: 15
+    source_metadata: "BRIF.AI Scientific Content Development v0"
+    status: "DRAFT"
+    option_set_id: null
+
+  - id: "q_daily_routines_functional_space_summary_confirmation"
+    module: "DAILY_ROUTINES"
+    purpose: "Oluşturulan olgusal özet metnini yanıtlayıcı onayına sunmak veya düzeltme adımını tetiklemek."
+    content_key: "daily_routines.functional_space.summary_confirmation"
+    answer_type: "SINGLE_CHOICE"
+    required: true
+    output_target_ids:
+      - "cand_construct_functional_space_use_temporal_patterns"
+    allowed_follow_up_question_ids:
+      - "bp_ui_room_use_correction_selector"
+    applicable_stakeholder_roles:
+      - "RESPONDENT"
+    display_order: 16
+    source_metadata: "BRIF.AI Scientific Content Development v0"
+    status: "DRAFT"
+    option_set_id: "os_summary_confirmation"
+
+ui_state_controls:
+  - id: "bp_ui_room_use_correction_selector"
+    module: "DAILY_ROUTINES"
+    purpose: "Yanıtlayıcının düzenlemek istediği bölümü seçmesini sağlayan kullanıcı arayüzü kontrolü."
+    content_key: "daily_routines.ui.room_use_correction_selector"
+    option_set_id: "os_correction_target"

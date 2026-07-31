@@ -1,0 +1,13 @@
+# BRIF.AI Daily Routines v0 Domain Applicability Rules Catalog
+schema_version: "v0"
+
+domain_applicability_rules:
+  functional_domain_not_relevant_to_household:
+    metadata: "PROVISIONAL_EXPERT_DECISION"
+    description: "Allow-list governing whether functional_domain_not_relevant_to_household option can be shown for each domain."
+    allowed_domains:
+      living_social: true
+      kitchen_dining: true
+      sleeping: false
+      work_study: true
+      bathroom: false

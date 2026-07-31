@@ -1,0 +1,147 @@
+# BRIF.AI Daily Routines v0 Wording Variants Catalog
+schema_version: "v0"
+
+wording_variants:
+  - question_id: "q_daily_routines_functional_space_day_pattern_status"
+    variants:
+      - branch: "STABLE"
+        prompt_text: "Mevcut evinizdeki gün düzeninizi aşağıdakilerden hangisi daha iyi açıklar?"
+        respondent_instruction: "Gününüzün akışı genelde benzer zamanlarda gerçekleşiyorsa veya belirli aralıklarla tekrarlanan bir programınız (nöbet/vardiya dahil) varsa bunu belirtebilirsiniz."
+      - branch: "IRREGULAR"
+        prompt_text: "Mevcut evinizdeki gün düzeninizi aşağıdakilerden hangisi daha iyi açıklar?"
+        respondent_instruction: "Gününüzün akışı genelde benzer zamanlarda gerçekleşiyorsa veya belirli aralıklarla tekrarlanan bir programınız (nöbet/vardiya dahil) varsa bunu belirtebilirsiniz."
+
+  - question_id: "q_daily_routines_functional_space_recurring_day_context"
+    variants:
+      - branch: "STABLE"
+        prompt_text: "Evdeki günlük kullanım alanlarınızı tanımlamak için aşağıdaki tekrarlanan gün durumlarından hangisini esas alalım?"
+        respondent_instruction: "Lütfen başkalarının programından bağımsız olarak, kendi yaşamınızda en belirgin olan tekrarlanan gün durumunu seçin."
+      - branch: "IRREGULAR"
+        prompt_text: "Evdeki günlük kullanım alanlarınızı tanımlamak için aşağıdaki tekrarlanan gün durumlarından hangisini esas alalım?"
+        respondent_instruction: "Lütfen başkalarının programından bağımsız olarak, kendi yaşamınızda en belirgin olan tekrarlanan gün durumunu seçin."
+
+  - question_id: "q_daily_routines_functional_space_other_day_context_detail"
+    variants:
+      - branch: "STABLE"
+        prompt_text: "Seçtiğiniz diğer tekrarlanan gün durumunu kısaca tanımlar mısınız?"
+        respondent_instruction: "Lütfen bu günün genel niteliğini tek bir cümleyle açıklayın. Saat saat detaylı program vermeniz gerekmemektedir."
+      - branch: "IRREGULAR"
+        prompt_text: "Seçtiğiniz diğer tekrarlanan gün durumunu kısaca tanımlar mısınız?"
+        respondent_instruction: "Lütfen bu günün genel niteliğini tek bir cümleyle açıklayın. Saat saat detaylı program vermeniz gerekmemektedir."
+
+  - question_id: "q_daily_routines_functional_space_living_social_status"
+    variants:
+      - branch: "STABLE"
+        prompt_text: "Seçtiğiniz tipik gün bağlamında, evinizdeki yaşam ve sosyal etkileşim alanının (salon, oturma alanı vb.) kullanım durumunu aşağıdakilerden hangisi en iyi açıklar?"
+        respondent_instruction: "Ev içinde bir arada vakit geçirme, dinlenme ve sosyal kullanımın gerçekleştiği alanı düşünün. Ayrı bir oda olması şart değildir."
+      - branch: "IRREGULAR"
+        prompt_text: "Mevcut evinizdeki genel ve değişken gün düzeninizde, yaşam ve sosyal etkileşim alanının (salon, oturma alanı vb.) kullanım durumunu aşağıdakilerden hangisi en iyi açıklar?"
+        respondent_instruction: "Ev içinde bir arada vakit geçirme, dinlenme ve sosyal kullanımın gerçekleştiği alanı düşünün. Ayrı bir oda olması şart değildir."
+
+  - question_id: "q_daily_routines_functional_space_living_social_periods"
+    variants:
+      - branch: "STABLE"
+        prompt_text: "Seçtiğiniz tipik günde, yaşam ve sosyal etkileşim alanındaki kullanımınız hangi zaman dönemlerinde gerçekleşmektedir?"
+        respondent_instruction: "Birden fazla zaman dönemi seçebilirsiniz. Bir dönemin seçilmesi o alanın tüm dönem boyunca kesintisiz kullanıldığı anlamına gelmez."
+      - branch: "IRREGULAR"
+        prompt_text: "Genel gün düzeninizde, yaşam ve sosyal etkileşim alanındaki kullanımınız hangi zaman dönemlerinde gerçekleşmektedir?"
+        respondent_instruction: "Birden fazla zaman dönemi seçebilirsiniz. Bir dönemin seçilmesi o alanın tüm dönem boyunca kesintisiz kullanıldığı anlamına gelmez."
+
+  - question_id: "q_daily_routines_functional_space_kitchen_dining_status"
+    variants:
+      - branch: "STABLE"
+        prompt_text: "Seçtiğiniz tipik gün bağlamında, evinizdeki yemek hazırlama ve yemek yeme alanının (mutfak, yemek köşesi vb.) kullanım durumunu aşağıdakilerden hangisi en iyi açıklar?"
+        respondent_instruction: "Yemek pişirme, hazırlık ve yemek yeme amacıyla kullandığınız alanı düşünün. Ayrı bir yemek odası varsayılmaz."
+      - branch: "IRREGULAR"
+        prompt_text: "Mevcut evinizdeki genel ve değişken gün düzeninizde, yemek hazırlama ve yemek yeme alanının (mutfak, yemek köşesi vb.) kullanım durumunu aşağıdakilerden hangisi en iyi açıklar?"
+        respondent_instruction: "Yemek pişirme, hazırlık ve yemek yeme amacıyla kullandığınız alanı düşünün. Ayrı bir yemek odası varsayılmaz."
+
+  - question_id: "q_daily_routines_functional_space_kitchen_dining_periods"
+    variants:
+      - branch: "STABLE"
+        prompt_text: "Seçtiğiniz tipik günde, yemek hazırlama ve yemek yeme alanındaki kullanımınız hangi zaman dönemlerinde gerçekleşmektedir?"
+        respondent_instruction: "Birden fazla zaman dönemi seçebilirsiniz. Bir dönemin seçilmesi o alanın tüm dönem boyunca kesintisiz kullanıldığı anlamına gelmez."
+      - branch: "IRREGULAR"
+        prompt_text: "Genel gün düzeninizde, yemek hazırlama ve yemek yeme alanındaki kullanımınız hangi zaman dönemlerinde gerçekleşmektedir?"
+        respondent_instruction: "Birden fazla zaman dönemi seçebilirsiniz. Bir dönemin seçilmesi o alanın tüm dönem boyunca kesintisiz kullanıldığı anlamına gelmez."
+
+  - question_id: "q_daily_routines_functional_space_sleeping_status"
+    variants:
+      - branch: "STABLE"
+        prompt_text: "Seçtiğiniz tipik gün bağlamında, evinizdeki uyku ve kişisel dinlenme alanlarının (yatak odası, uyku köşesi vb.) kullanım durumunu aşağıdakilerden hangisi en iyi açıklar?"
+        respondent_instruction: "Hem gece uykusunu hem de gündüz dinlenme zamanlarını kapsar. Birden fazla uyku alanı varsa tümünü kapsayacak şekilde değerlendirin."
+      - branch: "IRREGULAR"
+        prompt_text: "Mevcut evinizdeki genel ve değişken gün düzeninizde, uyku ve kişisel dinlenme alanlarının (yatak odası, uyku köşesi vb.) kullanım durumunu aşağıdakilerden hangisi en iyi açıklar?"
+        respondent_instruction: "Hem gece uykusunu hem de gündüz dinlenme zamanlarını kapsar. Birden fazla uyku alanı varsa tümünü kapsayacak şekilde değerlendirin."
+
+  - question_id: "q_daily_routines_functional_space_sleeping_periods"
+    variants:
+      - branch: "STABLE"
+        prompt_text: "Seçtiğiniz tipik günde, uyku ve kişisel dinlenme alanlarındaki kullanımınız hangi zaman dönemlerinde gerçekleşmektedir?"
+        respondent_instruction: "Birden fazla zaman dönemi seçebilirsiniz. Bir dönemin seçilmesi o alanın tüm dönem boyunca kesintisiz kullanıldığı anlamına gelmez."
+      - branch: "IRREGULAR"
+        prompt_text: "Genel gün düzeninizde, uyku ve kişisel dinlenme alanlarındaki kullanımınız hangi zaman dönemlerinde gerçekleşmektedir?"
+        respondent_instruction: "Birden fazla zaman dönemi seçebilirsiniz. Bir dönemin seçilmesi o alanın tüm dönem boyunca kesintisiz kullanıldığı anlamına gelmez."
+
+  - question_id: "q_daily_routines_functional_space_work_study_status"
+    variants:
+      - branch: "STABLE"
+        prompt_text: "Seçtiğiniz tipik gün bağlamında, evinizdeki çalışma ve öğrenme alanının (çalışma odası, masa köşesi vb.) kullanım durumunu aşağıdakilerden hangisi en iyi açıklar?"
+        respondent_instruction: "Ayrı bir çalışma odanız olmak zorunda değildir; ev içinde iş veya ders için kullandığınız yeri düşünün."
+      - branch: "IRREGULAR"
+        prompt_text: "Mevcut evinizdeki genel ve değişken gün düzeninizde, çalışma ve öğrenme alanının (çalışma odası, masa köşesi vb.) kullanım durumunu aşağıdakilerden hangisi en iyi açıklar?"
+        respondent_instruction: "Ayrı bir çalışma odanız olmak zorunda değildir; ev içinde iş veya ders için kullandığınız yeri düşünün."
+
+  - question_id: "q_daily_routines_functional_space_work_study_periods"
+    variants:
+      - branch: "STABLE"
+        prompt_text: "Seçtiğiniz tipik günde, çalışma ve öğrenme alanındaki kullanımınız hangi zaman dönemlerinde gerçekleşmektedir?"
+        respondent_instruction: "Birden fazla zaman dönemi seçebilirsiniz. Bir dönemin seçilmesi o alanın tüm dönem boyunca kesintisiz kullanıldığı anlamına gelmez."
+      - branch: "IRREGULAR"
+        prompt_text: "Genel gün düzeninizde, çalışma ve öğrenme alanındaki kullanımınız hangi zaman dönemlerinde gerçekleşmektedir?"
+        respondent_instruction: "Birden fazla zaman dönemi seçebilirsiniz. Bir dönemin seçilmesi o alanın tüm dönem boyunca kesintisiz kullanıldığı anlamına gelmez."
+
+  - question_id: "q_daily_routines_functional_space_bathroom_status"
+    variants:
+      - branch: "STABLE"
+        prompt_text: "Seçtiğiniz tipik gün bağlamında, evinizdeki banyo ve kişisel bakım alanlarının kullanım durumunu aşağıdakilerden hangisi en iyi açıklar?"
+        respondent_instruction: "Duş, kişisel bakım ve tuvalet ihtiyacı için kullandığınız alanları düşünün."
+      - branch: "IRREGULAR"
+        prompt_text: "Mevcut evinizdeki genel ve değişken gün düzeninizde, banyo ve kişisel bakım alanlarının kullanım durumunu aşağıdakilerden hangisi en iyi açıklar?"
+        respondent_instruction: "Duş, kişisel bakım ve tuvalet ihtiyacı için kullandığınız alanları düşünün."
+
+  - question_id: "q_daily_routines_functional_space_bathroom_periods"
+    variants:
+      - branch: "STABLE"
+        prompt_text: "Seçtiğiniz tipik günde, banyo ve kişisel bakım alanlarındaki kullanımınız hangi zaman dönemlerinde gerçekleşmektedir?"
+        respondent_instruction: "Birden fazla zaman dönemi seçebilirsiniz. Bir dönemin seçilmesi o alanın tüm dönem boyunca kesintisiz kullanıldığı anlamına gelmez."
+      - branch: "IRREGULAR"
+        prompt_text: "Genel gün düzeninizde, banyo ve kişisel bakım alanlarındaki kullanımınız hangi zaman dönemlerinde gerçekleşmektedir?"
+        respondent_instruction: "Birden fazla zaman dönemi seçebilirsiniz. Bir dönemin seçilmesi o alanın tüm dönem boyunca kesintisiz kullanıldığı anlamına gelmez."
+
+  - question_id: "q_daily_routines_functional_space_household_variation_status"
+    variants:
+      - branch: "STABLE"
+        prompt_text: "Evinizdeki diğer bireylerin alan kullanım dönemleri, sizin bildirdiğiniz zaman aralıklarından belirgin biçimde farklılık gösteriyor mu?"
+        respondent_instruction: "Hane halkının genel kullanım saatleri sizinkiyle uyumluysa 'farklılık yok' seçeneğini belirleyin."
+      - branch: "IRREGULAR"
+        prompt_text: "Evinizdeki diğer bireylerin alan kullanım düzeni, sizin bildirdiğiniz genel kullanım düzeninden belirgin biçimde farklılık gösteriyor mu?"
+        respondent_instruction: "Hane halkının genel kullanım saatleri sizinkiyle uyumluysa 'farklılık yok' seçeneğini belirleyin."
+
+  - question_id: "q_daily_routines_functional_space_household_variation_detail"
+    variants:
+      - branch: "STABLE"
+        prompt_text: "Hane bireylerinin alan kullanım dönemleri arasındaki belirgin farklılığı kısaca açıklar mısınız?"
+        respondent_instruction: "Lütfen kişisel isim vermeden yalnızca genel kullanım dönemlerindeki belirgin farkı kısaca belirtin."
+      - branch: "IRREGULAR"
+        prompt_text: "Hane bireylerinin alan kullanım dönemleri arasındaki belirgin farklılığı kısaca açıklar mısınız?"
+        respondent_instruction: "Lütfen kişisel isim vermeden yalnızca genel kullanım dönemlerindeki belirgin farkı kısaca belirtin."
+
+  - question_id: "q_daily_routines_functional_space_summary_confirmation"
+    variants:
+      - branch: "STABLE"
+        prompt_text: "Verdiğiniz yanıtlar doğrultusunda sistem tarafından oluşturulan evdeki kullanım düzeninize ilişkin özet aşağıda sunulmuştur. Bu özeti onaylıyor musunuz?"
+        respondent_instruction: "Özette bir eksiklik veya yanlışlık görüyorsanız 'Düzenlemek İstiyorum' seçeneği ile ilgili adımları güncelleyebilirsiniz."
+      - branch: "IRREGULAR"
+        prompt_text: "Verdiğiniz yanıtlar doğrultusunda sistem tarafından oluşturulan evdeki kullanım düzeninize ilişkin özet aşağıda sunulmuştur. Bu özeti onaylıyor musunuz?"
+        respondent_instruction: "Özette bir eksiklik veya yanlışlık görüyorsanız 'Düzenlemek İstiyorum' seçeneği ile ilgili adımları güncelleyebilirsiniz."
