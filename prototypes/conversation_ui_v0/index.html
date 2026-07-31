@@ -46,18 +46,18 @@
       <!-- Left Column: Chat Conversation Stream -->
       <section class="chat-section">
         <div class="chat-messages" id="chatMessages">
-          <!-- Initial Conversation Message 1 (AI) -->
+          <!-- Conversation Message 1 (BRIF.AI) -->
           <div class="message ai-message">
-            <div class="message-avatar">AI</div>
+            <div class="message-avatar brif">B</div>
             <div class="message-content">
               <div class="message-sender">BRIF.AI Mimari Danışman</div>
               <div class="message-text">
-                Yeni evinizde günlük yaşamınızı ve mekân kullanımı ritminizi biraz anlamak istiyorum. Ev hafta içinde genellikle nasıl kullanılıyor?
+                Yeni evinizde günlük yaşamınızı ve mekân kullanımı ritminizi anlamak istiyorum. Ev hafta içinde genellikle nasıl kullanılıyor?
               </div>
             </div>
           </div>
 
-          <!-- Initial Conversation Message 2 (User) -->
+          <!-- Conversation Message 2 (User) -->
           <div class="message user-message">
             <div class="message-avatar user">MK</div>
             <div class="message-content">
@@ -68,28 +68,25 @@
             </div>
           </div>
 
-          <!-- Initial Conversation Message 3 (AI) -->
+          <!-- Conversation Message 3 (BRIF.AI) -->
           <div class="message ai-message" id="latestAiMessage">
-            <div class="message-avatar">AI</div>
+            <div class="message-avatar brif">B</div>
             <div class="message-content">
               <div class="message-sender">BRIF.AI Mimari Danışman</div>
               <div class="message-text">
-                Anladım. Eviniz gün içinde tamamen boş kalmıyor ve öğleden sonra kullanım yoğunluğu artıyor. Eşiniz çalışırken sessizlik ve akustik izolasyon kritik mi, yoksa ortak yaşam alanına yakın olmayı mı tercih ediyor?
+                Anladım. Eviniz gün içinde tamamen boş kalmıyor ve öğleden sonra kullanım yoğunluğu artıyor. Eşinizin evden çalışma sürecinde akustik mahremiyet ve sessizlik ne derece kritik? Günün hangi saatlerinde ve hangi faaliyetlerde bu ihtiyaç öne çıkıyor?
               </div>
 
               <!-- Suggestion Chips / Quick Replies -->
               <div class="suggestion-chips" id="suggestionChips">
-                <button class="chip-btn" data-reply="Eşim çalışırken sessizlik ve tam konsantrasyon istiyor, ayrı alan şart.">
-                  Sessiz ve ayrı olsun
+                <button class="chip-btn" data-reply="Eşim gün boyu online toplantılar yapıyor, tam ses izolasyonu çok kritik.">
+                  Online toplantılar var, ses izolasyonu kritik
                 </button>
-                <button class="chip-btn" data-reply="Gündüz ortak alanla iletişimde olmayı, salona yakın çalışmayı seviyor.">
-                  Ortak alana yakın olsun
+                <button class="chip-btn" data-reply="Genellikle bilgisayarda yazım ve okuma yapıyor, sadece yoğun odaklanma saatlerinde sessizlik istiyor.">
+                  Yazım/okuma ağırlıklı, odaklanma saatleri önemli
                 </button>
-                <button class="chip-btn" data-reply="Esnek bir kurgu istiyoruz; hem kapatılabilen hem de açılabilen bir alan.">
-                  İkisi arasında dengeli olsun
-                </button>
-                <button class="chip-btn" data-reply="Bu konuda henüz karar vermedik, mimari seçenekleri değerlendirebiliriz.">
-                  Emin değilim
+                <button class="chip-btn" data-reply="Gündüz çocukların geldiği 16:00 sonrasında ses çakışması yaşanıyor.">
+                  Öğleden sonra 16:00 sonrası ses çakışması oluyor
                 </button>
               </div>
             </div>
@@ -102,7 +99,7 @@
             <div class="input-wrapper">
               <textarea 
                 id="userInput" 
-                placeholder="Yanıtınızı buraya yazın veya bir öneri çipine tıklayın..." 
+                placeholder="Yanıtınızı buraya yazın veya bir öneri seçin..." 
                 rows="2"
               ></textarea>
               <div class="input-actions">
@@ -123,7 +120,7 @@
               </div>
             </div>
             <div class="input-hint">
-              💡 Örnek vererek anlatabilirsiniz (Örn: "Sabahları mutfakta kahve içerken bahçeyi görmek istiyorum").
+              💡 Örnek vererek anlatabilirsiniz (Örn: "Sabahları sessiz bir çalışma alanı, öğleden sonra çocukların alanı ayrışmalı").
             </div>
           </form>
         </div>
@@ -151,101 +148,90 @@
           <!-- VIEW 1: Client Understanding View -->
           <div class="view-container active" id="clientView">
             
-            <!-- Section: Yaşam Düzeni -->
+            <!-- Category 1: Kesinleşen İhtiyaçlar & Günlük Düzen -->
             <div class="insight-group">
               <div class="group-header">
-                <h3>Yaşam Düzeni</h3>
-                <span class="group-count" id="routineCount">3 Madde</span>
+                <h3>Yaşam Düzeni & Tespitler</h3>
+                <span class="group-count" id="routineCount">2 Gösteriliyor</span>
               </div>
               <div class="cards-list" id="routineCards">
+                <!-- Grounded Card 1 -->
+                <div class="insight-card">
+                  <div class="card-top">
+                    <span class="card-text">Eş gün boyu evden çalışıyor</span>
+                    <span class="badge badge-user-said">Kullanıcı söyledi</span>
+                  </div>
+                  <div class="card-rationale">
+                    <span class="rationale-label">Dayanak:</span> "Eşim evden çalışıyor."
+                  </div>
+                </div>
+
+                <!-- Grounded Card 2 -->
+                <div class="insight-card">
+                  <div class="card-top">
+                    <span class="card-text">Öğleden sonra 16:00 sonrası hane içi kullanım yoğunluğu artıyor</span>
+                    <span class="badge badge-user-said">Kullanıcı söyledi</span>
+                  </div>
+                  <div class="card-rationale">
+                    <span class="rationale-label">Dayanak:</span> "Çocuklar okuldan dört gibi geliyor."
+                  </div>
+                </div>
+              </div>
+
+              <!-- Collapsible Extra Findings -->
+              <div class="extra-items-container hidden" id="extraRoutineItems">
                 <div class="insight-card">
                   <div class="card-top">
                     <span class="card-text">Ev gün içinde tamamen boş kalmıyor</span>
-                    <span class="badge badge-confirmed">Kesinleşti</span>
+                    <span class="badge badge-user-said">Kullanıcı söyledi</span>
                   </div>
-                  <div class="card-detail">Eşiniz gün boyu evden çalışıyor.</div>
+                  <div class="card-rationale">
+                    <span class="rationale-label">Dayanak:</span> "Ben çoğu gün ofisteyim. Eşim evden çalışıyor."
+                  </div>
                 </div>
+              </div>
 
-                <div class="insight-card">
-                  <div class="card-top">
-                    <span class="card-text">Öğleden sonra çocuklarla kullanım yoğunluğu artıyor</span>
-                    <span class="badge badge-confirmed">Kesinleşti</span>
-                  </div>
-                  <div class="card-detail">Çocuklar 16:00 sonrası ortak alanları aktif kullanıyor.</div>
-                </div>
+              <button class="toggle-more-btn" id="toggleExtraRoutineBtn" data-target="extraRoutineItems">
+                <span>Diğer bulguları göster (+1)</span>
+              </button>
+            </div>
 
-                <div class="insight-card">
+            <!-- Category 2: Teyit Gereken Yorumlar -->
+            <div class="insight-group">
+              <div class="group-header">
+                <h3>Teyit Gereken Yorumlar</h3>
+                <span class="group-count">1 Yorum</span>
+              </div>
+              <div class="cards-list" id="interpretationCards">
+                <!-- System Interpretation Card -->
+                <div class="insight-card highlight-system">
                   <div class="card-top">
-                    <span class="card-text">Hafta içi ve hafta sonu düzenleri farklı</span>
-                    <span class="badge badge-probable">Muhtemel</span>
+                    <span class="card-text">Çalışma alanı ile çocuk hareketliliği arasında akustik çakışma riski bulunuyor</span>
+                    <span class="badge badge-system">Sistem yorumu</span>
                   </div>
-                  <div class="card-detail">Hafta sonu tüm aile evde toplanıyor.</div>
+                  <div class="card-rationale">
+                    <span class="rationale-label">Dayanak:</span> "Eşim evden çalışıyor" ve "Çocuklar okuldan dört gibi geliyor" beyanlarının çakışması.
+                  </div>
                 </div>
               </div>
             </div>
 
-            <!-- Section: Öncelikler -->
+            <!-- Category 3: Henüz Netleşmeyen Konular -->
             <div class="insight-group">
               <div class="group-header">
-                <h3>Öncelikler</h3>
-                <span class="group-count" id="priorityCount">3 Madde</span>
-              </div>
-              <div class="cards-list" id="priorityCards">
-                <div class="insight-card">
-                  <div class="card-top">
-                    <span class="card-text">Evden çalışma için akustik mahremiyet</span>
-                    <span class="badge badge-pending">Teyit bekliyor</span>
-                  </div>
-                  <div class="card-detail">Çalışma alanının ses izolasyon ihtiyacı değerlendiriliyor.</div>
-                </div>
-
-                <div class="insight-card">
-                  <div class="card-top">
-                    <span class="card-text">Çocuklarla görsel bağlantının korunması</span>
-                    <span class="badge badge-confirmed">Kesinleşti</span>
-                  </div>
-                  <div class="card-detail">Gündüz yaşam alanında görüş açısı önemli.</div>
-                </div>
-
-                <div class="insight-card">
-                  <div class="card-top">
-                    <span class="card-text">Ortak kullanım alanlarında esneklik</span>
-                    <span class="badge badge-probable">Muhtemel</span>
-                  </div>
-                  <div class="card-detail">Çok işlevli mobilya ve bölücü panel imkânı.</div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Section: Henüz Netleşmeyenler -->
-            <div class="insight-group">
-              <div class="group-header">
-                <h3>Henüz Netleşmeyenler</h3>
-                <span class="group-count" id="pendingCount">3 Madde</span>
+                <h3>Henüz Netleşmeyen Konular</h3>
+                <span class="group-count">1 Konu</span>
               </div>
               <div class="cards-list" id="pendingCards">
+                <!-- Pending Card -->
                 <div class="insight-card highlight-pending">
                   <div class="card-top">
-                    <span class="card-text">Çalışma alanının salonla ilişkisi</span>
-                    <span class="badge badge-conflict">Çelişki var</span>
+                    <span class="card-text">Çalışma alanının gereken ses izolasyon düzeyi</span>
+                    <span class="badge badge-pending">Teyit gerekli</span>
                   </div>
-                  <div class="card-detail">Tam ayrışma mı yoksa yarı açık temas mı istendiği belirsiz.</div>
-                </div>
-
-                <div class="insight-card">
-                  <div class="card-top">
-                    <span class="card-text">Misafir kullanım sıklığı ve yatılı ağırlama</span>
-                    <span class="badge badge-pending">Teyit bekliyor</span>
+                  <div class="card-rationale">
+                    <span class="rationale-label">Dayanak:</span> Toplantı sıklığı ve odaklanma ihtiyacı henüz detaylandırılmadı.
                   </div>
-                  <div class="card-detail">Konuk odası veya dönüştürülebilir oda ihtiyacı.</div>
-                </div>
-
-                <div class="insight-card">
-                  <div class="card-top">
-                    <span class="card-text">Yatak odalarının gündüz kullanımı</span>
-                    <span class="badge badge-probable">Muhtemel</span>
-                  </div>
-                  <div class="card-detail">Çocukların ders ve oyun alanlarının dağılımı.</div>
                 </div>
               </div>
             </div>
@@ -254,10 +240,10 @@
             <div class="confirmation-box" id="confirmationBox">
               <div class="confirmation-header">
                 <span class="confirmation-icon">💡</span>
-                <span class="confirmation-title">Teyit Gereken Yorum</span>
+                <span class="confirmation-title">Teyit Bekleyen Yorum</span>
               </div>
               <div class="confirmation-body" id="confirmationText">
-                "Çalışma alanının tamamen izole edilmesinden çok, gerektiğinde kapatılabilen esnek bir kapıyla ortak yaşama yakın olması tercih ediliyor olabilir."
+                "Çalışma alanının tam izole bir oda olmasından ziyade, öğleden sonra saatlerinde çocukların varlığıyla uyumlu biçimde yönetilmesi amaçlanıyor olabilir."
               </div>
               <div class="confirmation-actions" id="confirmationActions">
                 <button class="action-btn accept" id="confirmCorrectBtn">
@@ -284,7 +270,7 @@
               
               <!-- Inline Editor Area (Hidden by default) -->
               <div class="inline-editor hidden" id="inlineEditor">
-                <textarea id="editInput" rows="2" placeholder="Düzeltmek istediğiniz mimari yorumu yazın..."></textarea>
+                <textarea id="editInput" rows="2" placeholder="Doğru olan durumu kendi ifadenizle yazın..."></textarea>
                 <div class="editor-buttons">
                   <button class="editor-btn cancel" id="cancelEditBtn">İptal</button>
                   <button class="editor-btn save" id="saveEditBtn">Kaydet ve Güncelle</button>
@@ -294,88 +280,94 @@
 
           </div>
 
-          <!-- VIEW 2: Architect Brief View (Toggled) -->
+          <!-- VIEW 2: Architect Brief View (Structured Schema) -->
           <div class="view-container hidden" id="architectView">
             <div class="arch-banner">
               <div class="arch-banner-title">🏛️ Mimar Sentez Raporu</div>
-              <div class="arch-banner-desc">Bu bölüm, kullanıcı anlatımının teknik mimari gereksinimlere dönüştürülmüş profesyonel analizidir.</div>
+              <div class="arch-banner-desc">Bu bölüm, kullanıcı beyanlarının mimari gereksinimlere dönüştürüldüğü teknik sentez görünümüdür.</div>
             </div>
 
-            <!-- Architect Brief Section: Doğrulanmış Brief -->
+            <!-- Structured Architect Cards -->
             <div class="arch-section">
-              <h3 class="arch-section-title">Doğrulanmış Brief</h3>
-              <div class="arch-card-list">
+              <h3 class="arch-section-title">Mimari Brief & Gereksinim Analizi</h3>
+              <div class="arch-card-list" id="archCardList">
+                
+                <!-- Arch Card 1 -->
                 <div class="arch-card">
-                  <div class="arch-card-header">
-                    <span class="arch-label">Hane Yapısı & Gündüz Yoğunluğu</span>
-                    <span class="confidence-tag high">Yüksek Güven</span>
+                  <div class="arch-row">
+                    <span class="arch-label">Kullanıcı Verisi:</span>
+                    <span class="arch-val">"Eşim evden çalışıyor."</span>
                   </div>
-                  <div class="arch-body">
-                    2 yetişkin + çocuk(lar). Hafta içi gün içi aktif evden çalışma kullanımı (1 yetişkin) ve 16:00 sonrası yüksek sirkülasyon.
+                  <div class="arch-row">
+                    <span class="arch-label">Mimari Yorum:</span>
+                    <span class="arch-val">Çalışma alanı gündüz sürekli kullanımda; ses ve görsel mahremiyet düzeyi araştırılmalıdır.</span>
+                  </div>
+                  <div class="arch-row">
+                    <span class="arch-label">Dayanak:</span>
+                    <span class="arch-val">Doğrudan kullanıcı beyanı.</span>
+                  </div>
+                  <div class="arch-row-meta">
+                    <span class="confidence-tag high">Güven: Yüksek</span>
+                    <span class="status-tag">Teyit: Akustik izolasyon ihtiyacı netleştiriliyor</span>
                   </div>
                 </div>
 
+                <!-- Arch Card 2 -->
                 <div class="arch-card">
-                  <div class="arch-card-header">
-                    <span class="arch-label">Mekânsal Akustik İhtiyaçlar</span>
-                    <span class="confidence-tag medium">Orta Güven</span>
+                  <div class="arch-row">
+                    <span class="arch-label">Kullanıcı Verisi:</span>
+                    <span class="arch-val">"Çocuklar okuldan dört gibi geliyor."</span>
                   </div>
-                  <div class="arch-body">
-                    Çalışma alanında 35-45 dB bandında ses yalıtımı ve online toplantılar için arka plan görsel kontrolü talebi.
+                  <div class="arch-row">
+                    <span class="arch-label">Mimari Yorum:</span>
+                    <span class="arch-val">Saat 16:00 sonrası ortak yaşam alanlarında sirkülasyon ve ses seviyesi yükselmektedir.</span>
+                  </div>
+                  <div class="arch-row">
+                    <span class="arch-label">Dayanak:</span>
+                    <span class="arch-val">Doğrudan kullanıcı beyanı.</span>
+                  </div>
+                  <div class="arch-row-meta">
+                    <span class="confidence-tag high">Güven: Yüksek</span>
+                    <span class="status-tag">Teyit: Zaman dilimi çakışması doğrulandı</span>
                   </div>
                 </div>
+
+                <!-- Arch Card 3 -->
+                <div class="arch-card">
+                  <div class="arch-row">
+                    <span class="arch-label">Kullanıcı Verisi:</span>
+                    <span class="arch-val">"Ben çoğu gün ofisteyim."</span>
+                  </div>
+                  <div class="arch-row">
+                    <span class="arch-label">Mimari Yorum:</span>
+                    <span class="arch-val">Hafta içi gündüz hane halkı mevcudu 1 kişi (eş); bireysel çalışma odaklı alan önceliklidir.</span>
+                  </div>
+                  <div class="arch-row">
+                    <span class="arch-label">Dayanak:</span>
+                    <span class="arch-val">Doğrudan kullanıcı beyanı.</span>
+                  </div>
+                  <div class="arch-row-meta">
+                    <span class="confidence-tag medium">Güven: Orta</span>
+                    <span class="status-tag">Teyit: Hafta sonu kullanımı henüz eklenmedi</span>
+                  </div>
+                </div>
+
               </div>
             </div>
 
-            <!-- Architect Brief Section: Tasarım Açısından Anlamı -->
-            <div class="arch-section">
-              <h3 class="arch-section-title">Tasarım Açısından Anlamı</h3>
-              <div class="arch-card-list">
-                <div class="arch-card">
-                  <div class="arch-card-header">
-                    <span class="arch-label">Bölücü Eleman & Geçiş Kurgusu</span>
-                    <span class="confidence-tag high">Yüksek Güven</span>
-                  </div>
-                  <div class="arch-body">
-                    Çalışma odası salon/mutfaktan tamamen koparılmamalı; cam/ahşap sürgülü kapı ile şeffaf-akustik esneklik sağlanmalı.
-                  </div>
-                </div>
-
-                <div class="arch-card">
-                  <div class="arch-card-header">
-                    <span class="arch-label">Görsel Temas & Çocuk Görüş Açısı</span>
-                    <span class="confidence-tag high">Yüksek Güven</span>
-                  </div>
-                  <div class="arch-body">
-                    Mutfak-çalışma ve çocuk oyun bölgesi arasında en az 120 derece kesintisiz görüş açısı korunmalı.
-                  </div>
-                </div>
-
-                <div class="arch-card">
-                  <div class="arch-card-header">
-                    <span class="arch-label">Dönüştürülebilir Mobilya & Depolama</span>
-                    <span class="confidence-tag requires">Teyit Gerekli</span>
-                  </div>
-                  <div class="arch-body">
-                    Gündüz çalışma masa düzeninin akşam aile oturma alanına taşmaması için gömme depolama modülü öneriliyor.
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Architect Brief Section: Güven Düzeyi Dağılımı -->
+            <!-- Architect Summary Section -->
             <div class="arch-section">
               <h3 class="arch-section-title">Güven Düzeyi Dağılımı</h3>
               <div class="confidence-summary">
                 <div class="stat-bar">
-                  <div class="bar-segment high" style="width: 55%;" title="Yüksek Güven: %55"></div>
-                  <div class="bar-segment medium" style="width: 30%;" title="Orta Güven: %30"></div>
-                  <div class="bar-segment requires" style="width: 15%;" title="Teyit Gerekli: %15"></div>
+                  <div class="bar-segment high" style="width: 65%;" title="Yüksek Güven: %65"></div>
+                  <div class="bar-segment medium" style="width: 25%;" title="Orta Güven: %25"></div>
+                  <div class="bar-segment requires" style="width: 10%;" title="Teyit Gerekli: %10"></div>
                 </div>
                 <div class="stat-labels">
-                  <span class="stat-item"><span class="dot high"></span> %55 Yüksek</span>
-                  <span class="stat-item"><span class="dot medium"></span> %30 Orta</span>
-                  <span class="stat-item"><span class="dot requires"></span> %15 Teyit Gerekli</span>
+                  <span class="stat-item"><span class="dot high"></span> %65 Yüksek (Doğrudan Beyan)</span>
+                  <span class="stat-item"><span class="dot medium"></span> %25 Orta</span>
+                  <span class="stat-item"><span class="dot requires"></span> %10 Teyit Gerekli</span>
                 </div>
               </div>
             </div>

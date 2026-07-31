@@ -1,9 +1,9 @@
 /**
- * BRIF.AI - Conversation UI Prototype v0 Interaction Script
+ * BRIF.AI - Conversation UI Prototype v0 Interaction Script (Revised)
  *
- * NOTE: This file powers a standalone, client-side UX prototype.
- * It uses simulated conversation responses and dynamic UI state updates.
- * There are NO real backend, API, AI model, or server calls in this prototype.
+ * NOTE: Standalone frontend UX prototype for BRIF.AI.
+ * All conversation dynamics and dynamic panel updates run client-side.
+ * Contains NO real backend, database, API, or AI model calls.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -22,9 +22,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const clientView = document.getElementById('clientView');
   const architectView = document.getElementById('architectView');
   
-  const priorityCards = document.getElementById('priorityCards');
   const routineCards = document.getElementById('routineCards');
+  const interpretationCards = document.getElementById('interpretationCards');
   const pendingCards = document.getElementById('pendingCards');
+  
+  const toggleExtraRoutineBtn = document.getElementById('toggleExtraRoutineBtn');
+  const extraRoutineItems = document.getElementById('extraRoutineItems');
+  const routineCount = document.getElementById('routineCount');
   
   const confirmCorrectBtn = document.getElementById('confirmCorrectBtn');
   const confirmEditBtn = document.getElementById('confirmEditBtn');
@@ -37,10 +41,28 @@ document.addEventListener('DOMContentLoaded', () => {
   const confirmationActions = document.getElementById('confirmationActions');
 
   let isArchitectView = false;
-  let conversationTurn = 0;
+  let isExtraRoutineExpanded = false;
 
   // --------------------------------------------------------------------------
-  // 1. Suggestion Chip Quick-Reply Handling
+  // 1. Collapsible Extra Findings Toggle
+  // --------------------------------------------------------------------------
+  if (toggleExtraRoutineBtn && extraRoutineItems) {
+    toggleExtraRoutineBtn.addEventListener('click', () => {
+      isExtraRoutineExpanded = !isExtraRoutineExpanded;
+      if (isExtraRoutineExpanded) {
+        extraRoutineItems.classList.remove('hidden');
+        toggleExtraRoutineBtn.querySelector('span').textContent = 'Daha az göster';
+        if (routineCount) routineCount.textContent = '3 Gösteriliyor';
+      } else {
+        extraRoutineItems.classList.add('hidden');
+        toggleExtraRoutineBtn.querySelector('span').textContent = 'Diğer bulguları göster (+1)';
+        if (routineCount) routineCount.textContent = '2 Gösteriliyor';
+      }
+    });
+  }
+
+  // --------------------------------------------------------------------------
+  // 2. Suggestion Chip Quick-Reply Handling
   // --------------------------------------------------------------------------
   if (suggestionChips) {
     suggestionChips.addEventListener('click', (e) => {
@@ -53,7 +75,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // --------------------------------------------------------------------------
-  // 2. Chat Form Submit Handling
+  // 3. Chat Form Submit Handling
   // --------------------------------------------------------------------------
   if (chatForm) {
     chatForm.addEventListener('submit', (e) => {
@@ -65,7 +87,6 @@ document.addEventListener('DOMContentLoaded', () => {
       userInput.value = '';
     });
 
-    // Submit on Enter (without Shift)
     userInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -78,12 +99,12 @@ document.addEventListener('DOMContentLoaded', () => {
   if (voiceBtn) {
     voiceBtn.addEventListener('click', () => {
       alert('🎤 Sesli yanıt alma demosu: Konuşmanız simüle edilmektedir...');
-      userInput.value = 'Eşim çalışırken sessiz ve tam konsantrasyon alanı istiyor, salonla doğrudan ses teması olmasın.';
+      userInput.value = 'Eşim gün boyu online toplantılar yapıyor, tam ses izolasyonu çok kritik.';
     });
   }
 
   // --------------------------------------------------------------------------
-  // 3. User Message Processing & AI Response Simulation
+  // 4. User Message Processing & Sound AI Response Simulation
   // --------------------------------------------------------------------------
   function handleUserSendMessage(messageText) {
     // Hide old chips
@@ -94,15 +115,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Append User Message to Chat
     appendMessage('user', 'Siz', 'MK', messageText);
 
-    // Increment conversation turn count
-    conversationTurn++;
-
     // Scroll chat to bottom
     chatMessages.scrollTop = chatMessages.scrollHeight;
 
-    // Simulate AI thinking delay
+    // Simulate AI response delay
     setTimeout(() => {
-      generateAiResponse(messageText);
+      generateSoundAiResponse(messageText);
     }, 600);
   }
 
@@ -111,7 +129,7 @@ document.addEventListener('DOMContentLoaded', () => {
     msgDiv.className = `message ${senderType}-message`;
 
     msgDiv.innerHTML = `
-      <div class="message-avatar ${senderType === 'user' ? 'user' : ''}">${avatarText}</div>
+      <div class="message-avatar ${senderType === 'user' ? 'user' : 'brif'}">${avatarText}</div>
       <div class="message-content">
         <div class="message-sender">${senderName}</div>
         <div class="message-text">${escapeHtml(text)}</div>
@@ -122,84 +140,89 @@ document.addEventListener('DOMContentLoaded', () => {
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }
 
-  function generateAiResponse(userText) {
+  function generateSoundAiResponse(userText) {
     let aiReply = '';
-    let newInsight = null;
+    let newCard = null;
 
-    if (userText.includes('Sessiz') || userText.includes('tam konsantrasyon') || userText.includes('ayrı')) {
-      aiReply = 'Akustik mahremiyet ihtiyacı netleşti. Çalışma odasını ana yaşam alanından ses olarak izole ederken, doğal ışık ve havalandırma açısından kuzey-doğu cephesine konumlandırmayı düşünebiliriz. Peki, bu alanın gündüz misafir odasına dönüştürülmesi gerekir mi?';
+    if (userText.includes('toplantı') || userText.includes('izolasyon') || userText.includes('ses')) {
+      aiReply = 'Akustik mahremiyet ihtiyacının önemli olduğunu anlıyorum. Eşinizin toplantıları sırasında evdeki diğer seslerin çalışma alanına ulaşması mı, yoksa içerideki sesin dışarı çıkmaması mı daha öncelikli? Bu ihtiyaç ileride mimarın değerlendireceği mekânsal ve akustik kararlara dönüşebilir.';
       
-      newInsight = {
-        group: 'priority',
-        title: 'Tam Akustik İzolasyonlu Çalışma Odası',
-        badge: 'Kesinleşti',
-        badgeClass: 'badge-confirmed',
-        detail: 'Çalışma odası salondan bağımsız ve yüksek ses yalıtımlı kurgulanacak.'
+      newCard = {
+        group: 'routine',
+        title: 'Çalışma alanında yoğun ses izolasyonu talebi',
+        badge: 'Kullanıcı söyledi',
+        badgeClass: 'badge-user-said',
+        rationale: `"${userText}"`
       };
-    } else if (userText.includes('Ortak alana yakın') || userText.includes('salona yakın')) {
-      aiReply = 'Harika. Çalışma alanını salona veya iç avluya bakan şeffaf bir cam bölücüyle bağlayabiliriz. Böylece görsel temas korunurken toplantı sırasında kapı kapatılarak ses kontrolü sağlanır.';
+    } else if (userText.includes('yazım') || userText.includes('odaklanma')) {
+      aiReply = 'Görsel ve zihinsel odaklanma ihtiyacını not aldım. Bu alanın günün hangi saatlerinde en yoğun kullanıldığını netleştirelim. Benzer şekilde, gündüz doğal ışık alma düzeyi sizin için ne derece belirleyici?';
       
-      newInsight = {
-        group: 'priority',
-        title: 'Şeffaf Bölücülü Çalışma-Yaşam Entegrasyonu',
-        badge: 'Kesinleşti',
-        badgeClass: 'badge-confirmed',
-        detail: 'Çalışma alanı ile salon arasında esnek cam panel öneriliyor.'
+      newCard = {
+        group: 'routine',
+        title: 'Odaklanma ağırlıklı bireysel çalışma ritmi',
+        badge: 'Kullanıcı söyledi',
+        badgeClass: 'badge-user-said',
+        rationale: `"${userText}"`
       };
-    } else if (userText.includes('dengeli') || userText.includes('esnek')) {
-      aiReply = 'Esnek kurgu mimari açıdan en nitelikli çözümleri sunar. Ahşap kayar paneller veya gizlenebilir cep kapıları ile mekan ihtiyaca göre büyüyüp küçülebilir. Mutfak ve çocuk alanıyla ilişkiniz konusunda ne düşünürsünüz?';
+    } else if (userText.includes('16:00') || userText.includes('çocuk')) {
+      aiReply = 'Öğleden sonra 16:00 sonrasındaki zaman dilimi çakışmasını anlıyorum. Bu saatlerde çalışma alanının çocukların ortak kullanım alanlarıyla ilişkisini ve ses geçişini değerlendireceğiz. Bu çakışma hafta içi her gün yaşanıyor mu?';
       
-      newInsight = {
-        group: 'priority',
-        title: 'Gizlenebilir Panelli Esnek Mekân Kurgusu',
-        badge: 'Kesinleşti',
-        badgeClass: 'badge-confirmed',
-        detail: 'Dönüştürülebilir duvar ve ahşap kayar panel konsepti.'
+      newCard = {
+        group: 'interpretation',
+        title: 'Saat 16:00 sonrası ses ve kullanım çakışması tespiti',
+        badge: 'Sistem yorumu',
+        badgeClass: 'badge-system',
+        rationale: `"${userText}" beyanından çıkarılan sistem yorumu.`
       };
     } else {
-      aiReply = `Notlarımı aldım: "${userText}". Bu tercihinizi genel hane akışıyla sentezliyorum. Bir sonraki adımda yatak odaları ve ıslak hacimlerin gündüz kullanımı üzerine odaklanacağız.`;
+      aiReply = `İfade ettiğiniz konuyu not aldım: "${userText}". Bu durumun hane içi diğer kullanım alışkanlıklarıyla uyumunu değerlendireceğiz. Yatak odaları ve genel yaşam alanlarının gündüz ilişkisi hakkında ne düşünürsünüz?`;
       
-      newInsight = {
+      newCard = {
         group: 'routine',
-        title: 'Özel Kullanım Tercihi Eklendi',
-        badge: 'Muhtemel',
-        badgeClass: 'badge-probable',
-        detail: userText.length > 60 ? userText.substring(0, 60) + '...' : userText
+        title: 'Kullanıcı beyanı eklendi',
+        badge: 'Kullanıcı söyledi',
+        badgeClass: 'badge-user-said',
+        rationale: `"${userText}"`
       };
     }
 
     // Append AI reply to chat stream
-    appendMessage('ai', 'BRIF.AI Mimari Danışman', 'AI', aiReply);
+    appendMessage('ai', 'BRIF.AI Mimari Danışman', 'B', aiReply);
 
-    // Update Right Panel dynamically
-    if (newInsight) {
-      addInsightCard(newInsight);
+    // Update Right Panel with ONLY findings derived from this message
+    if (newCard) {
+      addGroundedCard(newCard);
     }
   }
 
-  function addInsightCard(insight) {
+  function addGroundedCard(cardData) {
     const cardDiv = document.createElement('div');
     cardDiv.className = 'insight-card';
+    if (cardData.badgeClass === 'badge-system') {
+      cardDiv.classList.add('highlight-system');
+    }
 
     cardDiv.innerHTML = `
       <div class="card-top">
-        <span class="card-text">${escapeHtml(insight.title)}</span>
-        <span class="badge ${insight.badgeClass}">${escapeHtml(insight.badge)}</span>
+        <span class="card-text">${escapeHtml(cardData.title)}</span>
+        <span class="badge ${cardData.badgeClass}">${escapeHtml(cardData.badge)}</span>
       </div>
-      <div class="card-detail">${escapeHtml(insight.detail)}</div>
+      <div class="card-rationale">
+        <span class="rationale-label">Dayanak:</span> ${escapeHtml(cardData.rationale)}
+      </div>
     `;
 
-    if (insight.group === 'priority') {
-      priorityCards.insertBefore(cardDiv, priorityCards.firstChild);
-    } else if (insight.group === 'routine') {
+    if (cardData.group === 'routine') {
       routineCards.insertBefore(cardDiv, routineCards.firstChild);
+    } else if (cardData.group === 'interpretation') {
+      interpretationCards.insertBefore(cardDiv, interpretationCards.firstChild);
     } else {
       pendingCards.insertBefore(cardDiv, pendingCards.firstChild);
     }
   }
 
   // --------------------------------------------------------------------------
-  // 4. View Toggle (Client Understanding vs Architect Brief View)
+  // 5. View Toggle (Client Understanding View vs Architect Brief View)
   // --------------------------------------------------------------------------
   if (toggleViewBtn) {
     toggleViewBtn.addEventListener('click', () => {
@@ -207,17 +230,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (isArchitectView) {
         clientView.classList.add('hidden');
-        architectView.classList.remove('active');
         architectView.classList.remove('hidden');
         
         toggleBtnText.textContent = 'Müşteri Görünümü';
         panelTitle.textContent = 'Mimar Sentez Raporu';
-        panelSubtitle.textContent = 'Teknik mimari brief ve tasarım kararları';
+        panelSubtitle.textContent = 'Teknik mimari brief ve gereksinim analizi';
         toggleViewBtn.classList.add('active');
       } else {
         architectView.classList.add('hidden');
         clientView.classList.remove('hidden');
-        clientView.classList.add('active');
         
         toggleBtnText.textContent = 'Mimar Önizlemesi';
         panelTitle.textContent = 'Sizi nasıl anladım?';
@@ -228,38 +249,33 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // --------------------------------------------------------------------------
-  // 5. Interactive Confirmation Actions (Doğru / Düzenle / Yanlış Anladın)
+  // 6. Confirmation Box Interactivity (Doğru / Düzenle / Yanlış Anladın)
   // --------------------------------------------------------------------------
   if (confirmCorrectBtn) {
     confirmCorrectBtn.addEventListener('click', () => {
       confirmationText.style.backgroundColor = '#E6F4EA';
       confirmationText.style.borderColor = '#137333';
-      confirmationText.innerHTML = '✅ <strong>Doğrulandı:</strong> ' + confirmationText.textContent.replace('✅ Doğrulandı: ', '');
+      confirmationText.innerHTML = '✅ <strong>Kullanıcı Doğruladı:</strong> ' + confirmationText.textContent.replace('✅ Kullanıcı Doğruladı: ', '').replace(/^"|"$/g, '');
       confirmationActions.style.display = 'none';
-      
-      // Update pending items to confirmed
-      const pendingConflictBadge = pendingCards.querySelector('.badge-conflict');
-      if (pendingConflictBadge) {
-        pendingConflictBadge.className = 'badge badge-confirmed';
-        pendingConflictBadge.textContent = 'Kesinleşti';
+
+      // Update system interpretation card badge to "Kullanıcı doğruladı"
+      const systemBadge = interpretationCards.querySelector('.badge-system');
+      if (systemBadge) {
+        systemBadge.className = 'badge badge-confirmed';
+        systemBadge.textContent = 'Kullanıcı doğruladı';
       }
     });
   }
 
-  if (confirmRejectBtn) {
-    confirmRejectBtn.addEventListener('click', () => {
+  if (confirmRejectBtn || confirmEditBtn) {
+    const handleEditOpen = () => {
       inlineEditor.classList.remove('hidden');
-      editInput.value = confirmationText.textContent.trim().replace(/^"|"$/g, '');
+      editInput.value = confirmationText.textContent.trim().replace(/^"|"$/g, '').replace('✅ Kullanıcı Doğruladı: ', '');
       editInput.focus();
-    });
-  }
+    };
 
-  if (confirmEditBtn) {
-    confirmEditBtn.addEventListener('click', () => {
-      inlineEditor.classList.remove('hidden');
-      editInput.value = confirmationText.textContent.trim().replace(/^"|"$/g, '');
-      editInput.focus();
-    });
+    if (confirmRejectBtn) confirmRejectBtn.addEventListener('click', handleEditOpen);
+    if (confirmEditBtn) confirmEditBtn.addEventListener('click', handleEditOpen);
   }
 
   if (cancelEditBtn) {
@@ -274,20 +290,20 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!updatedText) return;
 
       confirmationText.textContent = `"${updatedText}"`;
-      confirmationText.style.backgroundColor = '#E8F0FE';
-      confirmationText.style.borderColor = '#1A73E8';
+      confirmationText.style.backgroundColor = '#EEF3F0';
+      confirmationText.style.borderColor = '#3F5E4D';
       inlineEditor.classList.add('hidden');
 
-      // Update badge to probable
-      const pendingBadge = pendingCards.querySelector('.badge-conflict');
-      if (pendingBadge) {
-        pendingBadge.className = 'badge badge-probable';
-        pendingBadge.textContent = 'Muhtemel';
+      // Update badge to "Kullanıcı söyledi"
+      const systemBadge = interpretationCards.querySelector('.badge-system');
+      if (systemBadge) {
+        systemBadge.className = 'badge badge-user-said';
+        systemBadge.textContent = 'Kullanıcı söyledi';
       }
     });
   }
 
-  // Utility Function: Escape HTML to prevent injection
+  // Utility Function: Escape HTML to prevent script injection
   function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
