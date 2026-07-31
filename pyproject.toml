@@ -26,6 +26,10 @@ dev = [
   "pytest-cov>=5.0",
   "ruff>=0.6",
 ]
+demo = [
+  "streamlit>=1.40,<2",
+]
+
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/brif_ai"]

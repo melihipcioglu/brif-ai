@@ -26,9 +26,17 @@ python -m mypy src tests
 python -m pytest
 ```
 
+## Streamlit Demo
+
+```powershell
+py -3.13 -m pip install -e ".[dev,demo]"
+py -3.13 -m streamlit run apps/daily_routines_demo.py
+```
+
 ## Pre-commit
 
 ```powershell
 python -m pre_commit install
 python -m pre_commit run --all-files
 ```
+
