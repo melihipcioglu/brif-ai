@@ -21,6 +21,15 @@ class FlowResolutionError(RuntimeError):
     """Raised when deterministic flow resolution fails."""
 
 
+class InvalidSessionStateError(RuntimeError):
+    """Raised when an operation is performed on a completed or invalid session state."""
+
+
+class SessionStatus(StrEnum):
+    IN_PROGRESS = "IN_PROGRESS"
+    COMPLETED = "COMPLETED"
+
+
 class DayPatternStatus(StrEnum):
     STABLE_RECURRING_DAY_AVAILABLE = "stable_recurring_day_available"
     NO_STABLE_RECURRING_DAY = "no_stable_recurring_day"
