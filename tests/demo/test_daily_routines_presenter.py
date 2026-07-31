@@ -8,6 +8,8 @@ import sys
 
 import pytest
 
+pytest.importorskip("streamlit")
+
 from brif_ai.conversation.daily_routines import (
     CorrectionTarget,
     DailyRoutinesContentPack,
