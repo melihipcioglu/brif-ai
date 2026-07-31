@@ -9,9 +9,11 @@ from typing import Any
 import yaml  # type: ignore[import-untyped]
 
 from brif_ai.conversation.daily_routines.enums import (
+    CorrectionTarget,
     DayPeriod,
     FunctionalDomain,
     FunctionalDomainStatus,
+    RouteMatchType,
     WordingBranch,
 )
 from brif_ai.conversation.daily_routines.models import (
@@ -19,6 +21,7 @@ from brif_ai.conversation.daily_routines.models import (
     DomainApplicabilityRule,
     MultiSelectContract,
 )
+from brif_ai.conversation.models.common import AnswerType
 
 ALLOWED_TERMINAL_TARGETS: set[str] = {"module_complete"}
 
@@ -94,9 +97,9 @@ def validate_cross_file_integrity(pack: DailyRoutinesContentPack) -> None:
     _validate_option_set_references(pack)
     _validate_wording_branch_coverage(pack)
     _validate_multi_select_contract(pack.multi_select_contract)
+    _validate_domain_applicability(pack.domain_applicability_rules)
     _validate_flow_rule_references_and_routing(pack)
     _validate_invalidation_rules(pack)
-    _validate_domain_applicability(pack.domain_applicability_rules)
 
 
 def _load_yaml(file_path: Path) -> dict[str, Any]:
@@ -196,19 +199,36 @@ def _validate_multi_select_contract(contract: MultiSelectContract) -> None:
         )
 
 
+def _validate_domain_applicability(rule: DomainApplicabilityRule) -> None:
+    allow_list = rule.functional_domain_not_relevant_to_household.allowed_domains
+    if allow_list.get(FunctionalDomain.SLEEPING) is not False:
+        raise ContentPackValidationError(
+            "functional_domain_not_relevant_to_household must be disallowed (false) for SLEEPING"
+        )
+    if allow_list.get(FunctionalDomain.BATHROOM) is not False:
+        raise ContentPackValidationError(
+            "functional_domain_not_relevant_to_household must be disallowed (false) for BATHROOM"
+        )
+
+
+def is_option_allowed_for_domain(
+    pack: DailyRoutinesContentPack, domain: FunctionalDomain, option_value: str
+) -> bool:
+    """Check if an option value is allowed for a specific domain based on applicability rules."""
+    not_relevant = FunctionalDomainStatus.FUNCTIONAL_DOMAIN_NOT_RELEVANT_TO_HOUSEHOLD.value
+    if option_value == not_relevant:
+        rules = pack.domain_applicability_rules.functional_domain_not_relevant_to_household
+        return rules.allowed_domains.get(domain, True)
+    return True
+
+
 def _validate_flow_rule_references_and_routing(pack: DailyRoutinesContentPack) -> None:
     valid_q_ids = {q.id for q in pack.questions} | {ui.id for ui in pack.ui_state_controls}
-    valid_option_values_by_question: dict[str, set[str]] = {}
-
     option_sets_by_id = {os.id: {opt.value for opt in os.options} for os in pack.option_sets}
+    question_by_id = {q.id: q for q in pack.questions}
 
-    for q in pack.questions:
-        if q.option_set_id and q.option_set_id in option_sets_by_id:
-            valid_option_values_by_question[q.id] = option_sets_by_id[q.option_set_id]
-
-    for ui in pack.ui_state_controls:
-        if ui.option_set_id in option_sets_by_id:
-            valid_option_values_by_question[ui.id] = option_sets_by_id[ui.option_set_id]
+    # 1. References & Duplicate/Conflicting Matcher Check
+    seen_matchers: set[tuple[str, RouteMatchType, str | None]] = set()
 
     for rule in pack.flow_rules:
         if rule.source_question_id not in valid_q_ids:
@@ -217,13 +237,26 @@ def _validate_flow_rule_references_and_routing(pack: DailyRoutinesContentPack) -
                 f"{rule.source_question_id!r}"
             )
 
-        if rule.source_question_id in valid_option_values_by_question:
-            allowed_opts = valid_option_values_by_question[rule.source_question_id]
-            if rule.expected_value not in allowed_opts:
-                raise ContentPackValidationError(
-                    f"Flow rule {rule.rule_id!r} expected_value {rule.expected_value!r} "
-                    f"not found in OptionSet for question {rule.source_question_id!r}"
-                )
+        key = (rule.source_question_id, rule.match_type, rule.expected_value)
+        if key in seen_matchers:
+            raise ContentPackValidationError(
+                f"Duplicate or conflicting flow rule matcher for {rule.source_question_id!r}: "
+                f"match_type={rule.match_type.value!r}, expected_value={rule.expected_value!r}"
+            )
+        seen_matchers.add(key)
+
+        if (
+            rule.source_question_id in question_by_id
+            and rule.match_type == RouteMatchType.EXACT_OPTION
+        ):
+            q_def = question_by_id[rule.source_question_id]
+            if q_def.option_set_id and q_def.option_set_id in option_sets_by_id:
+                allowed_opts = option_sets_by_id[q_def.option_set_id]
+                if rule.expected_value not in allowed_opts:
+                    raise ContentPackValidationError(
+                        f"Flow rule {rule.rule_id!r} expected_value {rule.expected_value!r} "
+                        f"not found in OptionSet for question {rule.source_question_id!r}"
+                    )
 
         if rule.target_question_id is not None and rule.target_question_id not in valid_q_ids:
             raise ContentPackValidationError(
@@ -236,6 +269,94 @@ def _validate_flow_rule_references_and_routing(pack: DailyRoutinesContentPack) -
                 f"Flow rule {rule.rule_id!r} specifies unknown terminal target_module "
                 f"{rule.target_module!r}"
             )
+
+    # 2. Route Completeness for Questions
+    flow_rules_by_source: dict[str, list[Any]] = {}
+    for r in pack.flow_rules:
+        flow_rules_by_source.setdefault(r.source_question_id, []).append(r)
+
+    for q in pack.questions:
+        rules = flow_rules_by_source.get(q.id, [])
+        if q.answer_type == AnswerType.SINGLE_CHOICE:
+            if not q.option_set_id or q.option_set_id not in option_sets_by_id:
+                raise ContentPackValidationError(f"Question {q.id!r} missing option set")
+            all_opts = option_sets_by_id[q.option_set_id]
+
+            # Determine applicability filter for domain status questions
+            expected_opts = set(all_opts)
+            for domain in [FunctionalDomain.SLEEPING, FunctionalDomain.BATHROOM]:
+                if q.id.endswith(f"_{domain.value}_status"):
+                    expected_opts = {
+                        val
+                        for val in expected_opts
+                        if is_option_allowed_for_domain(pack, domain, val)
+                    }
+
+            exact_rules = [r for r in rules if r.match_type == RouteMatchType.EXACT_OPTION]
+            routed_opts = {r.expected_value for r in exact_rules if r.expected_value}
+
+            missing_opts = expected_opts - routed_opts
+            if missing_opts:
+                opts_str = sorted(missing_opts)
+                raise ContentPackValidationError(
+                    f"Question {q.id!r} has missing EXACT_OPTION rules: {opts_str}"
+                )
+
+        elif q.answer_type == AnswerType.MULTIPLE_CHOICE:
+            multi_rules = [r for r in rules if r.match_type == RouteMatchType.ANY_VALID_MULTISELECT]
+            if len(multi_rules) != 1:
+                cnt = len(multi_rules)
+                raise ContentPackValidationError(
+                    f"Question {q.id!r} requires 1 ANY_VALID_MULTISELECT rule, got {cnt}"
+                )
+
+        elif q.answer_type == AnswerType.FREE_TEXT:
+            text_rules = [r for r in rules if r.match_type == RouteMatchType.NON_EMPTY_TEXT]
+            if len(text_rules) != 1:
+                cnt = len(text_rules)
+                raise ContentPackValidationError(
+                    f"Question {q.id!r} requires 1 NON_EMPTY_TEXT rule, got {cnt}"
+                )
+
+    # 3. Conditional Routes Validation
+    seen_selectors: set[CorrectionTarget] = set()
+    for cr in pack.conditional_routes:
+        if cr.selector_value in seen_selectors:
+            raise ContentPackValidationError(
+                f"Duplicate conditional route for selector_value {cr.selector_value.value!r}"
+            )
+        seen_selectors.add(cr.selector_value)
+        if cr.target_question_id not in valid_q_ids:
+            sel_val = cr.selector_value.value
+            target_id = cr.target_question_id
+            raise ContentPackValidationError(
+                f"Conditional route {sel_val!r} unknown target_id {target_id!r}"
+            )
+
+    # 4. Reachability & Orphan Question Check via BFS
+    initial_q_id = "q_daily_routines_functional_space_day_pattern_status"
+    visited_ids: set[str] = set()
+    queue = [initial_q_id]
+
+    # Pre-add target questions reachable via conditional routes (correction selector)
+    for cr in pack.conditional_routes:
+        queue.append(cr.target_question_id)
+
+    while queue:
+        curr = queue.pop(0)
+        if curr in visited_ids:
+            continue
+        visited_ids.add(curr)
+
+        for r in flow_rules_by_source.get(curr, []):
+            if r.target_question_id and r.target_question_id not in visited_ids:
+                queue.append(r.target_question_id)
+
+    unreachable_qs = valid_q_ids - visited_ids
+    if unreachable_qs:
+        raise ContentPackValidationError(
+            f"Orphan/unreachable questions or UI controls detected: {sorted(unreachable_qs)}"
+        )
 
 
 def _validate_invalidation_rules(pack: DailyRoutinesContentPack) -> None:
@@ -266,26 +387,3 @@ def _validate_invalidation_rules(pack: DailyRoutinesContentPack) -> None:
                         f"{prev_rule_id!r} for target {target_id!r}"
                     )
             seen_signature_targets[key] = inv.rule_id
-
-
-def _validate_domain_applicability(rule: DomainApplicabilityRule) -> None:
-    allow_list = rule.functional_domain_not_relevant_to_household.allowed_domains
-    if allow_list.get(FunctionalDomain.SLEEPING) is not False:
-        raise ContentPackValidationError(
-            "functional_domain_not_relevant_to_household must be disallowed (false) for SLEEPING"
-        )
-    if allow_list.get(FunctionalDomain.BATHROOM) is not False:
-        raise ContentPackValidationError(
-            "functional_domain_not_relevant_to_household must be disallowed (false) for BATHROOM"
-        )
-
-
-def is_option_allowed_for_domain(
-    pack: DailyRoutinesContentPack, domain: FunctionalDomain, option_value: str
-) -> bool:
-    """Check if an option value is allowed for a specific domain based on applicability rules."""
-    not_relevant = FunctionalDomainStatus.FUNCTIONAL_DOMAIN_NOT_RELEVANT_TO_HOUSEHOLD.value
-    if option_value == not_relevant:
-        rules = pack.domain_applicability_rules.functional_domain_not_relevant_to_household
-        return rules.allowed_domains.get(domain, True)
-    return True

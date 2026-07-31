@@ -15,12 +15,14 @@ from pydantic import (
 
 from brif_ai.conversation.daily_routines.enums import (
     AnswerValidityState,
+    CorrectionReturnPolicy,
     CorrectionTarget,
     DayPatternStatus,
     DayPeriod,
     FunctionalDomain,
     HouseholdVariationStatus,
     RecurringDayContext,
+    RouteMatchType,
     TargetClosureEffect,
     WordingBranch,
 )
@@ -140,17 +142,35 @@ class MultiSelectContract(ContractModel):
 class ConditionalRoute(ContractModel):
     selector_value: CorrectionTarget
     target_question_id: ObjectId
-    return_step: ObjectId
+    return_policy: CorrectionReturnPolicy
 
 
 class FlowRule(ContractModel):
     rule_id: ObjectId
     source_question_id: ObjectId
-    expected_value: StrictStr
+    match_type: RouteMatchType = RouteMatchType.EXACT_OPTION
+    expected_value: StrictStr | None = None
     target_question_id: ObjectId | None = None
     target_module: NonEmptyString | None = None
     target_closure_effect: TargetClosureEffect
     follow_up_required: StrictBool
+
+    @model_validator(mode="after")
+    def validate_match_type_consistency(self) -> FlowRule:
+        if self.match_type == RouteMatchType.EXACT_OPTION:
+            if not self.expected_value or not self.expected_value.strip():
+                rid = self.rule_id
+                raise ValueError(
+                    f"FlowRule {rid!r} with EXACT_OPTION match_type requires expected_value"
+                )
+        else:
+            if self.expected_value is not None:
+                rid = self.rule_id
+                mtype = self.match_type.value
+                raise ValueError(
+                    f"FlowRule {rid!r} with {mtype!r} match_type must not specify expected_value"
+                )
+        return self
 
 
 class SummaryDomainStatusTemplate(ContractModel):

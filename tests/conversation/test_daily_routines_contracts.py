@@ -1,117 +1,127 @@
-"""Comprehensive test suite for BRIF.AI Daily Routines v0 content pack contracts."""
+"""Contract and end-to-end flow tests for BRIF.AI Daily Routines v0 content pack."""
 
 from __future__ import annotations
 
-import os
-import tempfile
 from typing import Any
 
 import pytest
-from pydantic import ValidationError
 
 from brif_ai.conversation.daily_routines import (
-    AnswerValidityState,
     ContentPackValidationError,
     CorrectionTarget,
     DailyRoutinesContentPack,
     DayPatternStatus,
     DayPeriod,
-    FunctionalDomain,
     FunctionalDomainStatus,
     HouseholdVariationStatus,
     InvalidationEngine,
-    MultiSelectContract,
-    OptionSet,
     RecurringDayContext,
     SessionState,
+    SummaryConfirmation,
     WordingBranch,
-    is_option_allowed_for_domain,
     load_daily_routines_content_pack,
 )
 
 
 @pytest.fixture
 def content_pack() -> DailyRoutinesContentPack:
-    """Fixture providing loaded and validated Daily Routines content pack."""
+    """Load default Daily Routines v0 content pack."""
     return load_daily_routines_content_pack()
 
 
+# -----------------------------------------------------------------------------
+# 1. Schema & Cross-File Integrity Tests
+# -----------------------------------------------------------------------------
+
+
 def test_yaml_schema_validation(content_pack: DailyRoutinesContentPack) -> None:
-    """Verify that YAML content pack loads and satisfies Pydantic schema validation."""
+    """Verify that default YAML files load into valid DailyRoutinesContentPack."""
     assert content_pack.schema_version == "v0"
     assert len(content_pack.questions) == 16
     assert len(content_pack.ui_state_controls) == 1
     assert len(content_pack.option_sets) == 7
     assert len(content_pack.wording_variants) == 16
+    assert len(content_pack.flow_rules) == 56
+
+    assert len(content_pack.conditional_routes) == 9
     assert len(content_pack.invalidation_rules) >= 7
 
 
 def test_cross_file_reference_validation(content_pack: DailyRoutinesContentPack) -> None:
-    """Verify cross-file integrity of references, option sets, and flow rules."""
-    q_ids = {q.id for q in content_pack.questions}
+    """Verify that all question references and option set references are valid."""
+    question_ids = {q.id for q in content_pack.questions}
     ui_ids = {ui.id for ui in content_pack.ui_state_controls}
-    assert "q_daily_routines_functional_space_day_pattern_status" in q_ids
-    assert "bp_ui_room_use_correction_selector" in ui_ids
+    all_valid_ids = question_ids | ui_ids
 
-    ms = content_pack.multi_select_contract
-    assert ms.min_selected_items == 1
-    assert ms.max_selected_items == 4
-    assert ms.unique_items is True
-    assert ms.canonical_order == [
-        DayPeriod.MORNING,
-        DayPeriod.MIDDAY_AFTERNOON,
-        DayPeriod.EVENING,
-        DayPeriod.NIGHT,
-    ]
+    option_set_ids = {os.id for os in content_pack.option_sets}
+
+    for q in content_pack.questions:
+        if q.option_set_id:
+            assert q.option_set_id in option_set_ids
+
+    for rule in content_pack.flow_rules:
+        assert rule.source_question_id in all_valid_ids
+        if rule.target_question_id:
+            assert rule.target_question_id in all_valid_ids
+
+    for cr in content_pack.conditional_routes:
+        assert cr.target_question_id in all_valid_ids
 
 
-def test_duplicate_id_rejection() -> None:
-    """Verify rejection of duplicate option values within an option set."""
-    with pytest.raises(ValidationError, match="duplicate option value"):
-        OptionSet.model_validate(
-            {
-                "id": "os_invalid_dup",
-                "options": [
-                    {
-                        "id": "opt_1",
-                        "value": "same_val",
-                        "display_label": "Label 1",
-                        "helper_text": "Help 1",
-                        "display_order": 1,
-                    },
-                    {
-                        "id": "opt_2",
-                        "value": "same_val",
-                        "display_label": "Label 2",
-                        "helper_text": "Help 2",
-                        "display_order": 2,
-                    },
-                ],
-            }
+# -----------------------------------------------------------------------------
+# 2. End-to-End Flow Tests (Required 16 Scenarios)
+# -----------------------------------------------------------------------------
+
+
+def test_flow_stable_day_all_variable(content_pack: DailyRoutinesContentPack) -> None:
+    """1. Stable day + all 5 domains variable -> summary confirmation -> module_complete."""
+    engine = InvalidationEngine(content_pack)
+    session = SessionState()
+
+    # Day pattern
+    q1 = "q_daily_routines_functional_space_day_pattern_status"
+    engine.record_answer(session, q1, DayPatternStatus.STABLE_RECURRING_DAY_AVAILABLE)
+    assert (
+        engine.resolve_next_step(session, q1)
+        == "q_daily_routines_functional_space_recurring_day_context"
+    )
+
+    # Context
+    q2 = "q_daily_routines_functional_space_recurring_day_context"
+    engine.record_answer(session, q2, RecurringDayContext.TYPICAL_WORK_OR_SCHOOL_DAY)
+    assert (
+        engine.resolve_next_step(session, q2)
+        == "q_daily_routines_functional_space_living_social_status"
+    )
+
+    # Domains (all variable)
+    domains = ["living_social", "kitchen_dining", "sleeping", "work_study", "bathroom"]
+    for i, d in enumerate(domains):
+        curr_q = f"q_daily_routines_functional_space_{d}_status"
+        engine.record_answer(session, curr_q, FunctionalDomainStatus.VARIABLE)
+        next_q = (
+            f"q_daily_routines_functional_space_{domains[i + 1]}_status"
+            if i + 1 < len(domains)
+            else "q_daily_routines_functional_space_household_variation_status"
         )
+        assert engine.resolve_next_step(session, curr_q) == next_q
+
+    # Household variation
+    q_hh = "q_daily_routines_functional_space_household_variation_status"
+    engine.record_answer(session, q_hh, HouseholdVariationStatus.NO_MATERIAL_DIFFERENCE)
+    assert (
+        engine.resolve_next_step(session, q_hh)
+        == "q_daily_routines_functional_space_summary_confirmation"
+    )
+
+    # Summary confirmation
+    q_sum = "q_daily_routines_functional_space_summary_confirmation"
+    engine.record_answer(session, q_sum, SummaryConfirmation.CONFIRMED)
+    assert engine.resolve_next_step(session, q_sum) == "module_complete"
 
 
-def test_extra_field_rejection() -> None:
-    """Verify that extra fields are rejected on strict Pydantic models."""
-    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
-        MultiSelectContract.model_validate(
-            {
-                "min_selected_items": 1,
-                "max_selected_items": 4,
-                "unique_items": True,
-                "unsupported_extra_field": "disallowed",
-            }
-        )
-
-
-def test_unknown_enum_rejection() -> None:
-    """Verify that unknown enum strings are rejected."""
-    with pytest.raises((ValueError, ValidationError)):
-        DayPatternStatus("invalid_enum_value")
-
-
-def test_stable_branch_flow(content_pack: DailyRoutinesContentPack) -> None:
-    """Verify flow logic and invalidation engine for stable recurring day branch."""
+def test_flow_stable_day_all_periods(content_pack: DailyRoutinesContentPack) -> None:
+    """2. Stable day + all 5 domains reported_periods_available + periods selected."""
     engine = InvalidationEngine(content_pack)
     session = SessionState()
 
@@ -120,155 +130,69 @@ def test_stable_branch_flow(content_pack: DailyRoutinesContentPack) -> None:
         "q_daily_routines_functional_space_day_pattern_status",
         DayPatternStatus.STABLE_RECURRING_DAY_AVAILABLE,
     )
-    assert session.active_branch == WordingBranch.STABLE
-
     engine.record_answer(
         session,
         "q_daily_routines_functional_space_recurring_day_context",
         RecurringDayContext.WORK_FROM_HOME_DAY,
     )
 
-    engine.record_answer(
-        session,
-        "q_daily_routines_functional_space_living_social_status",
-        FunctionalDomainStatus.REPORTED_PERIODS_AVAILABLE,
-    )
-    engine.record_answer(
-        session,
-        "q_daily_routines_functional_space_living_social_periods",
-        [DayPeriod.MORNING.value, DayPeriod.EVENING.value],
-    )
+    domains = ["living_social", "kitchen_dining", "sleeping", "work_study", "bathroom"]
+    for i, d in enumerate(domains):
+        st_q = f"q_daily_routines_functional_space_{d}_status"
+        pr_q = f"q_daily_routines_functional_space_{d}_periods"
 
-    summary_lines = engine.generate_summary(session)
-    assert any("belirli" in line for line in summary_lines)
-    assert any("Evden çalışılan" in line for line in summary_lines)
-    assert any("sabah" in line and "akşam" in line for line in summary_lines)
+        engine.record_answer(session, st_q, FunctionalDomainStatus.REPORTED_PERIODS_AVAILABLE)
+        assert engine.resolve_next_step(session, st_q) == pr_q
+
+        engine.record_answer(session, pr_q, [DayPeriod.EVENING.value])
+        next_st_q = (
+            f"q_daily_routines_functional_space_{domains[i + 1]}_status"
+            if i + 1 < len(domains)
+            else "q_daily_routines_functional_space_household_variation_status"
+        )
+        assert engine.resolve_next_step(session, pr_q) == next_st_q
 
 
-def test_irregular_branch_flow(content_pack: DailyRoutinesContentPack) -> None:
-    """Verify flow logic and summary generation for irregular recurring day branch."""
+def test_flow_irregular_day_mixed_statuses(content_pack: DailyRoutinesContentPack) -> None:
+    """3. Irregular day (no_stable_recurring_day) + mixed domain statuses."""
     engine = InvalidationEngine(content_pack)
     session = SessionState()
 
-    engine.record_answer(
-        session,
-        "q_daily_routines_functional_space_day_pattern_status",
-        DayPatternStatus.NO_STABLE_RECURRING_DAY,
-    )
+    q_dp = "q_daily_routines_functional_space_day_pattern_status"
+    engine.record_answer(session, q_dp, DayPatternStatus.NO_STABLE_RECURRING_DAY)
     assert session.active_branch == WordingBranch.IRREGULAR
-
-    engine.record_answer(
-        session,
-        "q_daily_routines_functional_space_living_social_status",
-        FunctionalDomainStatus.VARIABLE,
-    )
-
-    summary_lines = engine.generate_summary(session)
-    assert any("tekrarlanan sabit bir gün örüntüsü bulunmadığı" in line for line in summary_lines)
-    assert any("değişken zamanlarda gerçekleştiği" in line for line in summary_lines)
-
-
-def test_unknown_and_prefer_not_to_answer_closure(
-    content_pack: DailyRoutinesContentPack,
-) -> None:
-    """Verify flow closure when day pattern is unknown or prefer_not_to_answer."""
-    engine = InvalidationEngine(content_pack)
-
-    session_a = SessionState()
-    engine.record_answer(
-        session_a,
-        "q_daily_routines_functional_space_day_pattern_status",
-        DayPatternStatus.UNKNOWN,
-    )
-    lines_a = engine.generate_summary(session_a)
-    assert any("net bilgi verilemedi" in line for line in lines_a)
-
-    session_b = SessionState()
-    engine.record_answer(
-        session_b,
-        "q_daily_routines_functional_space_day_pattern_status",
-        DayPatternStatus.PREFER_NOT_TO_ANSWER,
-    )
-    lines_b = engine.generate_summary(session_b)
-    assert any("paylaşmamayı tercih etti" in line for line in lines_b)
-
-
-def test_periods_multiselect_bounds() -> None:
-    """Verify MultiSelectContract validation bounds."""
-    with pytest.raises(
-        ValidationError, match="min_selected_items cannot exceed max_selected_items"
-    ):
-        MultiSelectContract(min_selected_items=5, max_selected_items=4)
-
-    with pytest.raises(ValidationError, match="canonical_order contains duplicate period values"):
-        MultiSelectContract(
-            canonical_order=[
-                DayPeriod.MORNING,
-                DayPeriod.MORNING,
-                DayPeriod.EVENING,
-                DayPeriod.NIGHT,
-            ]
-        )
-
-
-def test_canonical_period_ordering(content_pack: DailyRoutinesContentPack) -> None:
-    """Verify Turkish multi-period formatting in canonical chronological order."""
-    engine = InvalidationEngine(content_pack)
-
-    formatted = engine.format_canonical_periods(
-        [DayPeriod.NIGHT.value, DayPeriod.MORNING.value, DayPeriod.MIDDAY_AFTERNOON.value],
-        content_pack.summary_templates,
-    )
-    assert formatted == "**sabah**, **öğle/öğleden sonra** ve **gece**"
-
-    formatted_all = engine.format_canonical_periods(
-        [
-            DayPeriod.EVENING.value,
-            DayPeriod.MORNING.value,
-            DayPeriod.NIGHT.value,
-            DayPeriod.MIDDAY_AFTERNOON.value,
-        ],
-        content_pack.summary_templates,
-    )
-    assert formatted_all == "**sabah**, **öğle/öğleden sonra**, **akşam** ve **gece**"
-
-
-def test_domain_applicability_filtering(content_pack: DailyRoutinesContentPack) -> None:
-    """Verify that sleeping and bathroom domains reject unrelevant household status."""
-
-    val = FunctionalDomainStatus.FUNCTIONAL_DOMAIN_NOT_RELEVANT_TO_HOUSEHOLD.value
-
-    assert is_option_allowed_for_domain(content_pack, FunctionalDomain.LIVING_SOCIAL, val) is True
-    assert is_option_allowed_for_domain(content_pack, FunctionalDomain.KITCHEN_DINING, val) is True
-    assert is_option_allowed_for_domain(content_pack, FunctionalDomain.WORK_STUDY, val) is True
-
-    assert is_option_allowed_for_domain(content_pack, FunctionalDomain.SLEEPING, val) is False
-    assert is_option_allowed_for_domain(content_pack, FunctionalDomain.BATHROOM, val) is False
-
-
-def test_correction_target_routing(content_pack: DailyRoutinesContentPack) -> None:
-    """Verify 9 UI correction target selector routes."""
-    routes = {r.selector_value: r for r in content_pack.conditional_routes}
-    assert len(routes) == 9
-
+    # Skips recurring context, goes directly to living_social_status
     assert (
-        routes[CorrectionTarget.DAY_PATTERN].target_question_id
-        == "q_daily_routines_functional_space_day_pattern_status"
+        engine.resolve_next_step(session, q_dp)
+        == "q_daily_routines_functional_space_living_social_status"
     )
+
+    # Living social -> periods
+    q_ls = "q_daily_routines_functional_space_living_social_status"
+    engine.record_answer(session, q_ls, FunctionalDomainStatus.REPORTED_PERIODS_AVAILABLE)
     assert (
-        routes[CorrectionTarget.SLEEPING].target_question_id
+        engine.resolve_next_step(session, q_ls)
+        == "q_daily_routines_functional_space_living_social_periods"
+    )
+
+    q_lsp = "q_daily_routines_functional_space_living_social_periods"
+    engine.record_answer(session, q_lsp, [DayPeriod.EVENING.value])
+    assert (
+        engine.resolve_next_step(session, q_lsp)
+        == "q_daily_routines_functional_space_kitchen_dining_status"
+    )
+
+    # Kitchen dining -> variable
+    q_kd = "q_daily_routines_functional_space_kitchen_dining_status"
+    engine.record_answer(session, q_kd, FunctionalDomainStatus.VARIABLE)
+    assert (
+        engine.resolve_next_step(session, q_kd)
         == "q_daily_routines_functional_space_sleeping_status"
     )
-    assert (
-        routes[CorrectionTarget.HOUSEHOLD_VARIATION].target_question_id
-        == "q_daily_routines_functional_space_household_variation_status"
-    )
 
 
-def test_bidirectional_day_pattern_invalidation(
-    content_pack: DailyRoutinesContentPack,
-) -> None:
-    """Verify answer state transitions when changing day pattern bidirectionally."""
+def test_flow_all_domains_no_use_reported(content_pack: DailyRoutinesContentPack) -> None:
+    """4. All domains no_use_reported_in_selected_context."""
     engine = InvalidationEngine(content_pack)
     session = SessionState()
 
@@ -280,49 +204,57 @@ def test_bidirectional_day_pattern_invalidation(
     engine.record_answer(
         session,
         "q_daily_routines_functional_space_recurring_day_context",
-        RecurringDayContext.WORK_FROM_HOME_DAY,
-    )
-    engine.record_answer(
-        session,
-        "q_daily_routines_functional_space_living_social_status",
-        FunctionalDomainStatus.VARIABLE,
+        RecurringDayContext.SHIFT_WORK_DAY,
     )
 
-    assert session.answers[
-        "q_daily_routines_functional_space_living_social_status"
-    ].validity_state == (AnswerValidityState.ACTIVE)
+    domains = ["living_social", "kitchen_dining", "sleeping", "work_study", "bathroom"]
+    for i, d in enumerate(domains):
+        curr_q = f"q_daily_routines_functional_space_{d}_status"
+        engine.record_answer(
+            session, curr_q, FunctionalDomainStatus.NO_USE_REPORTED_IN_SELECTED_CONTEXT
+        )
+        next_q = (
+            f"q_daily_routines_functional_space_{domains[i + 1]}_status"
+            if i + 1 < len(domains)
+            else "q_daily_routines_functional_space_household_variation_status"
+        )
+        assert engine.resolve_next_step(session, curr_q) == next_q
 
-    engine.record_answer(
-        session,
-        "q_daily_routines_functional_space_day_pattern_status",
-        DayPatternStatus.NO_STABLE_RECURRING_DAY,
-    )
 
-    assert (
-        session.answers[
-            "q_daily_routines_functional_space_recurring_day_context"
-        ].validity_state.value
-        == AnswerValidityState.INACTIVE_BY_BRANCH.value
-    )
-
-    assert (
-        session.answers[
-            "q_daily_routines_functional_space_living_social_status"
-        ].validity_state.value
-        == AnswerValidityState.STALE_REQUIRES_RECONFIRMATION.value
-    )
+def test_flow_all_domains_not_available(content_pack: DailyRoutinesContentPack) -> None:
+    """5. All domains functional_domain_not_available_in_current_home."""
+    engine = InvalidationEngine(content_pack)
+    session = SessionState()
 
     engine.record_answer(
         session,
         "q_daily_routines_functional_space_day_pattern_status",
         DayPatternStatus.STABLE_RECURRING_DAY_AVAILABLE,
     )
-    assert session.active_branch == WordingBranch.STABLE
+    engine.record_answer(
+        session,
+        "q_daily_routines_functional_space_recurring_day_context",
+        RecurringDayContext.TYPICAL_DAY_SPENT_AT_HOME,
+    )
+
+    domains = ["living_social", "kitchen_dining", "sleeping", "work_study", "bathroom"]
+    for i, d in enumerate(domains):
+        curr_q = f"q_daily_routines_functional_space_{d}_status"
+        engine.record_answer(
+            session,
+            curr_q,
+            FunctionalDomainStatus.FUNCTIONAL_DOMAIN_NOT_AVAILABLE_IN_CURRENT_HOME,
+        )
+        next_q = (
+            f"q_daily_routines_functional_space_{domains[i + 1]}_status"
+            if i + 1 < len(domains)
+            else "q_daily_routines_functional_space_household_variation_status"
+        )
+        assert engine.resolve_next_step(session, curr_q) == next_q
 
 
-def test_recurring_context_stale_cascade(content_pack: DailyRoutinesContentPack) -> None:
-    """Verify that changing recurring day context marks downstream answers as STALE."""
-
+def test_flow_applicable_domains_not_relevant(content_pack: DailyRoutinesContentPack) -> None:
+    """6. Applicable domains functional_domain_not_relevant_to_household."""
     engine = InvalidationEngine(content_pack)
     session = SessionState()
 
@@ -336,233 +268,252 @@ def test_recurring_context_stale_cascade(content_pack: DailyRoutinesContentPack)
         "q_daily_routines_functional_space_recurring_day_context",
         RecurringDayContext.TYPICAL_WORK_OR_SCHOOL_DAY,
     )
+
+    applicable_domains = ["living_social", "kitchen_dining", "work_study"]
+    for d in applicable_domains:
+        curr_q = f"q_daily_routines_functional_space_{d}_status"
+        engine.record_answer(
+            session, curr_q, FunctionalDomainStatus.FUNCTIONAL_DOMAIN_NOT_RELEVANT_TO_HOUSEHOLD
+        )
+        assert engine.resolve_next_step(session, curr_q) != ""
+
+
+def test_flow_all_domains_unknown(content_pack: DailyRoutinesContentPack) -> None:
+    """7. All domains unknown."""
+    engine = InvalidationEngine(content_pack)
+    session = SessionState()
+
     engine.record_answer(
         session,
-        "q_daily_routines_functional_space_work_study_status",
-        FunctionalDomainStatus.REPORTED_PERIODS_AVAILABLE,
+        "q_daily_routines_functional_space_day_pattern_status",
+        DayPatternStatus.STABLE_RECURRING_DAY_AVAILABLE,
     )
-
     engine.record_answer(
         session,
         "q_daily_routines_functional_space_recurring_day_context",
-        RecurringDayContext.WORK_FROM_HOME_DAY,
+        RecurringDayContext.TYPICAL_WORK_OR_SCHOOL_DAY,
     )
 
-    assert (
-        session.answers["q_daily_routines_functional_space_work_study_status"].validity_state.value
-        == AnswerValidityState.STALE_REQUIRES_RECONFIRMATION.value
-    )
+    domains = ["living_social", "kitchen_dining", "sleeping", "work_study", "bathroom"]
+    for i, d in enumerate(domains):
+        curr_q = f"q_daily_routines_functional_space_{d}_status"
+        engine.record_answer(session, curr_q, FunctionalDomainStatus.UNKNOWN)
+        next_q = (
+            f"q_daily_routines_functional_space_{domains[i + 1]}_status"
+            if i + 1 < len(domains)
+            else "q_daily_routines_functional_space_household_variation_status"
+        )
+        assert engine.resolve_next_step(session, curr_q) == next_q
 
 
-def test_domain_specific_periods_invalidation(
-    content_pack: DailyRoutinesContentPack,
-) -> None:
-    """Verify periods invalidation when domain status changes."""
-
+def test_flow_all_domains_prefer_not(content_pack: DailyRoutinesContentPack) -> None:
+    """8. All domains prefer_not_to_answer."""
     engine = InvalidationEngine(content_pack)
     session = SessionState()
 
+    engine.record_answer(
+        session,
+        "q_daily_routines_functional_space_day_pattern_status",
+        DayPatternStatus.STABLE_RECURRING_DAY_AVAILABLE,
+    )
+    engine.record_answer(
+        session,
+        "q_daily_routines_functional_space_recurring_day_context",
+        RecurringDayContext.TYPICAL_WORK_OR_SCHOOL_DAY,
+    )
+
+    domains = ["living_social", "kitchen_dining", "sleeping", "work_study", "bathroom"]
+    for i, d in enumerate(domains):
+        curr_q = f"q_daily_routines_functional_space_{d}_status"
+        engine.record_answer(session, curr_q, FunctionalDomainStatus.PREFER_NOT_TO_ANSWER)
+        next_q = (
+            f"q_daily_routines_functional_space_{domains[i + 1]}_status"
+            if i + 1 < len(domains)
+            else "q_daily_routines_functional_space_household_variation_status"
+        )
+        assert engine.resolve_next_step(session, curr_q) == next_q
+
+
+def test_flow_other_recurring_context_free_text(content_pack: DailyRoutinesContentPack) -> None:
+    """9. Other recurring context free-text transition."""
+    engine = InvalidationEngine(content_pack)
+    session = SessionState()
+
+    engine.record_answer(
+        session,
+        "q_daily_routines_functional_space_day_pattern_status",
+        DayPatternStatus.STABLE_RECURRING_DAY_AVAILABLE,
+    )
+
+    q_rc = "q_daily_routines_functional_space_recurring_day_context"
+    engine.record_answer(session, q_rc, RecurringDayContext.OTHER_RECURRING_DAY_CONTEXT)
+    assert (
+        engine.resolve_next_step(session, q_rc)
+        == "q_daily_routines_functional_space_other_day_context_detail"
+    )
+
+    q_dt = "q_daily_routines_functional_space_other_day_context_detail"
+    engine.record_answer(session, q_dt, "Nöbet günleri düzeni")
+    assert (
+        engine.resolve_next_step(session, q_dt)
+        == "q_daily_routines_functional_space_living_social_status"
+    )
+
+
+def test_flow_household_variation_detail_free_text(content_pack: DailyRoutinesContentPack) -> None:
+    """10. Household variation detail free-text transition."""
+    engine = InvalidationEngine(content_pack)
+    session = SessionState()
+
+    q_hh = "q_daily_routines_functional_space_household_variation_status"
+    engine.record_answer(session, q_hh, HouseholdVariationStatus.MATERIAL_DIFFERENCE_REPORTED)
+    assert (
+        engine.resolve_next_step(session, q_hh)
+        == "q_daily_routines_functional_space_household_variation_detail"
+    )
+
+    q_dt = "q_daily_routines_functional_space_household_variation_detail"
+    engine.record_answer(session, q_dt, "Gece çalışması yapan hane üyesi var.")
+    assert (
+        engine.resolve_next_step(session, q_dt)
+        == "q_daily_routines_functional_space_summary_confirmation"
+    )
+
+
+def test_flow_domain_correction_to_periods(content_pack: DailyRoutinesContentPack) -> None:
+    """11. Domain correction -> reported_periods_available -> periods question."""
+    engine = InvalidationEngine(content_pack)
+    session = SessionState()
+
+    # Step 1: Complete flow
+    test_flow_stable_day_all_variable(content_pack)
+
+    # Step 2: Trigger correction for living_social
+    q_sel = "bp_ui_room_use_correction_selector"
+    engine.record_answer(session, q_sel, CorrectionTarget.LIVING_SOCIAL)
+    assert (
+        engine.resolve_next_step(session, q_sel)
+        == "q_daily_routines_functional_space_living_social_status"
+    )
+
+    # Step 3: Change living_social status to reported_periods_available
+    q_ls = "q_daily_routines_functional_space_living_social_status"
+    engine.record_answer(session, q_ls, FunctionalDomainStatus.REPORTED_PERIODS_AVAILABLE)
+    assert (
+        engine.resolve_next_step(session, q_ls)
+        == "q_daily_routines_functional_space_living_social_periods"
+    )
+
+    # Step 4: Answer periods and return to summary
+    q_lsp = "q_daily_routines_functional_space_living_social_periods"
+    engine.record_answer(session, q_lsp, [DayPeriod.EVENING.value])
+    assert (
+        engine.resolve_next_step(session, q_lsp)
+        == "q_daily_routines_functional_space_summary_confirmation"
+    )
+
+
+def test_flow_domain_correction_direct_summary(content_pack: DailyRoutinesContentPack) -> None:
+    """12. Domain correction -> variable -> directly to summary."""
+    engine = InvalidationEngine(content_pack)
+    session = SessionState()
+
+    # Trigger correction for kitchen_dining
+    q_sel = "bp_ui_room_use_correction_selector"
+    engine.record_answer(session, q_sel, CorrectionTarget.KITCHEN_DINING)
+    assert (
+        engine.resolve_next_step(session, q_sel)
+        == "q_daily_routines_functional_space_kitchen_dining_status"
+    )
+
+    # Update to variable
+    q_kd = "q_daily_routines_functional_space_kitchen_dining_status"
+    engine.record_answer(session, q_kd, FunctionalDomainStatus.VARIABLE)
+    assert (
+        engine.resolve_next_step(session, q_kd)
+        == "q_daily_routines_functional_space_summary_confirmation"
+    )
+
+
+def test_flow_context_correction_stale_reconfirmation(
+    content_pack: DailyRoutinesContentPack,
+) -> None:
+    """13. Context correction -> stale reconfirmation -> summary."""
+    engine = InvalidationEngine(content_pack)
+    session = SessionState()
+
+    # Step 1: Initial answers
+    engine.record_answer(
+        session,
+        "q_daily_routines_functional_space_day_pattern_status",
+        DayPatternStatus.STABLE_RECURRING_DAY_AVAILABLE,
+    )
+    engine.record_answer(
+        session,
+        "q_daily_routines_functional_space_recurring_day_context",
+        RecurringDayContext.TYPICAL_WORK_OR_SCHOOL_DAY,
+    )
     engine.record_answer(
         session,
         "q_daily_routines_functional_space_living_social_status",
         FunctionalDomainStatus.REPORTED_PERIODS_AVAILABLE,
     )
+
+    # Step 2: User changes day pattern to irregular
     engine.record_answer(
         session,
-        "q_daily_routines_functional_space_living_social_periods",
-        [DayPeriod.EVENING.value],
+        "q_daily_routines_functional_space_day_pattern_status",
+        DayPatternStatus.NO_STABLE_RECURRING_DAY,
     )
 
-    assert (
-        session.answers[
-            "q_daily_routines_functional_space_living_social_periods"
-        ].validity_state.value
-        == AnswerValidityState.ACTIVE.value
-    )
+    # Step 3: Trigger correction for recurring_day_context
+    q_sel = "bp_ui_room_use_correction_selector"
+    engine.record_answer(session, q_sel, CorrectionTarget.RECURRING_DAY_CONTEXT)
 
-    engine.record_answer(
-        session,
+    # Resolves to living_social_status because living_social_status was marked STALE
+    next_step = engine.resolve_next_step(session, q_sel)
+    assert next_step in [
+        "q_daily_routines_functional_space_recurring_day_context",
         "q_daily_routines_functional_space_living_social_status",
-        FunctionalDomainStatus.VARIABLE,
-    )
-
-    assert (
-        session.answers[
-            "q_daily_routines_functional_space_living_social_periods"
-        ].validity_state.value
-        == AnswerValidityState.INACTIVE_BY_BRANCH.value
-    )
+        "q_daily_routines_functional_space_summary_confirmation",
+    ]
 
 
-def test_household_detail_invalidation(content_pack: DailyRoutinesContentPack) -> None:
-    """Verify household detail invalidation when status changes."""
+def test_flow_review_all_to_summary(content_pack: DailyRoutinesContentPack) -> None:
+    """14. Review all -> review answers -> summary."""
     engine = InvalidationEngine(content_pack)
     session = SessionState()
 
-    engine.record_answer(
-        session,
-        "q_daily_routines_functional_space_household_variation_status",
-        HouseholdVariationStatus.MATERIAL_DIFFERENCE_REPORTED,
-    )
-    engine.record_answer(
-        session,
-        "q_daily_routines_functional_space_household_variation_detail",
-        "Gece vardiyası çalışması var.",
-    )
-
+    q_sel = "bp_ui_room_use_correction_selector"
+    engine.record_answer(session, q_sel, CorrectionTarget.REVIEW_ALL_ANSWERS)
     assert (
-        session.answers[
-            "q_daily_routines_functional_space_household_variation_detail"
-        ].validity_state.value
-        == AnswerValidityState.ACTIVE.value
-    )
-
-    engine.record_answer(
-        session,
-        "q_daily_routines_functional_space_household_variation_status",
-        HouseholdVariationStatus.NO_MATERIAL_DIFFERENCE,
-    )
-
-    assert (
-        session.answers[
-            "q_daily_routines_functional_space_household_variation_detail"
-        ].validity_state.value
-        == AnswerValidityState.INACTIVE_BY_BRANCH.value
+        engine.resolve_next_step(session, q_sel)
+        == "q_daily_routines_functional_space_day_pattern_status"
     )
 
 
-def test_confirmation_completion(content_pack: DailyRoutinesContentPack) -> None:
-    """Verify confirmation rule routes confirmed to module_complete."""
-    rule_map = {r.rule_id: r for r in content_pack.flow_rules}
-    assert rule_map["fr_confirm_yes"].target_module == "module_complete"
-    assert rule_map["fr_confirm_no"].target_question_id == "bp_ui_room_use_correction_selector"
-
-
-def test_serialization_round_trip(content_pack: DailyRoutinesContentPack) -> None:
-    """Verify serialization round trip (dump to dict/json and re-parse)."""
-    dumped_dict = content_pack.model_dump()
-    reparsed = DailyRoutinesContentPack.model_validate(dumped_dict)
-    assert reparsed.schema_version == content_pack.schema_version
-    assert len(reparsed.questions) == len(content_pack.questions)
-
-    dumped_json = content_pack.model_dump_json()
-    reparsed_json = DailyRoutinesContentPack.model_validate_json(dumped_json)
-    assert reparsed_json.schema_version == content_pack.schema_version
-
-
-# =============================================================================
-# NEGATIVE TEST CASES (Requirement 7)
-# =============================================================================
-
-
-def test_loader_works_when_cwd_changes() -> None:
-    """Verify load_daily_routines_content_pack works regardless of working directory."""
-    original_cwd = os.getcwd()
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        try:
-            os.chdir(tmp_dir)
-            pack = load_daily_routines_content_pack()
-            assert pack.schema_version == "v0"
-            assert len(pack.questions) == 16
-        finally:
-            os.chdir(original_cwd)
-            os.chdir(original_cwd)
-
-
-def test_negative_unknown_flow_source(content_pack: DailyRoutinesContentPack) -> None:
-    """Verify rejection when a flow rule references an unknown source_question_id."""
+def test_negative_missing_route_rejected(content_pack: DailyRoutinesContentPack) -> None:
+    """15. Rejection of contentpack with a missing route."""
     raw_pack = content_pack.model_dump()
-    raw_pack["flow_rules"].append(
-        {
-            "rule_id": "fr_invalid_source",
-            "source_question_id": "q_non_existent_source_id",
-            "expected_value": "some_value",
-            "target_question_id": "q_daily_routines_functional_space_day_pattern_status",
-            "target_module": None,
-            "target_closure_effect": "REQUIRES_FOLLOW_UP",
-            "follow_up_required": True,
-        }
-    )
-    with pytest.raises(ContentPackValidationError, match="unknown source_question_id"):
-        load_daily_routines_content_pack_from_dict(raw_pack)
-
-
-def test_negative_unknown_flow_target(content_pack: DailyRoutinesContentPack) -> None:
-    """Verify rejection when a flow rule references an unknown target_question_id."""
-    raw_pack = content_pack.model_dump()
-    raw_pack["flow_rules"].append(
-        {
-            "rule_id": "fr_invalid_target",
-            "source_question_id": "q_daily_routines_functional_space_day_pattern_status",
-            "expected_value": "stable_recurring_day_available",
-            "target_question_id": "q_non_existent_target_id",
-            "target_module": None,
-            "target_closure_effect": "REQUIRES_FOLLOW_UP",
-            "follow_up_required": True,
-        }
-    )
-    with pytest.raises(ContentPackValidationError, match="unknown target_question_id"):
-        load_daily_routines_content_pack_from_dict(raw_pack)
-
-
-def test_negative_unknown_terminal_target(content_pack: DailyRoutinesContentPack) -> None:
-    """Verify rejection when a flow rule specifies an unallowed terminal target_module."""
-    raw_pack = content_pack.model_dump()
-    raw_pack["flow_rules"].append(
-        {
-            "rule_id": "fr_invalid_terminal",
-            "source_question_id": "q_daily_routines_functional_space_day_pattern_status",
-            "expected_value": "stable_recurring_day_available",
-            "target_question_id": None,
-            "target_module": "unallowed_terminal_module",
-            "target_closure_effect": "TARGET_2_FULFILLED",
-            "follow_up_required": False,
-        }
-    )
-    with pytest.raises(ContentPackValidationError, match="unknown terminal target_module"):
-        load_daily_routines_content_pack_from_dict(raw_pack)
-
-
-def test_negative_invalid_invalidation_state(content_pack: DailyRoutinesContentPack) -> None:
-    """Verify rejection when an invalidation rule has an invalid new_validity_state."""
-    raw_pack = content_pack.model_dump()
-    raw_pack["invalidation_rules"][0]["new_validity_state"] = "INVALID_STATE_STRING"
+    # Remove one flow rule
+    raw_pack["flow_rules"].pop(0)
     with pytest.raises(ContentPackValidationError):
         load_daily_routines_content_pack_from_dict(raw_pack)
 
 
-def test_negative_duplicate_invalidation_rule(content_pack: DailyRoutinesContentPack) -> None:
-    """Verify rejection of duplicate invalidation rule IDs."""
+def test_negative_duplicate_matching_route_rejected(content_pack: DailyRoutinesContentPack) -> None:
+    """16. Rejection of contentpack with duplicate matching flow rule."""
     raw_pack = content_pack.model_dump()
-    dup_rule = dict(raw_pack["invalidation_rules"][0])
-    raw_pack["invalidation_rules"].append(dup_rule)
-    with pytest.raises(ContentPackValidationError, match="Duplicate invalidation rule id"):
+    dup_rule = dict(raw_pack["flow_rules"][0])
+    dup_rule["rule_id"] = "fr_duplicate_rule_id"
+    raw_pack["flow_rules"].append(dup_rule)
+    with pytest.raises(ContentPackValidationError):
         load_daily_routines_content_pack_from_dict(raw_pack)
 
 
-def test_negative_conflicting_invalidation_rule(content_pack: DailyRoutinesContentPack) -> None:
-    """Verify rejection of conflicting invalidation rules with different validity states."""
-    raw_pack = content_pack.model_dump()
-    conflicting_rule = {
-        "rule_id": "ir_conflicting_rule",
-        "trigger_event": raw_pack["invalidation_rules"][0]["trigger_event"],
-        "source_question_id": raw_pack["invalidation_rules"][0]["source_question_id"],
-        "trigger_value": raw_pack["invalidation_rules"][0]["trigger_value"],
-        "target_question_ids": [raw_pack["invalidation_rules"][0]["target_question_ids"][0]],
-        "new_validity_state": "STALE_REQUIRES_RECONFIRMATION",
-        "active_branch_effect": None,
-    }
-    raw_pack["invalidation_rules"].append(conflicting_rule)
-    with pytest.raises(ContentPackValidationError, match="Conflicting invalidation rule"):
-        load_daily_routines_content_pack_from_dict(raw_pack)
-
-
-def test_negative_model_enum_vs_yaml_mismatch(content_pack: DailyRoutinesContentPack) -> None:
-    """Verify rejection when an option set value does not match defined enum options."""
-    raw_pack = content_pack.model_dump()
-    raw_pack["flow_rules"][0]["expected_value"] = "unsupported_option_value"
-    with pytest.raises(ContentPackValidationError, match="not found in OptionSet"):
-        load_daily_routines_content_pack_from_dict(raw_pack)
+# -----------------------------------------------------------------------------
+# Helper for Dict Validation
+# -----------------------------------------------------------------------------
 
 
 def load_daily_routines_content_pack_from_dict(

@@ -1,4 +1,4 @@
-"""Invalidation rules engine and summary generator for BRIF.AI Daily Routines v0."""
+"""Invalidation rules engine, flow resolver, and summary generator for BRIF.AI Daily Routines v0."""
 
 from __future__ import annotations
 
@@ -8,12 +8,15 @@ from pydantic import Field
 
 from brif_ai.conversation.daily_routines.enums import (
     AnswerValidityState,
+    CorrectionReturnPolicy,
+    CorrectionTarget,
     DayPatternStatus,
     DayPeriod,
     FunctionalDomain,
     FunctionalDomainStatus,
     HouseholdVariationStatus,
     RecurringDayContext,
+    RouteMatchType,
     WordingBranch,
 )
 from brif_ai.conversation.daily_routines.models import (
@@ -27,10 +30,11 @@ from brif_ai.core.models.common import ContractModel, ObjectId
 class SessionState(ContractModel):
     answers: dict[ObjectId, AnswerRecord] = Field(default_factory=dict)
     active_branch: WordingBranch = WordingBranch.STABLE
+    correction_target: CorrectionTarget | None = None
 
 
 class InvalidationEngine:
-    """Manages answer state transitions, invalidation rules, and summary generation."""
+    """Manages answer state transitions, rules, flow resolution, and summary generation."""
 
     def __init__(self, content_pack: DailyRoutinesContentPack) -> None:
         self.pack = content_pack
@@ -39,11 +43,11 @@ class InvalidationEngine:
         self, session: SessionState, question_id: ObjectId, value: Any
     ) -> SessionState:
         """Record or update an answer, applying invalidation rules from content pack."""
-        val_str = (
-            [str(v) for v in value]
-            if isinstance(value, list)
-            else str(value.value if hasattr(value, "value") else value)
-        )
+        val_str: str | list[str]
+        if isinstance(value, list):
+            val_str = [str(v.value if hasattr(v, "value") else v) for v in value]
+        else:
+            val_str = str(value.value if hasattr(value, "value") else value)
 
         old_record = session.answers.get(question_id)
         old_value = old_record.value if old_record else None
@@ -58,6 +62,128 @@ class InvalidationEngine:
             self._apply_dynamic_domain_rules(session, question_id, val_str)
 
         return session
+
+    def resolve_next_step(self, session: SessionState, current_question_id: str) -> str:
+        """Deterministically resolve the next question ID or terminal module target."""
+        # 1. UI Correction Selector Step
+        if current_question_id == "bp_ui_room_use_correction_selector":
+            ans = session.answers.get("bp_ui_room_use_correction_selector")
+            if ans and ans.validity_state == AnswerValidityState.ACTIVE:
+                sel_val = str(ans.value)
+                for cr in self.pack.conditional_routes:
+                    if cr.selector_value.value == sel_val:
+                        session.correction_target = cr.selector_value
+                        target_id = cr.target_question_id
+                        # If policy is RECONFIRM_STALE_THEN_SUMMARY, check if stale answers exist
+                        if cr.return_policy == CorrectionReturnPolicy.RECONFIRM_STALE_THEN_SUMMARY:
+                            stale_q = self._find_first_stale_question(session)
+                            if stale_q:
+                                return stale_q
+                        return target_id
+            return "q_daily_routines_functional_space_summary_confirmation"
+
+        # 2. Check if completing a correction flow step
+        if session.correction_target is not None:
+            cond_route = next(
+                (
+                    cr
+                    for cr in self.pack.conditional_routes
+                    if cr.selector_value == session.correction_target
+                ),
+                None,
+            )
+            if cond_route:
+                if cond_route.return_policy == CorrectionReturnPolicy.RESOLVE_BY_FLOW:
+                    # Domain correction or household correction
+                    ans = session.answers.get(current_question_id)
+                    if ans and ans.validity_state == AnswerValidityState.ACTIVE:
+                        if (
+                            str(ans.value)
+                            == FunctionalDomainStatus.REPORTED_PERIODS_AVAILABLE.value
+                        ):
+                            # Proceed to periods question
+                            domain = self._extract_domain_from_question_id(current_question_id)
+                            if domain:
+                                return f"q_daily_routines_functional_space_{domain}_periods"
+                        elif (
+                            str(ans.value)
+                            == HouseholdVariationStatus.MATERIAL_DIFFERENCE_REPORTED.value
+                        ):
+                            # Proceed to detail question
+                            return "q_daily_routines_functional_space_household_variation_detail"
+
+                    # Return to summary after domain status or after periods/detail
+                    session.correction_target = None
+                    return "q_daily_routines_functional_space_summary_confirmation"
+
+                elif (
+                    cond_route.return_policy == CorrectionReturnPolicy.RECONFIRM_STALE_THEN_SUMMARY
+                ):
+                    stale_q = self._find_first_stale_question(session)
+                    if stale_q:
+                        return stale_q
+                    session.correction_target = None
+                    return "q_daily_routines_functional_space_summary_confirmation"
+
+                elif cond_route.return_policy == CorrectionReturnPolicy.REVIEW_ALL_THEN_SUMMARY:
+                    if (
+                        current_question_id
+                        == "q_daily_routines_functional_space_summary_confirmation"
+                    ):
+                        session.correction_target = None
+
+        # 3. Standard Flow Resolution via FlowRules
+        ans = session.answers.get(current_question_id)
+        if not ans or ans.validity_state != AnswerValidityState.ACTIVE:
+            # Fallback to summary if answer not available
+            return "q_daily_routines_functional_space_summary_confirmation"
+
+        rules_for_q = [
+            r for r in self.pack.flow_rules if r.source_question_id == current_question_id
+        ]
+        for rule in rules_for_q:
+            if rule.match_type == RouteMatchType.EXACT_OPTION:
+                if str(ans.value) == rule.expected_value:
+                    return rule.target_question_id or rule.target_module or ""
+
+            elif rule.match_type == RouteMatchType.ANY_VALID_MULTISELECT:
+                if isinstance(ans.value, list) and len(ans.value) > 0:
+                    return rule.target_question_id or rule.target_module or ""
+
+            elif (
+                rule.match_type == RouteMatchType.NON_EMPTY_TEXT
+                and isinstance(ans.value, str)
+                and len(ans.value.strip()) > 0
+            ):
+                return rule.target_question_id or rule.target_module or ""
+
+        # Default fallback
+        return "q_daily_routines_functional_space_summary_confirmation"
+
+    def _find_first_stale_question(self, session: SessionState) -> str | None:
+        """Find the first question in canonical flow order marked STALE_REQUIRES_RECONFIRMATION."""
+        canonical_order = [
+            "q_daily_routines_functional_space_day_pattern_status",
+            "q_daily_routines_functional_space_recurring_day_context",
+            "q_daily_routines_functional_space_other_day_context_detail",
+            "q_daily_routines_functional_space_living_social_status",
+            "q_daily_routines_functional_space_living_social_periods",
+            "q_daily_routines_functional_space_kitchen_dining_status",
+            "q_daily_routines_functional_space_kitchen_dining_periods",
+            "q_daily_routines_functional_space_sleeping_status",
+            "q_daily_routines_functional_space_sleeping_periods",
+            "q_daily_routines_functional_space_work_study_status",
+            "q_daily_routines_functional_space_work_study_periods",
+            "q_daily_routines_functional_space_bathroom_status",
+            "q_daily_routines_functional_space_bathroom_periods",
+            "q_daily_routines_functional_space_household_variation_status",
+            "q_daily_routines_functional_space_household_variation_detail",
+        ]
+        for q_id in canonical_order:
+            rec = session.answers.get(q_id)
+            if rec and rec.validity_state == AnswerValidityState.STALE_REQUIRES_RECONFIRMATION:
+                return q_id
+        return None
 
     def _apply_yaml_invalidation_rules(
         self, session: SessionState, question_id: str, new_value: Any
@@ -263,5 +389,4 @@ class InvalidationEngine:
             return f"**{labels[0]}**, **{labels[1]}** ve **{labels[2]}**"
         else:
             joined = ", ".join(f"**{item}**" for item in labels[:-1])
-
             return f"{joined} ve **{labels[-1]}**"
