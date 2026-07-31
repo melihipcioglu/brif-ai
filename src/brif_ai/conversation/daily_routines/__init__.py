@@ -11,13 +11,15 @@ from brif_ai.conversation.daily_routines.enums import (
     FunctionalDomainStatus,
     HouseholdVariationStatus,
     InvalidAnswerError,
+    InvalidSessionStateError,
     RecurringDayContext,
     RouteMatchType,
+    SessionStatus,
     SummaryConfirmation,
     TargetClosureEffect,
     WordingBranch,
 )
-from brif_ai.conversation.daily_routines.invalidation import InvalidationEngine, SessionState
+from brif_ai.conversation.daily_routines.invalidation import InvalidationEngine
 from brif_ai.conversation.daily_routines.loader import (
     ContentPackValidationError,
     load_daily_routines_content_pack,
@@ -26,6 +28,7 @@ from brif_ai.conversation.daily_routines.models import (
     AnswerRecord,
     ConditionalRoute,
     DailyRoutinesContentPack,
+    DailyRoutinesRuntimeState,
     FlowRule,
     InvalidationRule,
     MultiSelectContract,
@@ -33,9 +36,13 @@ from brif_ai.conversation.daily_routines.models import (
     OptionSet,
     QuestionDefinition,
     QuestionWording,
+    SessionState,
+    SessionStepResult,
+    StepPrompt,
     SummaryTemplate,
     UIStateControlDefinition,
 )
+from brif_ai.conversation.daily_routines.runtime import DailyRoutinesRuntime
 
 __all__ = [
     "AnswerRecord",
@@ -45,6 +52,8 @@ __all__ = [
     "CorrectionReturnPolicy",
     "CorrectionTarget",
     "DailyRoutinesContentPack",
+    "DailyRoutinesRuntime",
+    "DailyRoutinesRuntimeState",
     "DayPatternStatus",
     "DayPeriod",
     "FlowResolutionError",
@@ -53,6 +62,7 @@ __all__ = [
     "FunctionalDomainStatus",
     "HouseholdVariationStatus",
     "InvalidAnswerError",
+    "InvalidSessionStateError",
     "InvalidationEngine",
     "InvalidationRule",
     "MultiSelectContract",
@@ -63,6 +73,9 @@ __all__ = [
     "RecurringDayContext",
     "RouteMatchType",
     "SessionState",
+    "SessionStatus",
+    "SessionStepResult",
+    "StepPrompt",
     "SummaryConfirmation",
     "SummaryTemplate",
     "TargetClosureEffect",
