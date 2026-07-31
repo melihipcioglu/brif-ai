@@ -22,8 +22,16 @@ python -m pip install -e ".[dev]"
 ```powershell
 python -m ruff check .
 python -m ruff format --check .
-python -m mypy src tests
+python -m mypy src tests apps
 python -m pytest
+
+```
+
+## Streamlit Demo
+
+```powershell
+py -3.13 -m pip install -e ".[dev,demo]"
+py -3.13 -m streamlit run apps/daily_routines_demo.py
 ```
 
 ## Pre-commit
@@ -32,3 +40,4 @@ python -m pytest
 python -m pre_commit install
 python -m pre_commit run --all-files
 ```
+
