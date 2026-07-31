@@ -15,6 +15,7 @@ from brif_ai.scientific.publication.preflight import (
     PublicationPreflightResult,
     run_publication_preflight,
 )
+from brif_ai.scientific.publication.validator import validate_publication
 
 __all__ = [
     "PublicationIssue",
@@ -26,4 +27,5 @@ __all__ = [
     "PublicationValidationRequest",
     "QuestionPublicationResult",
     "run_publication_preflight",
+    "validate_publication",
 ]
