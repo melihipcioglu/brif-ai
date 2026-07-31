@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260" width="100%" height="100%">
+  <rect width="400" height="260" rx="12" fill="#FAF9F6" stroke="#E4E0D7" stroke-width="1"/>
+
+  <!-- Base Floor -->
+  <polygon points="60,170 200,230 340,170 200,110" fill="#F4F2EB" stroke="#3F5E4D" stroke-width="2"/>
+  
+  <!-- Back Wall -->
+  <polygon points="60,170 60,70 200,10 200,110" fill="#EFECE5" stroke="#3F5E4D" stroke-width="2"/>
+  <polygon points="200,110 200,10 340,70 340,170" fill="#EFECE5" stroke="#3F5E4D" stroke-width="2"/>
+
+  <!-- Partial Shielding Wall (Perde Duvar) -->
+  <polygon points="170,195 170,95 210,78 210,178" fill="#E4E0D7" stroke="#3F5E4D" stroke-width="2"/>
+  <polygon points="210,178 210,78 210,78 210,178" stroke="#3F5E4D" stroke-width="2"/>
+
+  <!-- Enclosed Kitchen Area on Left -->
+  <polygon points="80,150 140,124 160,133 100,159" fill="#3F5E4D" stroke="#2A4034" stroke-width="1.5"/>
+  <text x="110" y="140" font-family="sans-serif" font-size="9" font-weight="600" fill="#FFFFFF">MUTFAK</text>
+
+  <!-- Privacy Shield Icon -->
+  <g transform="translate(190, 130)">
+    <circle cx="0" cy="0" r="14" fill="#FFFFFF" stroke="#3F5E4D" stroke-width="1.5"/>
+    <path d="M0 -7 L6 -3 L6 3 C6 7 0 10 0 10 C0 10 -6 7 -6 3 L-6 -3 Z" fill="#EEF3F0" stroke="#3F5E4D" stroke-width="1.5"/>
+  </g>
+
+  <text x="200" y="248" font-family="sans-serif" font-size="12" font-weight="700" fill="#1C1C1E" text-anchor="middle">Mahrem ve Kontrollü Mutfak Alanı</text>
+</svg>

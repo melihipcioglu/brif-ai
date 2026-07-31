@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260" width="100%" height="100%">
+  <defs>
+    <linearGradient id="wallGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F4F2EB"/>
+      <stop offset="100%" stop-color="#E5E2DC"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background Canvas -->
+  <rect width="400" height="260" rx="12" fill="#FAF9F6" stroke="#E4E0D7" stroke-width="1"/>
+
+  <!-- Axonometric Room Outline: Isolated Study -->
+  <!-- Floor Base -->
+  <polygon points="60,170 200,230 340,170 200,110" fill="url(#wallGrad1)" stroke="#3F5E4D" stroke-width="2" stroke-linejoin="round"/>
+  
+  <!-- Back Left Wall -->
+  <polygon points="60,170 60,70 200,10 200,110" fill="#EFECE5" stroke="#3F5E4D" stroke-width="2" stroke-linejoin="round"/>
+  
+  <!-- Back Right Wall (Solid Isolation Wall) -->
+  <polygon points="200,110 200,10 340,70 340,170" fill="#E4E0D7" stroke="#3F5E4D" stroke-width="2" stroke-linejoin="round"/>
+
+  <!-- Solid Partition Wall (Foreground Isolation Divider) -->
+  <polygon points="200,110 200,230 200,230 200,110" stroke="#3F5E4D" stroke-width="3"/>
+  <polygon points="130,200 130,100 200,130 200,230" fill="#3F5E4D" opacity="0.1" stroke="#3F5E4D" stroke-width="2"/>
+  
+  <!-- Closed Door Frame in Wall -->
+  <polygon points="150,190 150,120 180,133 180,203" fill="#2A4034" opacity="0.85" stroke="#2A4034" stroke-width="1"/>
+  <text x="165" y="165" font-family="sans-serif" font-size="10" fill="#FFFFFF" text-anchor="middle" font-weight="600">KAPI (KAPALI)</text>
+
+  <!-- Desk & Laptop inside room -->
+  <polygon points="230,150 280,128 310,141 260,163" fill="#3F5E4D" stroke="#2A4034" stroke-width="1.5"/>
+  <rect x="260" y="133" width="14" height="10" rx="1" fill="#FAF9F6" stroke="#2A4034" stroke-width="1.5" transform="skewY(-15)"/>
+
+  <!-- Window on Left Wall -->
+  <polygon points="80,120 120,102 120,62 80,80" fill="#EEF3F0" stroke="#3F5E4D" stroke-width="1.5"/>
+  <line x1="100" y1="111" x2="100" y2="71" stroke="#3F5E4D" stroke-width="1"/>
+
+  <!-- Acoustic Isolation Symbol -->
+  <g transform="translate(270, 60)">
+    <circle cx="0" cy="0" r="18" fill="#EEF3F0" stroke="#3F5E4D" stroke-width="1.5"/>
+    <path d="M-6 -4 L-6 4 L-2 4 L4 8 L4 -8 L-2 -4 Z" fill="#3F5E4D"/>
+    <line x1="8" y1="-5" x2="12" y2="-9" stroke="#DC2626" stroke-width="2"/>
+    <line x1="8" y1="5" x2="12" y2="9" stroke="#DC2626" stroke-width="2"/>
+  </g>
+
+  <!-- Architectural Label -->
+  <text x="200" y="248" font-family="sans-serif" font-size="12" font-weight="700" fill="#1C1C1E" text-anchor="middle">Tamamen Ayrı Çalışma Odası</text>
+</svg>

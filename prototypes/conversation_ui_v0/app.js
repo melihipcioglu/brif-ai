@@ -1,35 +1,40 @@
 /**
- * BRIF.AI - Conversation UI Prototype v0 Interaction Script (Revised)
+ * BRIF.AI - Multi-Stage Architectural UX Prototype v0 Interaction Script
  *
  * NOTE: Standalone frontend UX prototype for BRIF.AI.
- * All conversation dynamics and dynamic panel updates run client-side.
+ * Powers Stage Navigation, Visual Preference Analysis, Space Program & Relationship Graph,
+ * Draft Plan Alternatives, and Dynamic Insight Synthesis.
  * Contains NO real backend, database, API, or AI model calls.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
+  // --------------------------------------------------------------------------
   // DOM Element References
+  // --------------------------------------------------------------------------
+  const stepNodes = document.querySelectorAll('.step-node');
+  const stageViews = document.querySelectorAll('.stage-view');
+
   const chatMessages = document.getElementById('chatMessages');
   const suggestionChips = document.getElementById('suggestionChips');
   const chatForm = document.getElementById('chatForm');
   const userInput = document.getElementById('userInput');
   const voiceBtn = document.getElementById('voiceBtn');
-  
+
   const toggleViewBtn = document.getElementById('toggleViewBtn');
   const toggleBtnText = document.getElementById('toggleBtnText');
   const panelTitle = document.getElementById('panelTitle');
   const panelSubtitle = document.getElementById('panelSubtitle');
-  
   const clientView = document.getElementById('clientView');
   const architectView = document.getElementById('architectView');
-  
+
   const routineCards = document.getElementById('routineCards');
   const interpretationCards = document.getElementById('interpretationCards');
   const pendingCards = document.getElementById('pendingCards');
-  
+
   const toggleExtraRoutineBtn = document.getElementById('toggleExtraRoutineBtn');
   const extraRoutineItems = document.getElementById('extraRoutineItems');
   const routineCount = document.getElementById('routineCount');
-  
+
   const confirmCorrectBtn = document.getElementById('confirmCorrectBtn');
   const confirmEditBtn = document.getElementById('confirmEditBtn');
   const confirmRejectBtn = document.getElementById('confirmRejectBtn');
@@ -40,49 +45,91 @@ document.addEventListener('DOMContentLoaded', () => {
   const saveEditBtn = document.getElementById('saveEditBtn');
   const confirmationActions = document.getElementById('confirmationActions');
 
+  const btnNextToProgram = document.getElementById('btnNextToProgram');
+  const btnAltA = document.getElementById('btnAltA');
+  const btnAltB = document.getElementById('btnAltB');
+  const planIframe = document.getElementById('planIframe');
+  const archTendencyVal = document.getElementById('archTendencyVal');
+
   let isArchitectView = false;
   let isExtraRoutineExpanded = false;
+  let currentStage = 1;
 
   // --------------------------------------------------------------------------
-  // 1. Collapsible Extra Findings Toggle
+  // 1. Process Stepper Navigation
   // --------------------------------------------------------------------------
-  if (toggleExtraRoutineBtn && extraRoutineItems) {
-    toggleExtraRoutineBtn.addEventListener('click', () => {
-      isExtraRoutineExpanded = !isExtraRoutineExpanded;
-      if (isExtraRoutineExpanded) {
-        extraRoutineItems.classList.remove('hidden');
-        toggleExtraRoutineBtn.querySelector('span').textContent = 'Daha az göster';
-        if (routineCount) routineCount.textContent = '3 Gösteriliyor';
+  stepNodes.forEach((node) => {
+    node.addEventListener('click', () => {
+      const targetStage = parseInt(node.dataset.stage, 10);
+      switchStage(targetStage);
+    });
+  });
+
+  function switchStage(stageNum) {
+    currentStage = stageNum;
+
+    // Update Stepper Nodes UI
+    stepNodes.forEach((node) => {
+      const num = parseInt(node.dataset.stage, 10);
+      node.classList.remove('active');
+      const badge = node.querySelector('.step-badge');
+
+      if (num === stageNum) {
+        node.classList.add('active');
+        if (badge) {
+          badge.className = 'step-badge badge-active';
+          badge.textContent = 'Devam ediyor';
+        }
+      } else if (num < stageNum) {
+        node.classList.add('completed');
+        if (badge) {
+          badge.className = 'step-badge badge-completed';
+          badge.textContent = 'Tamamlandı';
+        }
       } else {
-        extraRoutineItems.classList.add('hidden');
-        toggleExtraRoutineBtn.querySelector('span').textContent = 'Diğer bulguları göster (+1)';
-        if (routineCount) routineCount.textContent = '2 Gösteriliyor';
+        if (badge) {
+          badge.className = 'step-badge badge-pending';
+          badge.textContent = 'Henüz başlamadı';
+        }
       }
+    });
+
+    // Update Stage Views Display
+    stageViews.forEach((view) => {
+      view.classList.add('hidden');
+      view.classList.remove('active');
+    });
+
+    const activeView = document.getElementById(`stageView${stageNum}`);
+    if (activeView) {
+      activeView.classList.remove('hidden');
+      activeView.classList.add('active');
+    }
+  }
+
+  if (btnNextToProgram) {
+    btnNextToProgram.addEventListener('click', () => {
+      switchStage(3);
     });
   }
 
   // --------------------------------------------------------------------------
-  // 2. Suggestion Chip Quick-Reply Handling
+  // 2. Stage 1 Chat Conversation Dynamics
   // --------------------------------------------------------------------------
   if (suggestionChips) {
     suggestionChips.addEventListener('click', (e) => {
       const chip = e.target.closest('.chip-btn');
       if (!chip) return;
-
       const replyText = chip.dataset.reply || chip.textContent.trim();
       handleUserSendMessage(replyText);
     });
   }
 
-  // --------------------------------------------------------------------------
-  // 3. Chat Form Submit Handling
-  // --------------------------------------------------------------------------
   if (chatForm) {
     chatForm.addEventListener('submit', (e) => {
       e.preventDefault();
       const text = userInput.value.trim();
       if (!text) return;
-
       handleUserSendMessage(text);
       userInput.value = '';
     });
@@ -95,7 +142,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Voice Button Demo Toast
   if (voiceBtn) {
     voiceBtn.addEventListener('click', () => {
       alert('🎤 Sesli yanıt alma demosu: Konuşmanız simüle edilmektedir...');
@@ -103,22 +149,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // --------------------------------------------------------------------------
-  // 4. User Message Processing & Sound AI Response Simulation
-  // --------------------------------------------------------------------------
   function handleUserSendMessage(messageText) {
-    // Hide old chips
-    if (suggestionChips) {
-      suggestionChips.style.display = 'none';
-    }
+    if (suggestionChips) suggestionChips.style.display = 'none';
 
-    // Append User Message to Chat
     appendMessage('user', 'Siz', 'MK', messageText);
-
-    // Scroll chat to bottom
     chatMessages.scrollTop = chatMessages.scrollHeight;
 
-    // Simulate AI response delay
     setTimeout(() => {
       generateSoundAiResponse(messageText);
     }, 600);
@@ -154,28 +190,8 @@ document.addEventListener('DOMContentLoaded', () => {
         badgeClass: 'badge-user-said',
         rationale: `"${userText}"`
       };
-    } else if (userText.includes('yazım') || userText.includes('odaklanma')) {
-      aiReply = 'Görsel ve zihinsel odaklanma ihtiyacını not aldım. Bu alanın günün hangi saatlerinde en yoğun kullanıldığını netleştirelim. Benzer şekilde, gündüz doğal ışık alma düzeyi sizin için ne derece belirleyici?';
-      
-      newCard = {
-        group: 'routine',
-        title: 'Odaklanma ağırlıklı bireysel çalışma ritmi',
-        badge: 'Kullanıcı söyledi',
-        badgeClass: 'badge-user-said',
-        rationale: `"${userText}"`
-      };
-    } else if (userText.includes('16:00') || userText.includes('çocuk')) {
-      aiReply = 'Öğleden sonra 16:00 sonrasındaki zaman dilimi çakışmasını anlıyorum. Bu saatlerde çalışma alanının çocukların ortak kullanım alanlarıyla ilişkisini ve ses geçişini değerlendireceğiz. Bu çakışma hafta içi her gün yaşanıyor mu?';
-      
-      newCard = {
-        group: 'interpretation',
-        title: 'Saat 16:00 sonrası ses ve kullanım çakışması tespiti',
-        badge: 'Sistem yorumu',
-        badgeClass: 'badge-system',
-        rationale: `"${userText}" beyanından çıkarılan sistem yorumu.`
-      };
     } else {
-      aiReply = `İfade ettiğiniz konuyu not aldım: "${userText}". Bu durumun hane içi diğer kullanım alışkanlıklarıyla uyumunu değerlendireceğiz. Yatak odaları ve genel yaşam alanlarının gündüz ilişkisi hakkında ne düşünürsünüz?`;
+      aiReply = `İfade ettiğiniz konuyu not aldım: "${userText}". Bu durumun hane içi diğer kullanım alışkanlıklarıyla uyumunu değerlendireceğiz. Ayrıntıları netleştirmek için ikinci aşamadaki Görsel Tercihler bölümüne geçebiliriz.`;
       
       newCard = {
         group: 'routine',
@@ -186,21 +202,14 @@ document.addEventListener('DOMContentLoaded', () => {
       };
     }
 
-    // Append AI reply to chat stream
     appendMessage('ai', 'BRIF.AI Mimari Danışman', 'B', aiReply);
-
-    // Update Right Panel with ONLY findings derived from this message
-    if (newCard) {
-      addGroundedCard(newCard);
-    }
+    if (newCard) addGroundedCard(newCard);
   }
 
   function addGroundedCard(cardData) {
     const cardDiv = document.createElement('div');
     cardDiv.className = 'insight-card';
-    if (cardData.badgeClass === 'badge-system') {
-      cardDiv.classList.add('highlight-system');
-    }
+    if (cardData.badgeClass === 'badge-system') cardDiv.classList.add('highlight-system');
 
     cardDiv.innerHTML = `
       <div class="card-top">
@@ -222,7 +231,139 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // --------------------------------------------------------------------------
-  // 5. View Toggle (Client Understanding View vs Architect Brief View)
+  // 3. Stage 2 Visual Preference Cards Interactions
+  // --------------------------------------------------------------------------
+  const prefCards = document.querySelectorAll('.pref-card');
+  prefCards.forEach((card) => {
+    const actions = card.querySelectorAll('.pref-action-btn');
+    const selector = card.querySelector('.attribute-selector');
+    const title = card.querySelector('.pref-card-title').textContent.trim();
+
+    actions.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        actions.forEach((b) => b.classList.remove('selected'));
+        btn.classList.add('selected');
+
+        const actionType = btn.dataset.action;
+        if (actionType === 'like') {
+          if (selector) selector.classList.remove('hidden');
+          addGroundedCard({
+            group: 'interpretation',
+            title: `Görsel Tercih: ${title} örneği uygun bulundu`,
+            badge: 'Sistem yorumu',
+            badgeClass: 'badge-system',
+            rationale: `Kullanıcı "${title}" örneğini "Bana uygun" olarak işaretledi.`
+          });
+        } else {
+          if (selector) selector.classList.add('hidden');
+        }
+      });
+    });
+
+    // Attribute Chips
+    const attrChips = card.querySelectorAll('.attr-chip');
+    attrChips.forEach((chip) => {
+      chip.addEventListener('click', () => {
+        chip.classList.toggle('selected');
+        const attrVal = chip.dataset.attr;
+
+        addGroundedCard({
+          group: 'interpretation',
+          title: `Mekânsal Nitelik: "${attrVal}" öne çıkarıldı`,
+          badge: 'Sistem yorumu',
+          badgeClass: 'badge-system',
+          rationale: `Kullanıcı "${title}" görselinde "${attrVal}" özelliğini seçti.`
+        });
+      });
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // 4. Stage 3 Space Program & Relationship Diagram Interactions
+  // --------------------------------------------------------------------------
+  const spaceCards = document.querySelectorAll('.space-card');
+  spaceCards.forEach((scard) => {
+    const sbtns = scard.querySelectorAll('.space-btn');
+    const sname = scard.querySelector('.space-name').textContent;
+
+    sbtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const action = btn.dataset.action;
+        if (action === 'remove') {
+          scard.style.opacity = '0.4';
+          scard.style.textDecoration = 'line-through';
+          btn.textContent = 'Çıkarılması istendi';
+          addGroundedCard({
+            group: 'routine',
+            title: `Mekân Çıkarma Talebi: ${sname}`,
+            badge: 'Kullanıcı söyledi',
+            badgeClass: 'badge-user-said',
+            rationale: `Kullanıcı ${sname} alanının programdan çıkarılmasını istedi.`
+          });
+        } else if (action === 'size-up') {
+          alert(`📐 ${sname} alanı tahmini boyutu artırıldı.`);
+        } else if (action === 'size-down') {
+          alert(`📐 ${sname} alanı tahmini boyutu azaltıldı.`);
+        }
+      });
+    });
+  });
+
+  // Relationship SVG Nodes Interactivity
+  const relNodes = document.querySelectorAll('.rel-node');
+  relNodes.forEach((rnode) => {
+    rnode.addEventListener('click', () => {
+      const nodeName = rnode.dataset.node;
+      addGroundedCard({
+        group: 'interpretation',
+        title: `Mekânsal İlişki İncelemesi: ${nodeName.toUpperCase()}`,
+        badge: 'Sistem yorumu',
+        badgeClass: 'badge-system',
+        rationale: `Diyagramda ${nodeName} odağı seçildi; diğer mekânlarla akustik ve görsel bağları analiz ediliyor.`
+      });
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // 5. Stage 4 Draft Plan Alternatives & Preference Tracking
+  // --------------------------------------------------------------------------
+  if (btnAltA && btnAltB && planIframe) {
+    btnAltA.addEventListener('click', () => {
+      btnAltA.classList.add('active');
+      btnAltB.classList.remove('active');
+      planIframe.src = 'assets/plans/alternative_a.svg';
+    });
+
+    btnAltB.addEventListener('click', () => {
+      btnAltB.classList.add('active');
+      btnAltA.classList.remove('active');
+      planIframe.src = 'assets/plans/alternative_b.svg';
+    });
+  }
+
+  const tendencyBtns = document.querySelectorAll('.tendency-btn');
+  tendencyBtns.forEach((tbtn) => {
+    tbtn.addEventListener('click', () => {
+      tendencyBtns.forEach((b) => b.classList.remove('selected'));
+      tbtn.classList.add('selected');
+
+      const val = tbtn.dataset.tendency;
+      if (archTendencyVal) {
+        archTendencyVal.textContent = val;
+      }
+
+      addGroundedCard({
+        group: 'routine',
+        title: `Plan Eğilimi Seçildi: ${val}`,
+        badge: 'Kullanıcı söyledi',
+        badgeClass: 'badge-user-said',
+        rationale: `Kullanıcı taslak plan alternatifleri arasından "${val}" eğilimini belirtti.`
+      });
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // 6. Right Panel View Toggle (Client Understanding vs Architect Brief View)
   // --------------------------------------------------------------------------
   if (toggleViewBtn) {
     toggleViewBtn.addEventListener('click', () => {
@@ -231,7 +372,6 @@ document.addEventListener('DOMContentLoaded', () => {
       if (isArchitectView) {
         clientView.classList.add('hidden');
         architectView.classList.remove('hidden');
-        
         toggleBtnText.textContent = 'Müşteri Görünümü';
         panelTitle.textContent = 'Mimar Sentez Raporu';
         panelSubtitle.textContent = 'Teknik mimari brief ve gereksinim analizi';
@@ -239,7 +379,6 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         architectView.classList.add('hidden');
         clientView.classList.remove('hidden');
-        
         toggleBtnText.textContent = 'Mimar Önizlemesi';
         panelTitle.textContent = 'Sizi nasıl anladım?';
         panelSubtitle.textContent = 'Sohbetinizden çıkarılan canlı mimari profil';
@@ -249,7 +388,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // --------------------------------------------------------------------------
-  // 6. Confirmation Box Interactivity (Doğru / Düzenle / Yanlış Anladın)
+  // 7. Interactive Confirmation Actions
   // --------------------------------------------------------------------------
   if (confirmCorrectBtn) {
     confirmCorrectBtn.addEventListener('click', () => {
@@ -258,7 +397,6 @@ document.addEventListener('DOMContentLoaded', () => {
       confirmationText.innerHTML = '✅ <strong>Kullanıcı Doğruladı:</strong> ' + confirmationText.textContent.replace('✅ Kullanıcı Doğruladı: ', '').replace(/^"|"$/g, '');
       confirmationActions.style.display = 'none';
 
-      // Update system interpretation card badge to "Kullanıcı doğruladı"
       const systemBadge = interpretationCards.querySelector('.badge-system');
       if (systemBadge) {
         systemBadge.className = 'badge badge-confirmed';
@@ -294,7 +432,6 @@ document.addEventListener('DOMContentLoaded', () => {
       confirmationText.style.borderColor = '#3F5E4D';
       inlineEditor.classList.add('hidden');
 
-      // Update badge to "Kullanıcı söyledi"
       const systemBadge = interpretationCards.querySelector('.badge-system');
       if (systemBadge) {
         systemBadge.className = 'badge badge-user-said';
@@ -303,7 +440,21 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Utility Function: Escape HTML to prevent script injection
+  if (toggleExtraRoutineBtn && extraRoutineItems) {
+    toggleExtraRoutineBtn.addEventListener('click', () => {
+      isExtraRoutineExpanded = !isExtraRoutineExpanded;
+      if (isExtraRoutineExpanded) {
+        extraRoutineItems.classList.remove('hidden');
+        toggleExtraRoutineBtn.querySelector('span').textContent = 'Daha az göster';
+        if (routineCount) routineCount.textContent = '3 Gösteriliyor';
+      } else {
+        extraRoutineItems.classList.add('hidden');
+        toggleExtraRoutineBtn.querySelector('span').textContent = 'Diğer bulguları göster (+1)';
+        if (routineCount) routineCount.textContent = '2 Gösteriliyor';
+      }
+    });
+  }
+
   function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;

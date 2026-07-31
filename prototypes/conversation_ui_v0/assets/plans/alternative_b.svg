@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 480" width="100%" height="100%" id="planSvgB">
+  <style>
+    .plan-wall { stroke: #1C1C1E; stroke-width: 4; fill: none; }
+    .plan-partition { stroke: #3F5E4D; stroke-width: 2.5; fill: none; }
+    .plan-flexible-partition { stroke: #1A73E8; stroke-width: 3; stroke-dasharray: 6 3; fill: none; }
+    .plan-room { fill: #FAF9F6; stroke: #E4E0D7; stroke-width: 1.5; cursor: pointer; transition: all 0.2s ease; }
+    .plan-room:hover { fill: #EEF3F0; stroke: #3F5E4D; }
+    .plan-room.selected { fill: #E8F0FE; stroke: #1A73E8; stroke-width: 2; }
+    .room-title { font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 700; fill: #1C1C1E; pointer-events: none; }
+    .room-area { font-family: 'Inter', sans-serif; font-size: 11px; fill: #5C5C60; pointer-events: none; }
+    .door-arc { fill: none; stroke: #2563EB; stroke-width: 1.5; stroke-dasharray: 3 2; }
+  </style>
+
+  <!-- Canvas Background -->
+  <rect width="700" height="480" rx="10" fill="#FFFFFF" stroke="#E4E0D7" stroke-width="1"/>
+  
+  <!-- Conceptual Draft Warning Banner -->
+  <rect x="20" y="15" width="660" height="28" rx="6" fill="#FEF7E0" stroke="#B06000" stroke-width="1"/>
+  <text x="350" y="33" font-family="'Inter', sans-serif" font-size="11.5" font-weight="700" fill="#B06000" text-anchor="middle">
+    ⚠️ Kavramsal taslak — mimari proje, uygulama veya ruhsat çizimi değildir.
+  </text>
+
+  <!-- North Arrow -->
+  <g transform="translate(640, 75)">
+    <circle cx="0" cy="0" r="16" fill="#FAF9F6" stroke="#3F5E4D" stroke-width="1.5"/>
+    <path d="M0 -10 L5 6 L0 2 L-5 6 Z" fill="#3F5E4D"/>
+    <text x="0" y="14" font-family="sans-serif" font-size="9" font-weight="700" fill="#3F5E4D" text-anchor="middle">K</text>
+  </g>
+
+  <!-- ROOM 1: GİRİŞ VE VESTİYER -->
+  <g class="plan-room-group" data-room="entry" data-name="Giriş ve Vestiyer" data-area="8-10 m²" data-rationale="Sirkülasyon odağı ve vestiyer alanı.">
+    <rect x="60" y="200" width="100" height="110" class="plan-room"/>
+    <text x="110" y="250" class="room-title" text-anchor="middle">Giriş / Antre</text>
+    <text x="110" y="268" class="room-area" text-anchor="middle">8 - 10 m²</text>
+  </g>
+
+  <!-- ROOM 2: GENİŞLETİLEBİLİR YAŞAM ALANI -->
+  <g class="plan-room-group" data-room="living" data-name="Açık Yaşam Alanı (Salon)" data-area="36-42 m²" data-rationale="Çalışma ve mutfak alanlarıyla akışkan, ışık geçiren esnek yaşam kurgusu.">
+    <rect x="160" y="200" width="280" height="180" class="plan-room"/>
+    <text x="300" y="280" class="room-title" text-anchor="middle">Açık Yaşam &amp; Yemek</text>
+    <text x="300" y="300" class="room-area" text-anchor="middle">36 - 42 m²</text>
+  </g>
+
+  <!-- ROOM 3: AÇIK ADA MUTFAK -->
+  <g class="plan-room-group" data-room="kitchen" data-name="Açık Mutfak" data-area="16-18 m²" data-rationale="Salona doğrudan açılan ada tezgâhlı sosyal mutfak.">
+    <rect x="160" y="70" width="140" height="130" class="plan-room"/>
+    <text x="230" y="130" class="room-title" text-anchor="middle">Açık Mutfak</text>
+    <text x="230" y="148" class="room-area" text-anchor="middle">16 - 18 m²</text>
+  </g>
+
+  <!-- ROOM 4: ESNEK KAYAR PANELLİ ÇALIŞMA ALANI -->
+  <g class="plan-room-group" data-room="study" data-name="Esnek Çalışma Alanı (Kayar Bölücü)" data-area="14-16 m²" data-rationale="Gündüz açılıp yaşam alanına katılan, toplantı anında kayar panelle kapatılan esnek çalışma stüdyosu.">
+    <rect x="300" y="70" width="140" height="130" class="plan-room" fill="#E8F0FE" stroke="#1A73E8" stroke-width="2"/>
+    <text x="370" y="125" class="room-title" text-anchor="middle" fill="#1A73E8">Esnek Çalışma</text>
+    <text x="370" y="142" class="room-title" text-anchor="middle" font-size="10" fill="#2563EB">(Kayar Panelli)</text>
+    <text x="370" y="160" class="room-area" text-anchor="middle">14 - 16 m²</text>
+  </g>
+
+  <!-- ROOM 5: ÇOCUK ODALARI -->
+  <g class="plan-room-group" data-room="children" data-name="Çocuk Alanı" data-area="24-28 m²" data-rationale="Yaşam alanıyla yarı şeffaf görsel teması bulunan çocuk stüdyosu.">
+    <rect x="440" y="70" width="200" height="150" class="plan-room"/>
+    <text x="540" y="140" class="room-title" text-anchor="middle">Çocuk Odaları</text>
+    <text x="540" y="158" class="room-area" text-anchor="middle">24 - 28 m²</text>
+  </g>
+
+  <!-- ROOM 6: EBEVEYN SUİTİ -->
+  <g class="plan-room-group" data-room="master" data-name="Ebeveyn Süiti" data-area="22-26 m²" data-rationale="Gece kuşağında, özel banyolu ebeveyn yaşam alanı.">
+    <rect x="440" y="220" width="200" height="160" class="plan-room"/>
+    <text x="540" y="290" class="room-title" text-anchor="middle">Ebeveyn Süiti</text>
+    <text x="540" y="310" class="room-area" text-anchor="middle">22 - 26 m²</text>
+  </g>
+
+  <!-- ROOM 7: TERAS -->
+  <g class="plan-room-group" data-room="terrace" data-name="Genişletilmiş Teras" data-area="20-24 m²" data-rationale="Salon ve çalışma alanına entegre dış mekân.">
+    <rect x="160" y="380" width="280" height="60" class="plan-room" fill="#FAF8FE" stroke-dasharray="4 2"/>
+    <text x="300" y="415" class="room-title" text-anchor="middle">Genişletilmiş Teras</text>
+    <text x="300" y="430" class="room-area" text-anchor="middle">20 - 24 m²</text>
+  </g>
+
+  <!-- FLEXIBLE DIVISION LINE -->
+  <line x1="300" y1="200" x2="440" y2="200" class="plan-flexible-partition"/>
+
+  <!-- WALL OUTLINES -->
+  <path d="M60 70 L640 70 L640 380 L160 380 L160 310 L60 310 Z" class="plan-wall"/>
+
+  <line x1="160" y1="70" x2="160" y2="380" class="plan-partition"/>
+  <line x1="300" y1="70" x2="300" y2="200" class="plan-partition"/>
+  <line x1="440" y1="70" x2="440" y2="380" class="plan-partition"/>
+
+  <!-- Plan Legend Footer -->
+  <text x="60" y="465" font-family="'Inter', sans-serif" font-size="11" font-weight="600" fill="#1A73E8">
+    Alternatif B: Esnek Bağlantı — Kayar Panelli Dönüştürülebilir Mekân Kurgusu
+  </text>
+</svg>

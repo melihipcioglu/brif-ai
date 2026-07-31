@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260" width="100%" height="100%">
+  <rect width="400" height="260" rx="12" fill="#FAF9F6" stroke="#E4E0D7" stroke-width="1"/>
+
+  <!-- Base Floor -->
+  <polygon points="60,170 200,230 340,170 200,110" fill="#F4F2EB" stroke="#3F5E4D" stroke-width="2"/>
+  
+  <!-- Back Wall -->
+  <polygon points="60,170 60,70 200,10 200,110" fill="#EFECE5" stroke="#3F5E4D" stroke-width="2"/>
+  <polygon points="200,110 200,10 340,70 340,170" fill="#EFECE5" stroke="#3F5E4D" stroke-width="2"/>
+
+  <!-- Kitchen Island Counter -->
+  <polygon points="120,175 190,145 250,170 180,200" fill="#3F5E4D" stroke="#2A4034" stroke-width="2"/>
+  <polygon points="120,175 180,200 180,215 120,190" fill="#2A4034" opacity="0.9"/>
+  <polygon points="180,200 250,170 250,185 180,215" fill="#2A4034" opacity="0.75"/>
+
+  <!-- Stools -->
+  <circle cx="140" cy="195" r="6" fill="#B08D57" stroke="#2A4034" stroke-width="1.5"/>
+  <circle cx="165" cy="205" r="6" fill="#B08D57" stroke="#2A4034" stroke-width="1.5"/>
+
+  <!-- Dining Table in background -->
+  <polygon points="260,145 300,128 320,137 280,154" fill="#E5E2DC" stroke="#5C5C60" stroke-width="1.5"/>
+
+  <!-- Open Flow Indicator -->
+  <path d="M120 140 Q200 110 280 130" fill="none" stroke="#34A853" stroke-width="2" stroke-dasharray="4 3"/>
+  
+  <text x="200" y="248" font-family="sans-serif" font-size="12" font-weight="700" fill="#1C1C1E" text-anchor="middle">Açık Ada Mutfak ve Yaşam Entegrasyonu</text>
+</svg>

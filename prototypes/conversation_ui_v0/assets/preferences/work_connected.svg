@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260" width="100%" height="100%">
+  <defs>
+    <linearGradient id="glassGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E8F0FE" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#CAE0FE" stop-opacity="0.4"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="400" height="260" rx="12" fill="#FAF9F6" stroke="#E4E0D7" stroke-width="1"/>
+
+  <!-- Base Floor -->
+  <polygon points="60,170 200,230 340,170 200,110" fill="#F4F2EB" stroke="#3F5E4D" stroke-width="2"/>
+  
+  <!-- Back Wall -->
+  <polygon points="60,170 60,70 200,10 200,110" fill="#EFECE5" stroke="#3F5E4D" stroke-width="2"/>
+  <polygon points="200,110 200,10 340,70 340,170" fill="#EFECE5" stroke="#3F5E4D" stroke-width="2"/>
+
+  <!-- Glass Divider Wall (Transparent Architectural Partition) -->
+  <polygon points="130,200 130,100 200,70 200,170" fill="url(#glassGrad)" stroke="#1A73E8" stroke-width="2" stroke-dasharray="6 3"/>
+  <line x1="165" y1="185" x2="165" y2="85" stroke="#1A73E8" stroke-width="1.5"/>
+
+  <!-- Study Area on Left -->
+  <polygon points="80,160 120,143 140,152 100,169" fill="#3F5E4D" stroke="#2A4034" stroke-width="1.5"/>
+  
+  <!-- Living Space Furniture on Right (Visible through Glass) -->
+  <polygon points="240,160 290,138 310,147 260,169" fill="#E5E2DC" stroke="#5C5C60" stroke-width="1.5"/>
+  <text x="275" y="152" font-family="sans-serif" font-size="9" font-weight="600" fill="#5C5C60">SALON</text>
+
+  <!-- Visual Ray / Connection Icon -->
+  <g transform="translate(165, 120)">
+    <circle cx="0" cy="0" r="14" fill="#FFFFFF" stroke="#1A73E8" stroke-width="1.5"/>
+    <path d="M-6 0 C-3 -4 3 -4 6 0 C3 4 -3 4 -6 0 Z" fill="none" stroke="#1A73E8" stroke-width="1.5"/>
+    <circle cx="0" cy="0" r="2.5" fill="#1A73E8"/>
+  </g>
+
+  <text x="200" y="248" font-family="sans-serif" font-size="12" font-weight="700" fill="#1C1C1E" text-anchor="middle">Cam Bölücülü Şeffaf Çalışma Alanı</text>
+</svg>
