@@ -1,0 +1,204 @@
+# BRIF.AI Daily Routines v0 Option Sets
+schema_version: "v0"
+
+option_sets:
+  - id: "os_day_pattern_status"
+    options:
+      - id: "opt_day_pattern_stable"
+        value: "stable_recurring_day_available"
+        display_label: "Belirli aralıklarla tekrarlanan bir gün düzenim var."
+        helper_text: "İşe gitme, evden çalışma veya belirli bir tatil günü gibi tekrarlanan bir akış."
+        display_order: 1
+      - id: "opt_day_pattern_no_stable"
+        value: "no_stable_recurring_day"
+        display_label: "Belirli bir gün düzenim yok, zaman akışım değişken geçiyor."
+        helper_text: "Vardiyalı çalışma, sık seyahat veya sabit zamanı olmayan değişken bir düzen."
+        display_order: 2
+      - id: "opt_day_pattern_unknown"
+        value: "unknown"
+        display_label: "Gün düzenim hakkında net bir şey söyleyemiyorum."
+        helper_text: "Emin değilim veya tanımlayamıyorum."
+        display_order: 3
+      - id: "opt_day_pattern_prefer_not_to_answer"
+        value: "prefer_not_to_answer"
+        display_label: "Bu bilgiyi paylaşmak istemiyorum."
+        helper_text: "Yanıt vermek istemiyorum."
+        display_order: 4
+
+  - id: "os_recurring_day_context"
+    options:
+      - id: "opt_context_work_school"
+        value: "typical_work_or_school_day"
+        display_label: "Dışarıda işe veya okula gittiğim tipik bir gün"
+        helper_text: "Zamanınızın önemli bir kısmını ev dışında geçirdiğiniz çalışma/okul günü."
+        display_order: 1
+      - id: "opt_context_wfh"
+        value: "work_from_home_day"
+        display_label: "Evden çalıştığım veya evde ders takip ettiğim tipik bir gün"
+        helper_text: "Mesai veya ders saatlerinizi ev içinde bir çalışma alanında geçirdiğiniz gün."
+        display_order: 2
+      - id: "opt_context_shift"
+        value: "shift_work_day"
+        display_label: "Vardiyalı veya nöbet usulü çalıştığım bir gün"
+        helper_text: "Çalışma saatlerinizin gündüz veya gece olarak farklılık gösterdiği gün."
+        display_order: 3
+      - id: "opt_context_home_free"
+        value: "typical_day_spent_at_home"
+        display_label: "İş veya okul yükümlülüğüm olmadan evde geçirdiğim tipik bir gün"
+        helper_text: "Hafta sonu veya izin günü gibi zamanınızı çoğunlukla evde dinlenerek geçirdiğiniz gün."
+        display_order: 4
+      - id: "opt_context_other"
+        value: "other_recurring_day_context"
+        display_label: "Farklı, bana özel tekrarlanan bir gün düzeni"
+        helper_text: "Yukarıdaki seçeneklere uymayan özel bir tekrarlanan gün."
+        display_order: 5
+
+  - id: "os_functional_domain_status"
+    options:
+      - id: "opt_domain_status_reported_periods"
+        value: "reported_periods_available"
+        display_label: "Günün belirli zaman dönemlerinde kullanıyorum"
+        helper_text: "Günün sabah, öğle, akşam veya gece gibi belirli dönemlerinde aktif kullanım var."
+        display_order: 1
+      - id: "opt_domain_status_variable"
+        value: "variable"
+        display_label: "Kullanım zamanlarım günden güne veya koşullara göre değişiyor"
+        helper_text: "Belirli bir zaman dönemi yok, kullanım zamanları değişkenlik gösteriyor."
+        display_order: 2
+      - id: "opt_domain_status_no_use"
+        value: "no_use_reported_in_selected_context"
+        display_label: "Seçtiğim bu tipik gün bağlamında bu alanı kullanmıyorum"
+        helper_text: "İşlevsel alan evde var ancak seçilen tipik günde bu amaçla kullanılmıyor."
+        display_order: 3
+      - id: "opt_domain_status_not_available"
+        value: "functional_domain_not_available_in_current_home"
+        display_label: "Mevcut evimizde bu kullanım için uygun bir alan veya olanak yok"
+        helper_text: "Mevcut evimizin fiziki şartları veya imkanları bu işlevsel alanı kullanmaya uygun değil."
+        display_order: 4
+      - id: "opt_domain_status_not_relevant"
+        value: "functional_domain_not_relevant_to_household"
+        display_label: "Bu kullanım bizim hane yaşamımız veya yaşam biçimimiz için geçerli değil"
+        helper_text: "Hane halkımızın alışkanlıkları veya ihtiyaçları doğrultusunda böyle bir kullanım alanına ihtiyaç duymuyoruz."
+        display_order: 5
+      - id: "opt_domain_status_unknown"
+        value: "unknown"
+        display_label: "Kullanım zamanları hakkında net bilgi veremiyorum"
+        helper_text: "Kullanım zamanları hatırlanmıyor veya bilinmiyor."
+        display_order: 6
+      - id: "opt_domain_status_prefer_not_to_answer"
+        value: "prefer_not_to_answer"
+        display_label: "Bu bilgiyi paylaşmak istemiyorum"
+        helper_text: "Yanıt verilmek istenmiyor."
+        display_order: 7
+
+  - id: "os_day_period"
+    options:
+      - id: "opt_period_morning"
+        value: "morning"
+        display_label: "Sabah dönemi"
+        helper_text: "Yaklaşık 06:00 – 12:00 saatleri arası"
+        display_order: 1
+      - id: "opt_period_midday_afternoon"
+        value: "midday_afternoon"
+        display_label: "Öğle / Öğleden sonra dönemi"
+        helper_text: "Yaklaşık 12:00 – 18:00 saatleri arası"
+        display_order: 2
+      - id: "opt_period_evening"
+        value: "evening"
+        display_label: "Akşam dönemi"
+        helper_text: "Yaklaşık 18:00 – 24:00 saatleri arası"
+        display_order: 3
+      - id: "opt_period_night"
+        value: "night"
+        display_label: "Gece dönemi"
+        helper_text: "Yaklaşık 00:00 – 06:00 saatleri arası"
+        display_order: 4
+
+  - id: "os_household_variation_status"
+    options:
+      - id: "opt_hh_no_difference"
+        value: "no_material_difference"
+        display_label: "Diğer hane bireylerinin alan kullanım dönemleri benimle benzerlik gösteriyor (belirgin fark yok)."
+        helper_text: "Genel kullanım saatleri hane halkı genelinde uyumludur."
+        display_order: 1
+      - id: "opt_hh_material_difference"
+        value: "material_difference_reported"
+        display_label: "Diğer hane bireylerinin alan kullanım dönemleri benim bildirdiğim zamanlardan belirgin biçimde farklı."
+        helper_text: "Farklı çalışma veya uyku saatleri mevcuttur."
+        display_order: 2
+      - id: "opt_hh_unknown"
+        value: "unknown"
+        display_label: "Diğer bireylerin alan kullanım dönemleri hakkında net bilgim yok."
+        helper_text: "Net bilgi verilemiyor."
+        display_order: 3
+      - id: "opt_hh_prefer_not_to_answer"
+        value: "prefer_not_to_answer"
+        display_label: "Bu bilgiyi paylaşmak istemiyorum."
+        helper_text: "Yanıt vermek istemiyorum."
+        display_order: 4
+      - id: "opt_hh_single_person"
+        value: "not_applicable_single_person_household"
+        display_label: "Evde tek başıma yaşıyorum (tek kişilik hane)."
+        helper_text: "Tek kişilik hane."
+        display_order: 5
+
+  - id: "os_summary_confirmation"
+    options:
+      - id: "opt_confirm_yes"
+        value: "confirmed"
+        display_label: "Evet, özeti onaylıyorum."
+        helper_text: "Özeti onaylayıp akışı tamamlayın."
+        display_order: 1
+      - id: "opt_confirm_no"
+        value: "rejected_for_correction"
+        display_label: "Hayır, bazı bilgileri düzenlemek istiyorum."
+        helper_text: "Düzenlemek istediğiniz bölümlere dönün."
+        display_order: 2
+
+  - id: "os_correction_target"
+    options:
+      - id: "opt_correct_day_pattern"
+        value: "day_pattern"
+        display_label: "Gün Düzeni ve Bağlamı"
+        helper_text: "Gün düzeni adımına dönün."
+        display_order: 1
+      - id: "opt_correct_recurring_context"
+        value: "recurring_day_context"
+        display_label: "Tekrarlanan Gün Bağlamı"
+        helper_text: "Gün bağlamı adımına dönün."
+        display_order: 2
+      - id: "opt_correct_living_social"
+        value: "living_social"
+        display_label: "Yaşam ve Sosyal Etkileşim Alanı"
+        helper_text: "Yaşam/sosyal alan sorularına dönün."
+        display_order: 3
+      - id: "opt_correct_kitchen_dining"
+        value: "kitchen_dining"
+        display_label: "Beslenme ve Yemek Alanı"
+        helper_text: "Mutfak/yemek alanı sorularına dönün."
+        display_order: 4
+      - id: "opt_correct_sleeping"
+        value: "sleeping"
+        display_label: "Uyku ve Dinlenme Alanı"
+        helper_text: "Uyku/dinlenme alanı sorularına dönün."
+        display_order: 5
+      - id: "opt_correct_work_study"
+        value: "work_study"
+        display_label: "Çalışma ve Odaklanma Alanı"
+        helper_text: "Çalışma/odaklanma alanı sorularına dönün."
+        display_order: 6
+      - id: "opt_correct_bathroom"
+        value: "bathroom"
+        display_label: "Hijyen ve Banyo Alanı"
+        helper_text: "Banyo/hijyen alanı sorularına dönün."
+        display_order: 7
+      - id: "opt_correct_household_variation"
+        value: "household_variation"
+        display_label: "Hane İçi Kullanım Farklılığı"
+        helper_text: "Hane farkı sorularına dönün."
+        display_order: 8
+      - id: "opt_correct_review_all"
+        value: "review_all_answers"
+        display_label: "Tüm Yanıtları Sırayla Gözden Geçir"
+        helper_text: "İlk adımdan itibaren tüm yanıtları gözden geçirin."
+        display_order: 9

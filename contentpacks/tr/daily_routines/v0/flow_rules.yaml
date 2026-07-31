@@ -1,0 +1,259 @@
+# BRIF.AI Daily Routines v0 Flow Rules Catalog
+schema_version: "v0"
+
+multi_select_contract:
+  min_selected_items: 1
+  max_selected_items: 4
+  unique_items: true
+  canonical_order:
+    - "morning"
+    - "midday_afternoon"
+    - "evening"
+    - "night"
+
+flow_rules:
+  # Day Pattern (4 rules)
+  - rule_id: "fr_day_pattern_stable"
+    source_question_id: "q_daily_routines_functional_space_day_pattern_status"
+    expected_value: "stable_recurring_day_available"
+    target_question_id: "q_daily_routines_functional_space_recurring_day_context"
+    target_module: null
+    target_closure_effect: "REQUIRES_FOLLOW_UP"
+    follow_up_required: true
+
+  - rule_id: "fr_day_pattern_no_stable"
+    source_question_id: "q_daily_routines_functional_space_day_pattern_status"
+    expected_value: "no_stable_recurring_day"
+    target_question_id: "q_daily_routines_functional_space_living_social_status"
+    target_module: null
+    target_closure_effect: "REQUIRES_FOLLOW_UP"
+    follow_up_required: true
+
+  - rule_id: "fr_day_pattern_unknown"
+    source_question_id: "q_daily_routines_functional_space_day_pattern_status"
+    expected_value: "unknown"
+    target_question_id: "q_daily_routines_functional_space_summary_confirmation"
+    target_module: null
+    target_closure_effect: "VALID_BUT_LOW_INFORMATION"
+    follow_up_required: false
+
+  - rule_id: "fr_day_pattern_prefer_not_to_answer"
+    source_question_id: "q_daily_routines_functional_space_day_pattern_status"
+    expected_value: "prefer_not_to_answer"
+    target_question_id: "q_daily_routines_functional_space_summary_confirmation"
+    target_module: null
+    target_closure_effect: "VALID_BUT_LOW_INFORMATION"
+    follow_up_required: false
+
+  # Recurring Day Context (5 rules)
+  - rule_id: "fr_context_work_school"
+    source_question_id: "q_daily_routines_functional_space_recurring_day_context"
+    expected_value: "typical_work_or_school_day"
+    target_question_id: "q_daily_routines_functional_space_living_social_status"
+    target_module: null
+    target_closure_effect: "REQUIRES_FOLLOW_UP"
+    follow_up_required: true
+
+  - rule_id: "fr_context_wfh"
+    source_question_id: "q_daily_routines_functional_space_recurring_day_context"
+    expected_value: "work_from_home_day"
+    target_question_id: "q_daily_routines_functional_space_living_social_status"
+    target_module: null
+    target_closure_effect: "REQUIRES_FOLLOW_UP"
+    follow_up_required: true
+
+  - rule_id: "fr_context_shift"
+    source_question_id: "q_daily_routines_functional_space_recurring_day_context"
+    expected_value: "shift_work_day"
+    target_question_id: "q_daily_routines_functional_space_living_social_status"
+    target_module: null
+    target_closure_effect: "REQUIRES_FOLLOW_UP"
+    follow_up_required: true
+
+  - rule_id: "fr_context_home_free"
+    source_question_id: "q_daily_routines_functional_space_recurring_day_context"
+    expected_value: "typical_day_spent_at_home"
+    target_question_id: "q_daily_routines_functional_space_living_social_status"
+    target_module: null
+    target_closure_effect: "REQUIRES_FOLLOW_UP"
+    follow_up_required: true
+
+  - rule_id: "fr_context_other"
+    source_question_id: "q_daily_routines_functional_space_recurring_day_context"
+    expected_value: "other_recurring_day_context"
+    target_question_id: "q_daily_routines_functional_space_other_day_context_detail"
+    target_module: null
+    target_closure_effect: "REQUIRES_FOLLOW_UP"
+    follow_up_required: true
+
+  # Living Social Domain Rules
+  - rule_id: "fr_living_social_reported_periods"
+    source_question_id: "q_daily_routines_functional_space_living_social_status"
+    expected_value: "reported_periods_available"
+    target_question_id: "q_daily_routines_functional_space_living_social_periods"
+    target_module: null
+    target_closure_effect: "REQUIRES_FOLLOW_UP"
+    follow_up_required: true
+
+  - rule_id: "fr_living_social_variable"
+    source_question_id: "q_daily_routines_functional_space_living_social_status"
+    expected_value: "variable"
+    target_question_id: "q_daily_routines_functional_space_kitchen_dining_status"
+    target_module: null
+    target_closure_effect: "VALID_CLOSURE"
+    follow_up_required: false
+
+  # Kitchen Dining Domain Rules
+  - rule_id: "fr_kitchen_dining_reported_periods"
+    source_question_id: "q_daily_routines_functional_space_kitchen_dining_status"
+    expected_value: "reported_periods_available"
+    target_question_id: "q_daily_routines_functional_space_kitchen_dining_periods"
+    target_module: null
+    target_closure_effect: "REQUIRES_FOLLOW_UP"
+    follow_up_required: true
+
+  - rule_id: "fr_kitchen_dining_variable"
+    source_question_id: "q_daily_routines_functional_space_kitchen_dining_status"
+    expected_value: "variable"
+    target_question_id: "q_daily_routines_functional_space_sleeping_status"
+    target_module: null
+    target_closure_effect: "VALID_CLOSURE"
+    follow_up_required: false
+
+  # Sleeping Domain Rules
+  - rule_id: "fr_sleeping_reported_periods"
+    source_question_id: "q_daily_routines_functional_space_sleeping_status"
+    expected_value: "reported_periods_available"
+    target_question_id: "q_daily_routines_functional_space_sleeping_periods"
+    target_module: null
+    target_closure_effect: "REQUIRES_FOLLOW_UP"
+    follow_up_required: true
+
+  - rule_id: "fr_sleeping_variable"
+    source_question_id: "q_daily_routines_functional_space_sleeping_status"
+    expected_value: "variable"
+    target_question_id: "q_daily_routines_functional_space_work_study_status"
+    target_module: null
+    target_closure_effect: "VALID_CLOSURE"
+    follow_up_required: false
+
+  # Work Study Domain Rules
+  - rule_id: "fr_work_study_reported_periods"
+    source_question_id: "q_daily_routines_functional_space_work_study_status"
+    expected_value: "reported_periods_available"
+    target_question_id: "q_daily_routines_functional_space_work_study_periods"
+    target_module: null
+    target_closure_effect: "REQUIRES_FOLLOW_UP"
+    follow_up_required: true
+
+  - rule_id: "fr_work_study_variable"
+    source_question_id: "q_daily_routines_functional_space_work_study_status"
+    expected_value: "variable"
+    target_question_id: "q_daily_routines_functional_space_bathroom_status"
+    target_module: null
+    target_closure_effect: "VALID_CLOSURE"
+    follow_up_required: false
+
+  # Bathroom Domain Rules
+  - rule_id: "fr_bathroom_reported_periods"
+    source_question_id: "q_daily_routines_functional_space_bathroom_status"
+    expected_value: "reported_periods_available"
+    target_question_id: "q_daily_routines_functional_space_bathroom_periods"
+    target_module: null
+    target_closure_effect: "REQUIRES_FOLLOW_UP"
+    follow_up_required: true
+
+  - rule_id: "fr_bathroom_variable"
+    source_question_id: "q_daily_routines_functional_space_bathroom_status"
+    expected_value: "variable"
+    target_question_id: "q_daily_routines_functional_space_household_variation_status"
+    target_module: null
+    target_closure_effect: "VALID_CLOSURE"
+    follow_up_required: false
+
+  # Household Variation Status (5 rules)
+  - rule_id: "fr_hh_no_difference"
+    source_question_id: "q_daily_routines_functional_space_household_variation_status"
+    expected_value: "no_material_difference"
+    target_question_id: "q_daily_routines_functional_space_summary_confirmation"
+    target_module: null
+    target_closure_effect: "VALID_CLOSURE"
+    follow_up_required: false
+
+  - rule_id: "fr_hh_material_difference"
+    source_question_id: "q_daily_routines_functional_space_household_variation_status"
+    expected_value: "material_difference_reported"
+    target_question_id: "q_daily_routines_functional_space_household_variation_detail"
+    target_module: null
+    target_closure_effect: "REQUIRES_FOLLOW_UP"
+    follow_up_required: true
+
+  - rule_id: "fr_hh_unknown"
+    source_question_id: "q_daily_routines_functional_space_household_variation_status"
+    expected_value: "unknown"
+    target_question_id: "q_daily_routines_functional_space_summary_confirmation"
+    target_module: null
+    target_closure_effect: "VALID_BUT_LOW_INFORMATION"
+    follow_up_required: false
+
+  - rule_id: "fr_hh_prefer_not_to_answer"
+    source_question_id: "q_daily_routines_functional_space_household_variation_status"
+    expected_value: "prefer_not_to_answer"
+    target_question_id: "q_daily_routines_functional_space_summary_confirmation"
+    target_module: null
+    target_closure_effect: "VALID_BUT_LOW_INFORMATION"
+    follow_up_required: false
+
+  - rule_id: "fr_hh_single_person"
+    source_question_id: "q_daily_routines_functional_space_household_variation_status"
+    expected_value: "not_applicable_single_person_household"
+    target_question_id: "q_daily_routines_functional_space_summary_confirmation"
+    target_module: null
+    target_closure_effect: "VALID_CLOSURE"
+    follow_up_required: false
+
+  # Summary Confirmation (2 rules)
+  - rule_id: "fr_confirm_yes"
+    source_question_id: "q_daily_routines_functional_space_summary_confirmation"
+    expected_value: "confirmed"
+    target_question_id: null
+    target_module: "module_complete"
+    target_closure_effect: "TARGET_2_FULFILLED"
+    follow_up_required: false
+
+  - rule_id: "fr_confirm_no"
+    source_question_id: "q_daily_routines_functional_space_summary_confirmation"
+    expected_value: "rejected_for_correction"
+    target_question_id: "bp_ui_room_use_correction_selector"
+    target_module: null
+    target_closure_effect: "REQUIRES_CORRECTION"
+    follow_up_required: true
+
+conditional_routes:
+  - selector_value: "day_pattern"
+    target_question_id: "q_daily_routines_functional_space_day_pattern_status"
+    return_step: "q_daily_routines_functional_space_summary_confirmation"
+  - selector_value: "recurring_day_context"
+    target_question_id: "q_daily_routines_functional_space_recurring_day_context"
+    return_step: "q_daily_routines_functional_space_summary_confirmation"
+  - selector_value: "living_social"
+    target_question_id: "q_daily_routines_functional_space_living_social_status"
+    return_step: "q_daily_routines_functional_space_summary_confirmation"
+  - selector_value: "kitchen_dining"
+    target_question_id: "q_daily_routines_functional_space_kitchen_dining_status"
+    return_step: "q_daily_routines_functional_space_summary_confirmation"
+  - selector_value: "sleeping"
+    target_question_id: "q_daily_routines_functional_space_sleeping_status"
+    return_step: "q_daily_routines_functional_space_summary_confirmation"
+  - selector_value: "work_study"
+    target_question_id: "q_daily_routines_functional_space_work_study_status"
+    return_step: "q_daily_routines_functional_space_summary_confirmation"
+  - selector_value: "bathroom"
+    target_question_id: "q_daily_routines_functional_space_bathroom_status"
+    return_step: "q_daily_routines_functional_space_summary_confirmation"
+  - selector_value: "household_variation"
+    target_question_id: "q_daily_routines_functional_space_household_variation_status"
+    return_step: "q_daily_routines_functional_space_summary_confirmation"
+  - selector_value: "review_all_answers"
+    target_question_id: "q_daily_routines_functional_space_day_pattern_status"
+    return_step: "q_daily_routines_functional_space_summary_confirmation"

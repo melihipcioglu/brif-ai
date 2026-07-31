@@ -1,0 +1,54 @@
+# BRIF.AI Daily Routines v0 Summary Templates Catalog
+schema_version: "v0"
+
+summary_templates:
+  day_pattern:
+    stable_recurring_day_available: "Yanıtlayıcı tarafından belirli aralıklarla tekrarlanan bir gün düzeni bildirildi."
+    no_stable_recurring_day: "Yanıtlayıcı tarafından tekrarlanan sabit bir gün örüntüsü bulunmadığı, gün düzeninin genel olarak değişken geçtiği bildirildi."
+    unknown: "Yanıtlayıcı tarafından gün düzenine ilişkin net bilgi verilemedi."
+    prefer_not_to_answer: "Yanıtlayıcı gün düzeni bilgisini paylaşmamayı tercih etti."
+
+  recurring_context:
+    typical_work_or_school_day: "Yanıtlayıcının kişisel bağlamı: Dışarıda işte veya okulda olunan tipik gün."
+    work_from_home_day: "Yanıtlayıcının kişisel bağlamı: Evden çalışılan veya ders takip edilen tipik gün."
+    shift_work_day: "Yanıtlayıcının kişisel bağlamı: Vardiyalı veya nöbet usulü çalışılan gün."
+    typical_day_spent_at_home: "Yanıtlayıcının kişisel bağlamı: İş/okul yükümlülüğü olmadan evde geçirilen tipik gün."
+    other_recurring_day_context: "Yanıtlayıcının kişisel bağlamı: Diğer tekrarlanan gün durumu ({detail})."
+
+  domain_status:
+    STABLE:
+      reported_periods_available: "Seçilen gün bağlamında {domain_name} için {periods_text} dönemlerinde kullanım bildirildi."
+      variable: "Seçilen gün bağlamında {domain_name} kullanımının gün içinde değişken zamanlarda gerçekleştiği bildirildi."
+      no_use_reported_in_selected_context: "Seçilen gün bağlamında {domain_name} için kullanım bildirilmedi."
+      functional_domain_not_available_in_current_home: "{domain_name} kullanımı için mevcut evde uygun bir alan veya olanak bulunmadığı bildirildi."
+      functional_domain_not_relevant_to_household: "{domain_name} kullanımının hane yaşam biçimi için geçerli veya ilgili olmadığı bildirildi."
+      unknown: "Yanıtlayıcı tarafından {domain_name} kullanım zamanlarına ilişkin net bilgi verilemedi."
+      prefer_not_to_answer: "{domain_name} kullanım bilgisi yanıtlayıcı tarafından paylaşılmadı."
+    IRREGULAR:
+      reported_periods_available: "Yanıtlayıcının genel ve değişken gün düzeninde {domain_name} için {periods_text} dönemlerinde kullanım bildirildi."
+      variable: "Yanıtlayıcının genel ve değişken gün düzeninde {domain_name} kullanımının değişken zamanlarda gerçekleştiği bildirildi."
+      no_use_reported_in_selected_context: "Genel gün düzeninde {domain_name} için kullanım bildirilmedi."
+      functional_domain_not_available_in_current_home: "{domain_name} kullanımı için mevcut evde uygun bir alan veya olanak bulunmadığı bildirildi."
+      functional_domain_not_relevant_to_household: "{domain_name} kullanımının hane yaşam biçimi için geçerli veya ilgili olmadığı bildirildi."
+      unknown: "Yanıtlayıcı tarafından {domain_name} kullanım zamanlarına ilişkin net bilgi verilemedi."
+      prefer_not_to_answer: "{domain_name} kullanım bilgisi yanıtlayıcı tarafından paylaşılmadı."
+
+  periods_label_map:
+    morning: "sabah"
+    midday_afternoon: "öğle/öğleden sonra"
+    evening: "akşam"
+    night: "gece"
+
+  household_variation:
+    no_material_difference: "Hane halkının alan kullanım dönemlerinde belirgin bir farklılık bulunmadığı bildirildi."
+    material_difference_reported: "Hane halkının alan kullanım dönemlerinde belirgin farklılıklar bulunduğu bildirildi ({detail})."
+    unknown: "Hane halkının alan kullanım dönemleri hakkında net bilgi verilemedi."
+    prefer_not_to_answer: "Hane halkının alan kullanım farklılığı bilgisi yanıtlayıcı tarafından paylaşılmadı."
+    not_applicable_single_person_household: "Konutun tek kişilik hane olarak kullanıldığı bildirildi."
+
+  domain_names:
+    living_social: "yaşam ve sosyal etkileşim alanı"
+    kitchen_dining: "yemek hazırlama ve yemek yeme alanı"
+    sleeping: "uyku ve kişisel dinlenme alanı"
+    work_study: "çalışma ve öğrenme alanı"
+    bathroom: "banyo ve kişisel bakım alanı"

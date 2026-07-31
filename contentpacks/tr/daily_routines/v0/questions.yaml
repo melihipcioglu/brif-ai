@@ -1,0 +1,291 @@
+# BRIF.AI Daily Routines v0 Questions Catalog
+schema_version: "v0"
+module: "DAILY_ROUTINES"
+
+questions:
+  - id: "q_daily_routines_functional_space_day_pattern_status"
+    module: "DAILY_ROUTINES"
+    purpose: "Determine whether the respondent can report a stable recurring day pattern or an irregular routine."
+    content_key: "daily_routines.functional_space_use.day_pattern_status"
+    answer_type: "SINGLE_CHOICE"
+    required: true
+    output_target_ids:
+      - "target_typical_day_functional_space_use_pattern"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_recurring_day_context"
+      - "q_daily_routines_functional_space_living_social_status"
+      - "q_daily_routines_functional_space_summary_confirmation"
+    applicable_stakeholder_roles:
+      - "PRIMARY_RESIDENT"
+    display_order: 1
+    source_metadata: "construct=cand_construct_functional_space_use_temporal_patterns;stage=v0_wording_draft;scientific_link=registry_pending"
+    status: "DRAFT"
+    option_set_id: "os_day_pattern_status"
+
+  - id: "q_daily_routines_functional_space_recurring_day_context"
+    module: "DAILY_ROUTINES"
+    purpose: "Capture the respondent's primary personal recurring day context."
+    content_key: "daily_routines.functional_space_use.recurring_day_context"
+    answer_type: "SINGLE_CHOICE"
+    required: true
+    output_target_ids:
+      - "target_typical_day_functional_space_use_pattern"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_other_day_context_detail"
+      - "q_daily_routines_functional_space_living_social_status"
+    applicable_stakeholder_roles:
+      - "PRIMARY_RESIDENT"
+    display_order: 2
+    source_metadata: "construct=cand_construct_functional_space_use_temporal_patterns;stage=v0_wording_draft;scientific_link=registry_pending"
+    status: "DRAFT"
+    option_set_id: "os_recurring_day_context"
+
+  - id: "q_daily_routines_functional_space_other_day_context_detail"
+    module: "DAILY_ROUTINES"
+    purpose: "Capture brief free-text explanation for custom recurring day context."
+    content_key: "daily_routines.functional_space_use.other_day_context_detail"
+    answer_type: "FREE_TEXT"
+    required: true
+    output_target_ids:
+      - "target_typical_day_functional_space_use_pattern"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_living_social_status"
+    applicable_stakeholder_roles:
+      - "PRIMARY_RESIDENT"
+    display_order: 3
+    source_metadata: "construct=cand_construct_functional_space_use_temporal_patterns;stage=v0_wording_draft;scientific_link=registry_pending"
+    status: "DRAFT"
+    option_set_id: null
+
+  - id: "q_daily_routines_functional_space_living_social_status"
+    module: "DAILY_ROUTINES"
+    purpose: "Capture space-use status for living and social interaction domain."
+    content_key: "daily_routines.functional_space_use.living_social.status"
+    answer_type: "SINGLE_CHOICE"
+    required: true
+    output_target_ids:
+      - "target_typical_day_functional_space_use_pattern"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_living_social_periods"
+      - "q_daily_routines_functional_space_kitchen_dining_status"
+    applicable_stakeholder_roles:
+      - "PRIMARY_RESIDENT"
+    display_order: 4
+    source_metadata: "construct=cand_construct_functional_space_use_temporal_patterns;stage=v0_wording_draft;scientific_link=registry_pending"
+    status: "DRAFT"
+    option_set_id: "os_functional_domain_status"
+
+  - id: "q_daily_routines_functional_space_living_social_periods"
+    module: "DAILY_ROUTINES"
+    purpose: "Capture broad temporal periods for living and social domain when periods are available."
+    content_key: "daily_routines.functional_space_use.living_social.periods"
+    answer_type: "MULTIPLE_CHOICE"
+    required: true
+    output_target_ids:
+      - "target_typical_day_functional_space_use_pattern"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_kitchen_dining_status"
+    applicable_stakeholder_roles:
+      - "PRIMARY_RESIDENT"
+    display_order: 5
+    source_metadata: "construct=cand_construct_functional_space_use_temporal_patterns;stage=v0_wording_draft;scientific_link=registry_pending"
+    status: "DRAFT"
+    option_set_id: "os_day_period"
+
+  - id: "q_daily_routines_functional_space_kitchen_dining_status"
+    module: "DAILY_ROUTINES"
+    purpose: "Capture space-use status for kitchen and dining domain."
+    content_key: "daily_routines.functional_space_use.kitchen_dining.status"
+    answer_type: "SINGLE_CHOICE"
+    required: true
+    output_target_ids:
+      - "target_typical_day_functional_space_use_pattern"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_kitchen_dining_periods"
+      - "q_daily_routines_functional_space_sleeping_status"
+    applicable_stakeholder_roles:
+      - "PRIMARY_RESIDENT"
+    display_order: 6
+    source_metadata: "construct=cand_construct_functional_space_use_temporal_patterns;stage=v0_wording_draft;scientific_link=registry_pending"
+    status: "DRAFT"
+    option_set_id: "os_functional_domain_status"
+
+  - id: "q_daily_routines_functional_space_kitchen_dining_periods"
+    module: "DAILY_ROUTINES"
+    purpose: "Capture broad temporal periods for kitchen and dining domain when periods are available."
+    content_key: "daily_routines.functional_space_use.kitchen_dining.periods"
+    answer_type: "MULTIPLE_CHOICE"
+    required: true
+    output_target_ids:
+      - "target_typical_day_functional_space_use_pattern"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_sleeping_status"
+    applicable_stakeholder_roles:
+      - "PRIMARY_RESIDENT"
+    display_order: 7
+    source_metadata: "construct=cand_construct_functional_space_use_temporal_patterns;stage=v0_wording_draft;scientific_link=registry_pending"
+    status: "DRAFT"
+    option_set_id: "os_day_period"
+
+  - id: "q_daily_routines_functional_space_sleeping_status"
+    module: "DAILY_ROUTINES"
+    purpose: "Capture space-use status for sleeping and private rest domain."
+    content_key: "daily_routines.functional_space_use.sleeping.status"
+    answer_type: "SINGLE_CHOICE"
+    required: true
+    output_target_ids:
+      - "target_typical_day_functional_space_use_pattern"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_sleeping_periods"
+      - "q_daily_routines_functional_space_work_study_status"
+    applicable_stakeholder_roles:
+      - "PRIMARY_RESIDENT"
+    display_order: 8
+    source_metadata: "construct=cand_construct_functional_space_use_temporal_patterns;stage=v0_wording_draft;scientific_link=registry_pending"
+    status: "DRAFT"
+    option_set_id: "os_functional_domain_status"
+
+  - id: "q_daily_routines_functional_space_sleeping_periods"
+    module: "DAILY_ROUTINES"
+    purpose: "Capture broad temporal periods for sleeping and private rest domain when periods are available."
+    content_key: "daily_routines.functional_space_use.sleeping.periods"
+    answer_type: "MULTIPLE_CHOICE"
+    required: true
+    output_target_ids:
+      - "target_typical_day_functional_space_use_pattern"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_work_study_status"
+    applicable_stakeholder_roles:
+      - "PRIMARY_RESIDENT"
+    display_order: 9
+    source_metadata: "construct=cand_construct_functional_space_use_temporal_patterns;stage=v0_wording_draft;scientific_link=registry_pending"
+    status: "DRAFT"
+    option_set_id: "os_day_period"
+
+  - id: "q_daily_routines_functional_space_work_study_status"
+    module: "DAILY_ROUTINES"
+    purpose: "Capture space-use status for work, study, and mental focus domain."
+    content_key: "daily_routines.functional_space_use.work_study.status"
+    answer_type: "SINGLE_CHOICE"
+    required: true
+    output_target_ids:
+      - "target_typical_day_functional_space_use_pattern"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_work_study_periods"
+      - "q_daily_routines_functional_space_bathroom_status"
+    applicable_stakeholder_roles:
+      - "PRIMARY_RESIDENT"
+    display_order: 10
+    source_metadata: "construct=cand_construct_functional_space_use_temporal_patterns;stage=v0_wording_draft;scientific_link=registry_pending"
+    status: "DRAFT"
+    option_set_id: "os_functional_domain_status"
+
+  - id: "q_daily_routines_functional_space_work_study_periods"
+    module: "DAILY_ROUTINES"
+    purpose: "Capture broad temporal periods for work and study domain when periods are available."
+    content_key: "daily_routines.functional_space_use.work_study.periods"
+    answer_type: "MULTIPLE_CHOICE"
+    required: true
+    output_target_ids:
+      - "target_typical_day_functional_space_use_pattern"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_bathroom_status"
+    applicable_stakeholder_roles:
+      - "PRIMARY_RESIDENT"
+    display_order: 11
+    source_metadata: "construct=cand_construct_functional_space_use_temporal_patterns;stage=v0_wording_draft;scientific_link=registry_pending"
+    status: "DRAFT"
+    option_set_id: "os_day_period"
+
+  - id: "q_daily_routines_functional_space_bathroom_status"
+    module: "DAILY_ROUTINES"
+    purpose: "Capture space-use status for bathroom and personal hygiene domain."
+    content_key: "daily_routines.functional_space_use.bathroom.status"
+    answer_type: "SINGLE_CHOICE"
+    required: true
+    output_target_ids:
+      - "target_typical_day_functional_space_use_pattern"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_bathroom_periods"
+      - "q_daily_routines_functional_space_household_variation_status"
+    applicable_stakeholder_roles:
+      - "PRIMARY_RESIDENT"
+    display_order: 12
+    source_metadata: "construct=cand_construct_functional_space_use_temporal_patterns;stage=v0_wording_draft;scientific_link=registry_pending"
+    status: "DRAFT"
+    option_set_id: "os_functional_domain_status"
+
+  - id: "q_daily_routines_functional_space_bathroom_periods"
+    module: "DAILY_ROUTINES"
+    purpose: "Capture broad temporal periods for bathroom domain when periods are available."
+    content_key: "daily_routines.functional_space_use.bathroom.periods"
+    answer_type: "MULTIPLE_CHOICE"
+    required: true
+    output_target_ids:
+      - "target_typical_day_functional_space_use_pattern"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_household_variation_status"
+    applicable_stakeholder_roles:
+      - "PRIMARY_RESIDENT"
+    display_order: 13
+    source_metadata: "construct=cand_construct_functional_space_use_temporal_patterns;stage=v0_wording_draft;scientific_link=registry_pending"
+    status: "DRAFT"
+    option_set_id: "os_day_period"
+
+  - id: "q_daily_routines_functional_space_household_variation_status"
+    module: "DAILY_ROUTINES"
+    purpose: "Capture reported material variations between household members."
+    content_key: "daily_routines.functional_space_use.household_variation_status"
+    answer_type: "SINGLE_CHOICE"
+    required: true
+    output_target_ids:
+      - "target_typical_day_functional_space_use_pattern"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_household_variation_detail"
+      - "q_daily_routines_functional_space_summary_confirmation"
+    applicable_stakeholder_roles:
+      - "PRIMARY_RESIDENT"
+    display_order: 14
+    source_metadata: "construct=cand_construct_functional_space_use_temporal_patterns;stage=v0_wording_draft;scientific_link=registry_pending"
+    status: "DRAFT"
+    option_set_id: "os_household_variation_status"
+
+  - id: "q_daily_routines_functional_space_household_variation_detail"
+    module: "DAILY_ROUTINES"
+    purpose: "Capture brief free-text explanation of material household variations."
+    content_key: "daily_routines.functional_space_use.household_variation_detail"
+    answer_type: "FREE_TEXT"
+    required: true
+    output_target_ids:
+      - "target_typical_day_functional_space_use_pattern"
+    allowed_follow_up_question_ids:
+      - "q_daily_routines_functional_space_summary_confirmation"
+    applicable_stakeholder_roles:
+      - "PRIMARY_RESIDENT"
+    display_order: 15
+    source_metadata: "construct=cand_construct_functional_space_use_temporal_patterns;stage=v0_wording_draft;scientific_link=registry_pending"
+    status: "DRAFT"
+    option_set_id: null
+
+  - id: "q_daily_routines_functional_space_summary_confirmation"
+    module: "DAILY_ROUTINES"
+    purpose: "Confirm or request correction for the synthesized functional space-use summary."
+    content_key: "daily_routines.functional_space_use.summary_confirmation"
+    answer_type: "CONFIRMATION"
+    required: true
+    output_target_ids:
+      - "target_confirmed_functional_space_use_pattern_summary"
+    allowed_follow_up_question_ids: []
+    applicable_stakeholder_roles:
+      - "PRIMARY_RESIDENT"
+    display_order: 16
+    source_metadata: "construct=cand_construct_functional_space_use_temporal_patterns;stage=v0_wording_draft;scientific_link=registry_pending"
+    status: "DRAFT"
+    option_set_id: "os_summary_confirmation"
+
+ui_state_controls:
+  - id: "bp_ui_room_use_correction_selector"
+    module: "DAILY_ROUTINES"
+    purpose: "UI state control selector allowing the user to pick a target section for correction."
+    content_key: "daily_routines.functional_space_use.correction_selector"
+    option_set_id: "os_correction_target"
