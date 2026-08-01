@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BRIF.AI — Mimari İhtiyaç Analizi &amp; Etkileşimli Plan Prototipi v4</title>
+  <title>BRIF.AI — Conversation-First Architectural Workspace v5</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
@@ -16,13 +16,13 @@
     <header class="app-header">
       <div class="header-brand">
         <span class="brand-logo">BRIF<span class="brand-dot">.</span>AI</span>
-        <span class="brand-subtitle">Mimari Karar Destek Platformu v4</span>
+        <span class="brand-subtitle">Sohbet Merkezli Mimari Çalışma Alanı v5</span>
       </div>
 
       <div class="header-project">
         <span class="project-tag">Proje:</span>
         <span class="project-name">İki Katlı Müstakil Konut Prototipi</span>
-        <span class="project-badge">Şematik v4</span>
+        <span class="project-badge">Sohbet Merkezli</span>
       </div>
 
       <div class="header-actions">
@@ -45,7 +45,6 @@
     <!-- 4-STAGE PROCESS NAVIGATION STEPPER BAR -->
     <nav class="process-stepper-bar" aria-label="Süreç Navigasyonu">
       <div class="stepper-track">
-        <!-- Stage 1 -->
         <button class="step-node active" id="stepNode1" data-stage="1" aria-label="Aşama 1: Yaşamınızı Anlama">
           <span class="step-number">1</span>
           <span class="step-label">Yaşamınızı Anlama</span>
@@ -53,7 +52,6 @@
         </button>
         <div class="step-connector"></div>
 
-        <!-- Stage 2 -->
         <button class="step-node" id="stepNode2" data-stage="2" aria-label="Aşama 2: Görsel Tercihler">
           <span class="step-number">2</span>
           <span class="step-label">Görsel Tercihler</span>
@@ -61,7 +59,6 @@
         </button>
         <div class="step-connector"></div>
 
-        <!-- Stage 3 -->
         <button class="step-node" id="stepNode3" data-stage="3" aria-label="Aşama 3: Mekân Programı">
           <span class="step-number">3</span>
           <span class="step-label">Mekân Programı</span>
@@ -69,11 +66,10 @@
         </button>
         <div class="step-connector"></div>
 
-        <!-- Stage 4 -->
         <button class="step-node" id="stepNode4" data-stage="4" aria-label="Aşama 4: Taslak Plan">
           <span class="step-number">4</span>
           <span class="step-label">Taslak Plan</span>
-          <span class="step-badge badge-pending">Etkileşimli</span>
+          <span class="step-badge badge-pending">Sohbet Merkezli</span>
         </button>
       </div>
     </nav>
@@ -82,126 +78,58 @@
     <div class="global-disclaimer-bar">
       <span>ℹ️ UX prototipi — gerçek LLM bağlı değildir.</span>
       <span>•</span>
-      <span>Demo ön kontrolü — resmî mevzuat ve yerel idare verisi bağlı değildir.</span>
+      <span>Demo mimari değerlendirmesi — resmî mevzuat ve yerel idare verisi bağlı değildir.</span>
       <span>•</span>
       <span>Şematik plan — mimari proje veya ruhsat çizimi değildir.</span>
     </div>
 
-    <!-- MAIN WORKSPACE CONTAINER -->
+    <!-- MAIN CONVERSATION-FIRST WORKSPACE LAYOUT -->
     <main class="main-workspace">
       
-      <!-- LEFT MAIN COLUMN (~72% width) -->
+      <!-- LEFT MAIN WORKSPACE (~65–70% width) -->
       <section class="stage-workspace">
         
         <!-- STAGE 1: YAŞAMINIZI ANLAMA -->
         <div class="stage-view active" id="stageView1">
-          <div class="chat-messages" id="chatMessages">
-            <div class="message ai-message">
-              <div class="message-avatar brif">B</div>
-              <div class="message-content">
-                <div class="message-sender">BRIF.AI Mimari Asistan</div>
-                <div class="message-text">
-                  Yeni evinizde günlük yaşamınızı ve mekân kullanımı ritminizi anlamak istiyorum. Ev hafta içinde genellikle nasıl kullanılıyor?
-                </div>
-              </div>
-            </div>
-
-            <div class="message user-message">
-              <div class="message-avatar user">MK</div>
-              <div class="message-content">
-                <div class="message-sender">Siz</div>
-                <div class="message-text">
-                  Ben çoğu gün ofisteyim. Eşim evden çalışıyor. Çocuklar okuldan dört gibi geliyor.
-                </div>
-              </div>
-            </div>
-
-            <div class="message ai-message" id="latestAiMessage">
-              <div class="message-avatar brif">B</div>
-              <div class="message-content">
-                <div class="message-sender">BRIF.AI Mimari Asistan</div>
-                <div class="message-text">
-                  Anladım. Eviniz gün içinde tamamen boş kalmıyor. Eşinizin evden çalışma sürecinde akustik mahremiyet ve sessizlik ne derece kritik?
-                </div>
-
-                <div class="suggestion-chips" id="suggestionChips">
-                  <button class="chip-btn" data-reply="Eşim gün boyu online toplantılar yapıyor, tam ses izolasyonu çok kritik.">
-                    Online toplantılar var, ses izolasyonu kritik
-                  </button>
-                  <button class="chip-btn" data-reply="Yazım/okuma ağırlıklı, sadece yoğun odaklanma saatlerinde sessizlik istiyor.">
-                    Yazım/okuma ağırlıklı
-                  </button>
-                  <button class="chip-btn" data-reply="Öğleden sonra 16:00 sonrası ses çakışması oluyor.">
-                    16:00 sonrası ses çakışması oluyor
-                  </button>
-                </div>
-              </div>
-            </div>
+          <div class="stage-intro-box">
+            <h2>Yaşam Ritminizi Anlama</h2>
+            <p>Evinizin gün içindeki kullanımı, çalışma düzeniniz ve özel öncelikleriniz hakkında sohbet edelim.</p>
           </div>
         </div>
 
         <!-- STAGE 2: GÖRSEL TERCİHLER (3 COMPARATIVE ROUNDS) -->
         <div class="stage-view hidden" id="stageView2">
           <div class="pref-scroll-area">
-            
             <div class="stage-prompt-banner">
               <div class="message-avatar brif">B</div>
               <div class="prompt-text-group">
                 <div class="prompt-sender">BRIF.AI Mimari Asistan</div>
-                <div class="prompt-desc">
-                  Şimdi 3 karşılaştırmalı tur hâlinde mekânsal ilişki örnekleri sunuyorum. Hangi mekânsal niteliklerin size uygun olduğunu anlamak istiyoruz.
-                </div>
+                <div class="prompt-desc">3 karşılaştırmalı tur hâlinde mekânsal nitelik tercihlerini inceliyoruz.</div>
               </div>
             </div>
 
-            <!-- Round Stepper Bar -->
             <div class="round-stepper">
-              <button class="round-tab active" data-round="1" id="roundTab1">
-                <span class="round-num">1</span>
-                <span>Tur 1: Çalışma Alanı Kurulumu</span>
-              </button>
-              <button class="round-tab" data-round="2" id="roundTab2">
-                <span class="round-num">2</span>
-                <span>Tur 2: Ayrışma Esnekliği</span>
-              </button>
-              <button class="round-tab" data-round="3" id="roundTab3">
-                <span class="round-num">3</span>
-                <span>Tur 3: Mutfak &amp; Yaşam İlişkisi</span>
-              </button>
+              <button class="round-tab active" data-round="1" id="roundTab1"><span class="round-num">1</span> Tur 1: Çalışma Alanı</button>
+              <button class="round-tab" data-round="2" id="roundTab2"><span class="round-num">2</span> Tur 2: Ayrışma Esnekliği</button>
+              <button class="round-tab" data-round="3" id="roundTab3"><span class="round-num">3</span> Tur 3: Mutfak İlişkisi</button>
             </div>
 
-            <!-- ROUND 1 -->
             <div class="pref-round-container active" id="prefRound1">
               <div class="pref-cards-comparison">
-                <div class="pref-card-large" data-card-id="work_separate" data-round="1">
-                  <div class="pref-image-wrapper">
-                    <img src="assets/preferences/work_separate.svg" alt="Tamamen ayrı çalışma odası" loading="lazy">
-                  </div>
+                <div class="pref-card-large" data-card-id="work_separate">
+                  <div class="pref-image-wrapper"><img src="assets/preferences/work_separate.svg" alt="Tamamen ayrı çalışma odası" loading="lazy"></div>
                   <div class="pref-card-body">
                     <h3 class="pref-card-title">1A. Tamamen Ayrı Çalışma Odası</h3>
-                    <p class="pref-card-desc">Ana yaşam alanından duvar ve kapı ile tam izole edilmiş kapalı çalışma mekânı.</p>
+                    <p class="pref-card-desc">Ana yaşam alanından duvar ve kapı ile tam izole kapalı çalışma mekânı.</p>
                     <div class="pref-card-actions">
                       <button class="pref-btn-primary" data-action="like">Bu yaklaşıma daha yakınım</button>
                       <button class="pref-btn-secondary" data-action="neutral">Kararsızım</button>
                     </div>
-                    <button class="pref-link-dislike" data-action="dislike">Bu yaklaşım bana uygun değil</button>
-
-                    <div class="attribute-chip-section hidden">
-                      <div class="chip-question-title">Bu örnekte size uygun gelen özellikler neler?</div>
-                      <div class="attribute-chips-grid">
-                        <button class="attr-chip" data-attr="Sessizlik">Sessizlik</button>
-                        <button class="attr-chip" data-attr="Mahremiyet">Mahremiyet</button>
-                        <button class="attr-chip" data-attr="Gerektiğinde kapanabilmesi">Gerektiğinde kapanabilmesi</button>
-                        <button class="attr-chip" data-attr="Gün ışığı">Gün ışığı</button>
-                      </div>
-                    </div>
                   </div>
                 </div>
 
-                <div class="pref-card-large" data-card-id="work_connected" data-round="1">
-                  <div class="pref-image-wrapper">
-                    <img src="assets/preferences/work_connected.svg" alt="Ortak yaşama bağlı çalışma alanı" loading="lazy">
-                  </div>
+                <div class="pref-card-large" data-card-id="work_connected">
+                  <div class="pref-image-wrapper"><img src="assets/preferences/work_connected.svg" alt="Ortak yaşama bağlı çalışma alanı" loading="lazy"></div>
                   <div class="pref-card-body">
                     <h3 class="pref-card-title">1B. Ortak Yaşama Bağlı Çalışma Alanı</h3>
                     <p class="pref-card-desc">Yaşam alanına görsel olarak açık veya alçak bölücü ile bağlı çalışma alanı.</p>
@@ -209,160 +137,58 @@
                       <button class="pref-btn-primary" data-action="like">Bu yaklaşıma daha yakınım</button>
                       <button class="pref-btn-secondary" data-action="neutral">Kararsızım</button>
                     </div>
-                    <button class="pref-link-dislike" data-action="dislike">Bu yaklaşım bana uygun değil</button>
-
-                    <div class="attribute-chip-section hidden">
-                      <div class="chip-question-title">Bu örnekte size uygun gelen özellikler neler?</div>
-                      <div class="attribute-chips-grid">
-                        <button class="attr-chip" data-attr="Görsel bağlantı">Görsel bağlantı</button>
-                        <button class="attr-chip" data-attr="Ortak yaşama yakınlık">Ortak yaşama yakınlık</button>
-                        <button class="attr-chip" data-attr="Ferahlık">Ferahlık</button>
-                        <button class="attr-chip" data-attr="Çocukları görebilmek">Çocukları görebilmek</button>
-                      </div>
-                    </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            <!-- ROUND 2 -->
+            <!-- Round 2 & 3 Containers -->
             <div class="pref-round-container hidden" id="prefRound2">
               <div class="pref-cards-comparison">
-                <div class="pref-card-large" data-card-id="work_fixed" data-round="2">
-                  <div class="pref-image-wrapper">
-                    <img src="assets/preferences/work_separate.svg" alt="Sabit ayrışma" loading="lazy">
-                  </div>
-                  <div class="pref-card-body">
-                    <h3 class="pref-card-title">2A. Sabit Ayrışma</h3>
-                    <p class="pref-card-desc">Oda sınırları ve duvarları sabit, net tanımlanmış mekân organizasyonu.</p>
-                    <div class="pref-card-actions">
-                      <button class="pref-btn-primary" data-action="like">Bu yaklaşıma daha yakınım</button>
-                      <button class="pref-btn-secondary" data-action="neutral">Kararsızım</button>
-                    </div>
-                    <button class="pref-link-dislike" data-action="dislike">Bu yaklaşım bana uygun değil</button>
-
-                    <div class="attribute-chip-section hidden">
-                      <div class="chip-question-title">Bu örnekte size uygun gelen özellikler neler?</div>
-                      <div class="attribute-chips-grid">
-                        <button class="attr-chip" data-attr="Sessizlik">Sessizlik</button>
-                        <button class="attr-chip" data-attr="Mahremiyet">Mahremiyet</button>
-                      </div>
-                    </div>
-                  </div>
+                <div class="pref-card-large" data-card-id="work_fixed">
+                  <div class="pref-image-wrapper"><img src="assets/preferences/work_separate.svg" alt="Sabit ayrışma"></div>
+                  <div class="pref-card-body"><h3 class="pref-card-title">2A. Sabit Ayrışma</h3></div>
                 </div>
-
-                <div class="pref-card-large" data-card-id="work_flexible" data-round="2">
-                  <div class="pref-image-wrapper">
-                    <img src="assets/preferences/work_flexible.svg" alt="Kayar panelle dönüşebilen esnek alan" loading="lazy">
-                  </div>
-                  <div class="pref-card-body">
-                    <h3 class="pref-card-title">2B. Kayar Panelle Dönüşebilen Esnek Alan</h3>
-                    <p class="pref-card-desc">Gerektiğinde kayar panellerle kapanan veya açılıp salonla birleşen çok amaçlı alan.</p>
-                    <div class="pref-card-actions">
-                      <button class="pref-btn-primary" data-action="like">Bu yaklaşıma daha yakınım</button>
-                      <button class="pref-btn-secondary" data-action="neutral">Kararsızım</button>
-                    </div>
-                    <button class="pref-link-dislike" data-action="dislike">Bu yaklaşım bana uygun değil</button>
-
-                    <div class="attribute-chip-section hidden">
-                      <div class="chip-question-title">Bu örnekte size uygun gelen özellikler neler?</div>
-                      <div class="attribute-chips-grid">
-                        <button class="attr-chip" data-attr="Esneklik">Esneklik</button>
-                        <button class="attr-chip" data-attr="Gerektiğinde kapanabilmesi">Gerektiğinde kapanabilmesi</button>
-                      </div>
-                    </div>
-                  </div>
+                <div class="pref-card-large" data-card-id="work_flexible">
+                  <div class="pref-image-wrapper"><img src="assets/preferences/work_flexible.svg" alt="Kayar panelli esnek alan"></div>
+                  <div class="pref-card-body"><h3 class="pref-card-title">2B. Kayar Panelli Esnek Alan</h3></div>
                 </div>
               </div>
             </div>
 
-            <!-- ROUND 3 -->
             <div class="pref-round-container hidden" id="prefRound3">
               <div class="pref-cards-comparison">
-                <div class="pref-card-large" data-card-id="kitchen_open" data-round="3">
-                  <div class="pref-image-wrapper">
-                    <img src="assets/preferences/kitchen_open.svg" alt="Açık mutfak ve yaşam ilişkisi" loading="lazy">
-                  </div>
-                  <div class="pref-card-body">
-                    <h3 class="pref-card-title">3A. Açık Mutfak ve Yaşam İlişkisi</h3>
-                    <p class="pref-card-desc">Mutfak adası ve yemek alanının salonla kesintisiz bütünleştiği sosyal açık plan kurgusu.</p>
-                    <div class="pref-card-actions">
-                      <button class="pref-btn-primary" data-action="like">Bu yaklaşıma daha yakınım</button>
-                      <button class="pref-btn-secondary" data-action="neutral">Kararsızım</button>
-                    </div>
-                    <button class="pref-link-dislike" data-action="dislike">Bu yaklaşım bana uygun değil</button>
-
-                    <div class="attribute-chip-section hidden">
-                      <div class="chip-question-title">Bu örnekte size uygun gelen özellikler neler?</div>
-                      <div class="attribute-chips-grid">
-                        <button class="attr-chip" data-attr="Görsel bağlantı">Görsel bağlantı</button>
-                        <button class="attr-chip" data-attr="Ortak yaşama yakınlık">Ortak yaşama yakınlık</button>
-                      </div>
-                    </div>
-                  </div>
+                <div class="pref-card-large" data-card-id="kitchen_open">
+                  <div class="pref-image-wrapper"><img src="assets/preferences/kitchen_open.svg" alt="Açık mutfak"></div>
+                  <div class="pref-card-body"><h3 class="pref-card-title">3A. Açık Mutfak İlişkisi</h3></div>
                 </div>
-
-                <div class="pref-card-large" data-card-id="kitchen_controlled" data-round="3">
-                  <div class="pref-image-wrapper">
-                    <img src="assets/preferences/kitchen_controlled.svg" alt="Daha kontrollü ve mahrem mutfak ilişkisi" loading="lazy">
-                  </div>
-                  <div class="pref-card-body">
-                    <h3 class="pref-card-title">3B. Kontrollü &amp; Mahrem Mutfak İlişkisi</h3>
-                    <p class="pref-card-desc">Cam sürgülü kapı ile koku ve ses geçişi kontrol edilen bağımsız mutfak.</p>
-                    <div class="pref-card-actions">
-                      <button class="pref-btn-primary" data-action="like">Bu yaklaşıma daha yakınım</button>
-                      <button class="pref-btn-secondary" data-action="neutral">Kararsızım</button>
-                    </div>
-                    <button class="pref-link-dislike" data-action="dislike">Bu yaklaşım bana uygun değil</button>
-
-                    <div class="attribute-chip-section hidden">
-                      <div class="chip-question-title">Bu örnekte size uygun gelen özellikler neler?</div>
-                      <div class="attribute-chips-grid">
-                        <button class="attr-chip" data-attr="Mahremiyet">Mahremiyet</button>
-                        <button class="attr-chip" data-attr="Gerektiğinde kapanabilmesi">Gerektiğinde kapanabilmesi</button>
-                      </div>
-                    </div>
-                  </div>
+                <div class="pref-card-large" data-card-id="kitchen_controlled">
+                  <div class="pref-image-wrapper"><img src="assets/preferences/kitchen_controlled.svg" alt="Kontrollü mutfak"></div>
+                  <div class="pref-card-body"><h3 class="pref-card-title">3B. Kontrollü Mutfak İlişkisi</h3></div>
                 </div>
               </div>
             </div>
 
             <div class="stage-footer-actions">
-              <button type="button" class="primary-action-btn" id="btnNextToProgram">
-                <span>Mekân Programına Geç</span>
-              </button>
+              <button type="button" class="primary-action-btn" id="btnNextToProgram">Mekân Programına Geç</button>
             </div>
-
           </div>
         </div>
 
         <!-- STAGE 3: MEKÂN PROGRAMI -->
         <div class="stage-view hidden" id="stageView3">
           <div class="program-scroll-area">
-            
             <div class="prototype-assumption-banner">
               <span class="banner-badge">📌 Örnek Prototip Varsayımı</span>
               <p class="banner-text">İki katlı müstakil konut, yaklaşık <strong>190–220 m² brüt kapalı alan</strong>.</p>
             </div>
 
             <div class="area-summary-bar">
-              <div class="summary-item">
-                <span class="summary-label">Tahmini Toplam Net Alan</span>
-                <span class="summary-value">148 – 168 m²</span>
-                <span class="summary-sub">Örnek prototip hesabı</span>
-              </div>
+              <div class="summary-item"><span class="summary-label">Tahmini Toplam Net Alan</span><span class="summary-value">148 – 168 m²</span></div>
               <div class="summary-divider"></div>
-              <div class="summary-item">
-                <span class="summary-label">Dolaşım &amp; Servis Payı (~22%)</span>
-                <span class="summary-value">32 – 42 m²</span>
-                <span class="summary-sub">Örnek prototip hesabı</span>
-              </div>
+              <div class="summary-item"><span class="summary-label">Dolaşım &amp; Servis Payı (~22%)</span><span class="summary-value">32 – 42 m²</span></div>
               <div class="summary-divider"></div>
-              <div class="summary-item highlight">
-                <span class="summary-label">Tahmini Brüt Kapalı Alan</span>
-                <span class="summary-value">190 – 220 m²</span>
-                <span class="summary-sub">Örnek prototip hesabı</span>
-              </div>
+              <div class="summary-item highlight"><span class="summary-label">Tahmini Brüt Kapalı Alan</span><span class="summary-value">190 – 220 m²</span></div>
             </div>
 
             <div class="floor-tab-bar">
@@ -370,39 +196,32 @@
               <button class="floor-tab" data-floor="upper" id="floorTabUpper">Üst Kat (8 Mekân)</button>
             </div>
 
-            <div class="space-cards-container active" id="spacesGround">
-              <div class="space-cards-grid" id="spaceGridGround"></div>
-            </div>
-
-            <div class="space-cards-container hidden" id="spacesUpper">
-              <div class="space-cards-grid" id="spaceGridUpper"></div>
-            </div>
-
+            <div class="space-cards-container active" id="spacesGround"><div class="space-cards-grid" id="spaceGridGround"></div></div>
+            <div class="space-cards-container hidden" id="spacesUpper"><div class="space-cards-grid" id="spaceGridUpper"></div></div>
           </div>
         </div>
 
-        <!-- STAGE 4: TASLAK PLAN (DYNAMIC INTERACTIVE PLAN EDITOR) -->
+        <!-- STAGE 4: TASLAK PLAN (DYNAMIC INTERACTIVE WORKSPACE) -->
         <div class="stage-view hidden" id="stageView4">
           <div class="plan-scroll-area">
             
+            <!-- Compact Assumptions & Alt Selector Bar -->
             <div class="plan-assumptions-compact-card">
               <div class="compact-card-left">
                 <span class="card-icon">📐</span>
                 <div class="card-texts">
                   <strong class="card-title">Bu taslak hangi varsayımlarla oluşturuldu?</strong>
-                  <span class="card-summary">İki katlı konut • ~190–220 m² brüt • Kuzey yönü • Arsa verisi girilmedi</span>
+                  <span class="card-summary">İki katlı konut • ~190–220 m² brüt • Kuzey yönü</span>
                 </div>
               </div>
               <button class="edit-assumptions-btn" id="openAssumptionsBtn">Varsayımları Düzenle</button>
             </div>
 
-            <!-- Alternative & Floor Controls -->
             <div class="alternative-selector-bar">
               <button class="alt-tab-btn active" id="btnAltA" data-alt="a">
                 <span class="alt-code">Alternatif A</span>
                 <span class="alt-name">Kontrollü Ayrışma</span>
               </button>
-
               <button class="alt-tab-btn" id="btnAltB" data-alt="b">
                 <span class="alt-code">Alternatif B</span>
                 <span class="alt-name">Esnek Bağlantı</span>
@@ -415,228 +234,91 @@
                 <button class="plan-floor-btn" id="planFloorUpperBtn" data-floor="upper">Üst Kat Planı</button>
               </div>
 
-              <!-- Undo / Redo & Lock Toolbar (Requirements 7 & 9) -->
-              <div class="undo-redo-toolbar">
-                <button class="tool-btn" id="undoBtn" title="Geri Al (Ctrl+Z)">↩ Geri Al</button>
-                <button class="tool-btn" id="redoBtn" title="İleri Al (Ctrl+Y)">↪ İleri Al</button>
-                <button class="tool-btn" id="lockToggleBtn" title="Seçili Mekânı Kilitle">🔒 Mekânı Kilitle</button>
-                <button class="tool-btn" id="swapBtn" title="İki Mekânın Yerini Değiştir">🔄 Yer Değiştir (Takas)</button>
-              </div>
+              <!-- Collapsible Manual CAD Tools (Requirement 20) -->
+              <button class="advanced-tools-toggle-btn" id="toggleAdvancedToolsBtn">
+                <span>🛠️ Planı Elle Düzenle (Gelişmiş Araçlar)</span>
+              </button>
             </div>
 
-            <!-- DYNAMIC INTERACTIVE PLAN EDITOR CONTAINER -->
+            <!-- SECONDARY MANUAL CAD TOOLBAR (Hidden by default) -->
+            <div class="undo-redo-toolbar hidden" id="advancedToolsPanel">
+              <button class="tool-btn" id="undoBtn" title="Geri Al (Ctrl+Z)">↩ Geri Al</button>
+              <button class="tool-btn" id="redoBtn" title="İleri Al (Ctrl+Y)">↪ İleri Al</button>
+              <button class="tool-btn" id="lockToggleBtn" title="Seçili Mekânı Kilitle">🔒 Mekânı Kilitle</button>
+              <button class="tool-btn" id="swapBtn" title="İki Mekânın Yerini Değiştir">🔄 Yer Değiştir (Takas)</button>
+            </div>
+
+            <!-- DYNAMIC INTERACTIVE PLAN EDITOR / PRESENTATION CONTAINER -->
             <div class="plan-svg-container" id="planEditorContainer">
-              <!-- Rendered dynamically by PlanEditor class -->
+              <!-- Rendered dynamically by PlanEditor / WorkspacePresenter -->
             </div>
 
-            <!-- DEMO SCENARIO SHORTCUT BUTTONS -->
+            <!-- DEMO SCENARIOS SHORTCUT BAR -->
             <div class="demo-scenarios-bar">
               <span class="scenario-label">⚡ Hızlı Demo Senaryoları:</span>
-              <button class="scenario-btn" id="demoScenario2m">🛏️ 2 Metre Yatak Odası Riski</button>
-              <button class="scenario-btn" id="demoScenarioBypass">⚠️ Depo Adıyla Kullanım Talebi</button>
-              <button class="scenario-btn" id="demoScenarioResize">📐 Çalışma Odasını Küçült (11 m²)</button>
-            </div>
-
-            <!-- ACTION PROPOSAL CARD (Prior to permanent commit - Requirement 2 & 16) -->
-            <div class="action-proposal-card hidden" id="actionProposalCard">
-              <div class="proposal-header">
-                <span class="proposal-badge">📋 Yapılandırılmış İşlem Önizlemesi</span>
-                <h4 class="proposal-title" id="proposalTitle">İstenen Değişiklik: Çalışma Alanını Küçült</h4>
-              </div>
-
-              <div class="proposal-grid">
-                <div class="prop-item"><strong>Hedef:</strong> <span id="propTarget">14 m² → 10–11 m²</span></div>
-                <div class="prop-item"><strong>Korunacaklar:</strong> <span id="propPreserve">Mutfak alanı, Toplam brüt alan</span></div>
-                <div class="prop-item"><strong>Etkilenecekler:</strong> <span id="propEffects">Çocuk odaları metrajı, Dolaşım payı</span></div>
-                <div class="prop-item"><strong>Teknik Kontrol:</strong> <span id="propRules" class="badge-verify">Ön kontrolden geçti</span></div>
-              </div>
-
-              <div class="proposal-actions">
-                <button class="prop-btn primary" id="btnPropApply">Uygula</button>
-                <button class="prop-btn secondary" id="btnPropPreview">Önizle</button>
-                <button class="prop-btn alt" id="btnPropAlt">Alternatif Göster</button>
-                <button class="prop-btn cancel" id="btnPropCancel">Vazgeç</button>
-              </div>
-            </div>
-
-            <!-- ALTERNATIVE COMPARISON SECTION -->
-            <div class="alternative-comparison-section">
-              <h3 class="comp-title">Alternatif Karşılaştırma &amp; Nitel Göstergeler</h3>
-              
-              <div class="qualitative-indicators-box">
-                <div class="comp-disclaimer">
-                  ⚠️ Ön kavramsal karşılaştırma — hesaplanmış performans puanı değildir.
-                </div>
-
-                <div class="indicators-table">
-                  <div class="indicator-row header">
-                    <span class="col-axis">Eksen</span>
-                    <span class="col-alt">Alternatif A (Kontrollü)</span>
-                    <span class="col-alt">Alternatif B (Esnek)</span>
-                  </div>
-
-                  <div class="indicator-row">
-                    <span class="col-axis">Akustik Ayrışma</span>
-                    <span class="col-alt badge-high">Güçlü</span>
-                    <span class="col-alt badge-mid">Orta</span>
-                  </div>
-
-                  <div class="indicator-row">
-                    <span class="col-axis">Görsel Bağlantı</span>
-                    <span class="col-alt badge-mid">Orta</span>
-                    <span class="col-alt badge-high">Güçlü</span>
-                  </div>
-
-                  <div class="indicator-row">
-                    <span class="col-axis">Esneklik &amp; Dönüşebilirlik</span>
-                    <span class="col-alt badge-low">Düşük</span>
-                    <span class="col-alt badge-high">Güçlü</span>
-                  </div>
-
-                  <div class="indicator-row">
-                    <span class="col-axis">Mahremiyet</span>
-                    <span class="col-alt badge-high">Güçlü</span>
-                    <span class="col-alt badge-mid">Orta</span>
-                  </div>
-
-                  <div class="indicator-row">
-                    <span class="col-axis">Dolaşım Sadeliği</span>
-                    <span class="col-alt badge-high">Güçlü</span>
-                    <span class="col-alt badge-high">Güçlü</span>
-                  </div>
-                </div>
-              </div>
+              <button class="scenario-btn" id="demoScenarioMasterBath">🛁 Ebeveyn Banyosunu Kuzeye Taşı</button>
+              <button class="scenario-btn" id="demoScenarioFloorOverlay">🏢 Alt ve Üst Kat İlişkisini Açıkla</button>
+              <button class="scenario-btn" id="demoScenarioOrientation">☀️ Cephe Yönlenmesini Göster</button>
+              <button class="scenario-btn" id="demoScenario2m">🛏️ 2m Yatak Odası Riski</button>
             </div>
 
           </div>
         </div>
 
-        <!-- ARCHITECT PREVIEW VIEW (FULL TECHNICAL REPORT & DECISION HISTORY) -->
+        <!-- ARCHITECT PREVIEW VIEW -->
         <div class="stage-view hidden" id="architectStageView">
           <div class="architect-scroll-area">
             <div class="arch-banner">
               <h2>Mimar Teknik Brief &amp; Karar Revizyon Raporu</h2>
-              <p>Sentezlenmiş mimari brief, yasal ön kontroller ve karar geçmişi.</p>
+              <p>Profesyonel sentezlenmiş mimari karar raporu.</p>
             </div>
 
-            <!-- Karar ve Revizyon Geçmişi (Requirement 9) -->
             <div class="arch-card full-width">
-              <h3>📜 Karar ve Revizyon Geçmişi</h3>
-              <div id="architectDecisionHistory">
-                <!-- Rendered dynamically by ChangeHistory class -->
-              </div>
-            </div>
-
-            <div class="arch-sections-grid" style="margin-top:20px;">
-              <div class="arch-card">
-                <h3>1. Doğrulanmış Kullanıcı Verileri</h3>
-                <ul>
-                  <li><span class="source-badge user-said">Doğrudan kullanıcı beyanı</span> Eşim evden çalışıyor, online toplantılar var.</li>
-                  <li><span class="source-badge user-said">Doğrudan kullanıcı beyanı</span> Çocuklar 16:00'da dönüyor.</li>
-                </ul>
-              </div>
-
-              <div class="arch-card">
-                <h3>2. Görsel Tercih Nitelikleri</h3>
-                <ul>
-                  <li><span class="source-badge pref-chip">Kullanıcının görsel tercihi</span> Sessizlik &amp; Gerektiğinde kapanabilirlik.</li>
-                </ul>
-              </div>
-
-              <div class="arch-card">
-                <h3>3. Teyit Gereken Konular</h3>
-                <ul>
-                  <li><span class="badge-verify">Teyit Gerekli</span> Tam akustik ayrışma mı yoksa esnek bağlantı mı öncelikli?</li>
-                </ul>
-              </div>
+              <h3>📜 Mimar Karar ve Revizyon Raporu (v5)</h3>
+              <div id="architectDecisionHistory"></div>
             </div>
           </div>
         </div>
 
       </section>
 
-      <!-- RIGHT CONTEXTUAL PANEL & SINGLE CONTEXTUAL ASSISTANT -->
+      <!-- RIGHT CONVERSATION-FIRST SOHBET PANEL (~30–35% width) -->
       <aside class="contextual-right-panel" id="contextualPanel">
         
         <div class="drawer-handle-bar" id="drawerHandleBar">
           <span class="drawer-handle-pill"></span>
-          <span class="drawer-handle-title">Bağlamsal Asistan &amp; Panel</span>
+          <span class="drawer-handle-title">Sohbet &amp; Mimari Asistan</span>
         </div>
 
         <div class="panel-header">
-          <h2 class="panel-title" id="panelTitle">Sizi nasıl anladım?</h2>
+          <h2 class="panel-title" id="panelTitle">BRIF.AI Mimari Asistan</h2>
           <span class="context-badge" id="assistantContextBadge">Yaşamınızı Anlama — Sohbet Diyaloğu</span>
         </div>
 
-        <div class="panel-body" id="panelBody">
-          
-          <div class="panel-stage-content active" id="panelStage1">
-            <div class="insight-cards-stack">
-              <div class="insight-card">
-                <div class="insight-card-header">
-                  <span class="source-badge user-said">Doğrudan kullanıcı beyanı</span>
-                  <span class="conf-badge high">Güven: Yüksek</span>
-                </div>
-                <h4 class="insight-card-title">Evden Tam Zamanlı Çalışma Ritmi</h4>
-                <p class="insight-card-desc">"Eşim evden çalışıyor, online toplantılar var."</p>
-              </div>
-            </div>
-          </div>
-
-          <div class="panel-stage-content hidden" id="panelStage2">
-            <div class="insight-cards-stack">
-              <div class="insight-card">
-                <span class="source-badge pref-chip">Kullanıcının görsel tercihi</span>
-                <h4 class="insight-card-title">Seçilen Mekânsal Nitelikler</h4>
-                <div class="selected-chips-summary" id="selectedChipsSummary">
-                  <span class="summary-chip">Sessizlik</span>
-                  <span class="summary-chip">Gerektiğinde kapanabilmesi</span>
+        <!-- RICH PERSISTENT CHAT CONTAINER -->
+        <div class="panel-body rich-chat-body" id="panelBody">
+          <div class="chat-messages" id="chatMessages">
+            <div class="message ai-message">
+              <div class="message-avatar brif">B</div>
+              <div class="message-content">
+                <div class="message-sender">BRIF.AI Mimari Asistan</div>
+                <div class="message-text">
+                  Hoş geldiniz! Yeni evinizin mimari karar ve planlama sürecinde yanınızdayım. Bana istediğiniz değişikliği doğal dil ile anlatabilir veya sorular sorabilirsiniz.
                 </div>
               </div>
             </div>
           </div>
-
-          <div class="panel-stage-content hidden" id="panelStage3">
-            <div class="insight-cards-stack" id="stage3PanelCards">
-              <div class="insight-card">
-                <h4 class="insight-card-title">Program Karar Dayanakları</h4>
-                <p class="insight-card-desc">Detaylarını görmek için sol taraftaki mekân düğümlerine tıklayın.</p>
-              </div>
-            </div>
-          </div>
-
-          <div class="panel-stage-content hidden" id="panelStage4">
-            <div class="insight-cards-stack" id="stage4PanelCards">
-              
-              <div class="insight-card highlight-card" id="roomReasoningCard">
-                <div class="insight-card-header">
-                  <span class="source-badge user-said" id="roomSourceType">Doğrudan kullanıcı beyanı</span>
-                  <span class="conf-badge mid" id="roomConfidence">Güven: Orta</span>
-                </div>
-                <h4 class="insight-card-title" id="roomReasoningTitle">Çalışma Alanı — Neden burada?</h4>
-                
-                <div class="reasoning-details">
-                  <p><strong>Kullanıcı verisi:</strong> <span id="roomUserStatement">"Eşim evden çalışıyor."</span></p>
-                  <p><strong>Görsel tercih:</strong> <span id="roomVisualAttr">"Sessizlik" ve "gerektiğinde kapanabilmesi".</span></p>
-                  <p><strong>Mimari yorum:</strong> <span id="roomArchInterp">Çalışma alanı ortak yaşama erişilebilir fakat akustik olarak izole edilebilir olmalıdır.</span></p>
-                </div>
-              </div>
-
-            </div>
-          </div>
-
         </div>
 
-        <!-- SINGLE CONTEXTUAL BRIF.AI ASSISTANT CHAT FOOTER (Across all stages) -->
+        <!-- ASSISTANT CHAT INPUT FOOTER -->
         <div class="contextual-assistant-footer" id="contextualAssistantFooter">
-          
           <div class="chat-header-room-info hidden" id="chatHeaderRoomInfo">
             📌 <strong>Çalışma Odası</strong> hakkında konuşuyorsunuz.
           </div>
 
           <form class="assistant-chat-form" id="assistantChatForm">
             <div class="input-wrapper">
-              <textarea id="assistantUserInput" placeholder="BRIF.AI Asistana yazın veya komut verin..." rows="2"></textarea>
+              <textarea id="assistantUserInput" placeholder="Bana mimari veya planlama hakkında bir istek yazın..." rows="2"></textarea>
               <button type="submit" class="send-btn">Gönder</button>
             </div>
           </form>
@@ -664,14 +346,6 @@
             </select>
           </div>
 
-          <div class="form-group">
-            <label>Çalışma Alanı Önceliği:</label>
-            <select id="assumpStudy">
-              <option value="isolated" selected>Tam Akustik İzolasyon Öncelikli (Alt A)</option>
-              <option value="flexible">Esnek Dönüşüm Öncelikli (Alt B)</option>
-            </select>
-          </div>
-
           <div class="modal-actions">
             <button type="submit" class="save-assump-btn">Varsayımları Uygula</button>
           </div>
@@ -680,12 +354,14 @@
     </div>
   </div>
 
-  <!-- MODULAR SCRIPTS (Requirement 19) -->
+  <!-- MODULAR SCRIPTS (Requirement 21) -->
   <script src="js/rule_evaluator.js"></script>
   <script src="js/change_history.js"></script>
   <script src="js/demo_intent_parser.js"></script>
   <script src="js/plan_editor.js"></script>
+  <script src="js/workspace_presenter.js"></script>
   <script src="js/contextual_assistant.js"></script>
+  <script src="js/conversation_orchestrator.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

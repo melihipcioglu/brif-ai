@@ -1,12 +1,11 @@
-# BRIF.AI — Conversation & Spatial Analysis UI Prototype v4
+# BRIF.AI — Conversation-First Architectural Workspace v5
 
-Bu klasör, BRIF.AI mimari karar destek platformu için hazırlanmış 4 aşamalı bağımsız, etkileşimli kullanıcı deneyimi (UX) prototipinin **v4** sürümüdür.
+Bu klasör, BRIF.AI mimari karar destek platformu için hazırlanmış sohbet merkezli kullanıcı deneyimi (UX) prototipinin **v5** sürümüdür.
 
 > **DÜRÜSTLÜK VE BİLDİRİM NOTU:**  
 > - **UX Prototipi**: Bu çalışma bir ön yüz (frontend) UX prototipidir; herhangi bir canlı LLM veya yapay zekâ modeli bağlı değildir.
-> - **Demo Ön Kontrolü**: Resmî mevzuat veritabanı veya yerel idare onay sistemi bağlı değildir (`DEMO_UNVERIFIED`).
+> - **Demo Mimari Değerlendirmesi**: Resmî mevzuat veritabanı veya yerel idare onay sistemi bağlı değildir (`DEMO_UNVERIFIED`).
 > - **Şematik Plan**: Kat planları mimari proje, uygulama veya ruhsat çizimi değildir. Geometrik değişiklikler örnek veri modelleri üzerinde simüle edilmektedir.
-> - Kullanıcı onayı alınmadan gerçek sisteme entegre edilmeyecektir.
 
 ---
 
@@ -24,28 +23,23 @@ Daha sonra tarayıcınızda şu adrese gidin:
 
 ---
 
-## v4 Yenilikleri ve Mimari Yapı
+## v5 Yenilikleri ve Mimari Yapı
 
-1. **Bağlamsal BRIF.AI Asistanı (`js/contextual_assistant.js`)**:
-   - 4 aşamada ve Mimar Önizlemesinde kesintisiz çalışan tek bir asistan kimliği.
-   - Tarayıcı belleğinde tutulan son 8 konuşma turu geçmişi.
-   - Aktif aşamaya göre dinamik bağlam rozeti (Örn: `Taslak Plan — Alternatif B / Zemin Kat — Çalışma Odası Seçili`).
+1. **Sohbet Merkezli Çalışma Alanı (`%68` Sol Çalışma Alanı / `%32` Sağ Sohbet Paneli)**:
+   - Kullanıcı karmaşık CAD araçları kullanmak zorunda kalmaz.
+   - Tüm aşamalarda kesintisiz ve zengin sohbet paneli aktiftir; aşama değiştirildiğinde sohbet geçmişi kaybolmaz.
 
-2. **İşlem Önizleme Sözleşmesi (`data/assistant_action_schema.demo.json`)**:
-   - Kullanıcı niyetini (intent) ve doğal dil komutlarını yapılandırılmış JSON işlem kontratlarına çevirir.
-   - Gelecek mimaride LLM niyeti belirleyecek, geometri motoru planı güncelleyecektir.
+2. **Dinamik Görsel Sunum Motoru (`js/workspace_presenter.js`)**:
+   - Sohbet cevaplarına paralel çalışma alanını dinamik günceller.
+   - **Kat İlişkisi Anlatım Modu**: Zemin kat %30 saydam gösterilir, üst kat tesisat hizası ve merdiven boşluğu (sarı) vurgulanır.
+   - **Seçenek Karşılaştırma Modu**: Ebeveyn banyosunu kuzeye taşıma senaryosunda Seçenek 1 ve Seçenek 2 yan yana kartlar hâlinde sunulur.
 
-3. **Etkileşimli Plan Editörü & Geometri Motoru (`js/plan_editor.js` & `data/plan_alternatives.demo.json`)**:
-   - Yapılandırılmış JSON verisinden dinamik SVG üretimi.
-   - Mouse ile oda sürükleme (drag), ghost çizgi önizlemesi, bina dış sınırı ve oda çakışma engeli.
-   - Resize kulpları ve klavye erişilebilirliği (Ok tuşları: taşıma, Shift+Ok: boyutlandırma).
-   - Mekân kilitleme (lock) ve takas (swap) simülasyonu.
+3. **Profesyonel Mimar Diyaloğu & Senaryo Orkestrasyonu (`js/conversation_orchestrator.js`)**:
+   - Kullanıcı talebini körlemesine uygulamadan önce talebin arkasındaki ihtiyacı anlayan takip soruları sorar.
+   - Mimari değerlendirme aşamalarını (loading progress steps) görünür biçimde simüle eder.
 
-4. **Teknik Ön Kontrolör (`js/rule_evaluator.js` & `data/rules.demo.json`)**:
-   - 4 kategori: Mevzuat/Yasal ön kontrol, Ergonomi & kullanılabilirlik, Geometri & mekânsal ilişkiler, Kullanıcı tercihiyle çelişki.
-   - **2 Metre Yatak Odası Senaryosu**: Dar kenar <= 2.0m tespit edildiğinde konfor riski uyarısı ve aksiyonel alternatifler.
-   - **Yanıltıcı Kullanım Adı Reddi**: Depo gösterip yatak odası kullanma taleplerini güvenlik/mevzuat riski nedeniyle açıkça reddetme ve mimara not ekleme.
+4. **İkincil Gelişmiş Araçlar**:
+   - Manuel oda sürükleme, boyutlandırma, kilit ve takas araçları `🛠️ Planı Elle Düzenle (Gelişmiş Araçlar)` altında ikincil araç olarak korunmuştur.
 
-5. **Karar ve Revizyon Geçmişi (`js/change_history.js`)**:
-   - Undo/Redo yığını (Ctrl+Z / Ctrl+Y).
-   - Mimar Önizleme modunda profesyonel kronolojik Karar ve Revizyon Raporu.
+5. **Temiz Mimar Karar Raporu (`js/change_history.js`)**:
+   - Mimar Önizlemesinde son kullanıcı talebi, anlaşılan ihtiyaç, sunulan seçenekler, teknik ön kontroller ve teyit durumunu içeren profesyonel rapor.

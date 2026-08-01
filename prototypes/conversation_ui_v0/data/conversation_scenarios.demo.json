@@ -1,59 +1,89 @@
 {
   "scenarios_meta": {
-    "title": "BRIF.AI Assistant Conversation & Intent Scenarios",
-    "description": "Pre-configured sample dialogue triggers and intent mappings for prototype simulation."
+    "title": "BRIF.AI v5 Architectural Dialogue & Intent Scenarios",
+    "description": "Pre-configured scenarios for conversation-first workspace simulation."
   },
-  "intents": {
-    "resize_space": {
-      "keywords": ["küçült", "büyüt", "m²", "alan", "metrekare", "olmasın", "yeterli", "10-11"],
-      "variations": [
-        "İstediğiniz alan boyutlandırma talebini hazırladım. Çalışma alanını 14 m²'den 11 m²'ye indirmeyi öneriyorum.",
-        "Bu alan değişikliği planı etkileyecektir. Şematik önizlemeyi onaylamadan önce etki kartını inceleyebilirsiniz.",
-        "Daha önce toplam alanı artırmak istemediğinizi belirtmiştiniz. Küçülen alandan çıkan metrajı çocuk odalarına aktarmayı denedim."
+  "scenarios": {
+    "master_bath_relocate": {
+      "trigger_keywords": ["ebeveyn banyosu", "banyoyu kuzeye", "banyo kuzey", "banyoyu taşı"],
+      "intent": "master_bath_relocate",
+      "stage": 4,
+      "followup_question": "Banyoyu kuzey kenarına almak istiyorsunuz. Buradaki önceliğiniz yataktan görünmemesi mi, giyinme alanından erişilmesi mi, yoksa daha mahrem bir kullanım mı?",
+      "quick_replies": [
+        "Yataktan görünmesini istemiyorum",
+        "Giyinme alanından geçilsin",
+        "Daha mahrem olsun",
+        "Kuzey cephesini servis alanlarına ayırmak istiyorum"
+      ],
+      "analysis_steps": [
+        "Talebinizin amacı yorumlanıyor...",
+        "Yatak–giyinme–banyo sıralaması kontrol ediliyor...",
+        "Alt kattaki ıslak hacimlerle düşey ilişki inceleniyor...",
+        "Kapı ve mobilya çakışmaları denetleniyor...",
+        "İki uygulanabilir seçenek hazırlanıyor..."
+      ],
+      "options": [
+        {
+          "id": "opt1",
+          "title": "Seçenek 1 — Banyoyu Kuzeye Taşımak",
+          "pros": ["Yataktan doğrudan görünmeme", "Güçlü mahremiyet", "Yatak–giyinme–banyo sıralaması"],
+          "risks": ["Alt kat tesisat hizası zayıflayabilir", "Havalandırma pencere konumu kontrol edilmeli"]
+        },
+        {
+          "id": "opt2",
+          "title": "Seçenek 2 — Mevcut Konumu Koruyup Giriş Yönünü Değiştirmek",
+          "pros": ["Düşey tesisat hizası korunur", "Minimum geometrik değişiklik"],
+          "risks": ["Giyinme alanı kapak açılımı daralabilir"]
+        }
       ]
     },
-    "two_meter_bedroom": {
-      "keywords": ["iki metre", "2 metre", "2m", "daralt"],
-      "variations": [
-        "Bu genişlik (<= 2.0 m), seçili yatak odası kullanımı için demo ön kontrolündeki alt sınırın altında kalıyor. Ayrıca yatak, dolap ve geçiş alanı birlikte sağlanamıyor."
+    "floor_overlay_explain": {
+      "trigger_keywords": ["üst üste", "alt kat üst kat", "anlamadım", "düşey ilişki"],
+      "intent": "explain_floor_overlay",
+      "mode": "floor_overlay",
+      "assistant_speech": "Bunu iki katı üst üste göstererek açıklayayım. Soluk mavi alan zemin kattaki mutfak ve ortak WC çekirdeğidir. Üstteki canlı mavi alan ebeveyn banyosudur. Tesisatı düşey hizada tutmak şematik bir yaklaşımdır. Sarı alan ise merdiven boşluğudur.",
+      "quick_replies": [
+        "Sadece üst katı göster",
+        "Alt katı yarı saydam göster",
+        "Islak hacimleri göster",
+        "Normal plana dön"
       ]
     },
-    "misleading_bypass": {
-      "keywords": ["depo yazalım", "depo gösterelim", "sonradan yatak odası", "kullanım adını değiştir"],
-      "variations": [
-        "Bu alanı depo adıyla gösterip sürekli yatak odası olarak kullanmayı önermiyorum. Bunun yerine hacmi yasal ve güvenli kullanıma yaklaştıran seçenekleri inceleyebilir veya ihtiyacınızı mimara açık bir özel kullanım notuyla aktarabiliriz."
-      ]
+    "stair_explain": {
+      "trigger_keywords": ["merdiven boşluğu", "merdiven çıkışı", "çıkış oku"],
+      "intent": "explain_stair",
+      "assistant_speech": "Sarı renkle vurgulanan alan merdiven boşluğudur. Bu bölüm iki katta da oda olarak kullanılmaz; zemin kat ile üst kat arasındaki düşey sirkülasyon boşluğudur.",
+      "quick_replies": ["Islak hacimleri göster", "Normal plana dön"]
     },
-    "move_space": {
-      "keywords": ["yaklaştır", "taşı", "kaydır", "konum"],
-      "variations": [
-        "Mekân konumlandırma simülasyonunu hazırladım. Sürükleme veya konum değiştirme etkisini inceleyebilirsiniz.",
-        "Seçili mekânı taşıdığımızda komşu mekân ilişkileri güncellenecektir."
-      ]
+    "orientation_facade": {
+      "trigger_keywords": ["kuzey cephesi", "sabah güneşi", "doğu", "güney", "güneş alsın"],
+      "intent": "orientation_facade",
+      "assistant_speech": "Bu prototipte kuzey yönü varsayımsal olarak tanımlanmış. Gerçek arsa verisi girildiğinde yönlenme ve sabah güneşi hesabı yeniden kontrol edilmelidir. Cephe işaretlemesini plan üzerinde vurguluyorum.",
+      "quick_replies": ["Kuzey cephesini göster", "Güney salon ilişkisini göster", "Normal plana dön"]
     },
-    "swap_spaces": {
-      "keywords": ["yerini değiştir", "takas", "karşılıklı"],
-      "variations": [
-        "İki mekânın yerlerini değiştirdiğimizdeki etki analizi hazırlandı."
-      ]
+    "visual_preference_correct": {
+      "trigger_keywords": ["bunu beğenmedim", "sadece açılır", "kapatılabilir", "cam bölücü istemiyorum"],
+      "intent": "correct_visual_preference",
+      "assistant_speech": "Anladım. Burada beğendiğiniz şey cam görünümü veya dekorasyon değil; mekânın gerektiğinde ayrılıp birleşebilmesi. Tercih profilinizi buna göre düzelttim.",
+      "quick_replies": ["Görsel tercihlere dön", "Mekân programına geç"]
     },
-    "lock_space": {
-      "keywords": ["kilitle", "sabit tut", "değiştirme"],
-      "variations": [
-        "Seçili mekân kilitlendi. Artık sürükleme veya sohbet komutuyla değiştirilemez.",
-        "Çalışma odası kilitli olduğu için bu değişikliği mutfak ve dolaşım alanı üzerinden çözmeye çalışacağım."
-      ]
+    "resize_study_scenario": {
+      "trigger_keywords": ["çalışma odası 14 m² olmasın", "10-11 m²", "küçült"],
+      "intent": "resize_study",
+      "assistant_speech": "Çalışma odasını küçültmek istiyorsunuz. Kazanılan alanı çocuk odalarına mı, ebeveyn bölümüne mi, yoksa dolaşımı rahatlatmak için mi kullanmamı tercih edersiniz?",
+      "quick_replies": ["Çocuk odalarına aktar", "Ebeveyn odasına aktar", "Dolaşım alanına bırak"]
     },
-    "change_preference": {
-      "keywords": ["bunu değil", "istemiyorum", "geri al", "beğendim"],
-      "variations": [
-        "Görsel tercih etiketleriniz güncellendi ve ilgili sistem yorumu yeniden düzenlendi."
-      ]
+    "bedroom_2m_warning": {
+      "trigger_keywords": ["yatak odasını 2m", "iki metre", "2 metre genişlik"],
+      "intent": "bedroom_2m_warning",
+      "assistant_speech": "Bu genişlik (<= 2.0 m), seçili yatak odası kullanımı için demo ön kontrolündeki alt sınırın altında kalıyor. Ayrıca yatak, dolap ve geçiş alanı birlikte sağlanamıyor.",
+      "quick_replies": ["Odayı genişlet", "Yatak yönünü değiştir", "Mimara teyit için bırak"]
     },
-    "ambiguous_request": {
-      "variations": [
-        "Bu prototipte bu isteği otomatik işleyemiyorum. Değiştirmek istediğiniz mekânı seçip büyütme, taşıma veya ilişki değiştirme işlemlerinden birini seçebilirsiniz."
-      ]
+    "misleading_rename_bypass": {
+      "trigger_keywords": ["depo yazalım", "depo gösterelim", "sonradan yatak odası"],
+      "intent": "misleading_rename_bypass",
+      "assistant_speech": "Bu alanı depo adıyla gösterip sürekli yatak odası olarak kullanmayı önermiyorum. Bunun yerine hacmi yasal ve güvenli kullanıma yaklaştıran seçenekleri inceleyebilir veya ihtiyacınızı mimara açık bir özel kullanım notuyla aktarabiliriz.",
+      "quick_replies": ["Yasal yatak odasına dönüştür", "Mimara özel not olarak ekle"]
     }
   }
 }
