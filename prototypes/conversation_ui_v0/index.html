@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BRIF.AI — Scope-Driven Workspace Platform v6.1</title>
+  <title>BRIF.AI — Universal Scoped Rendering Platform v6.1.1</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
@@ -16,18 +16,18 @@
     <header class="app-header">
       <div class="header-brand">
         <span class="brand-logo">BRIF<span class="brand-dot">.</span>AI</span>
-        <span class="brand-subtitle">Kapsam-Güdümlü Çalışma Alanı v6.1</span>
+        <span class="brand-subtitle">Uyumlu Render Koruması v6.1.1</span>
       </div>
 
       <!-- Synthetic Multi-Project Selector -->
       <div class="header-project-selector">
-        <span class="project-tag">Proje Kapsamı:</span>
+        <span class="project-tag">Aktif Kapsam:</span>
         <select id="syntheticProjectSelect" class="project-dropdown">
           <option value="proj_house_2story" selected>Test A — İki Katlı Müstakil Konut</option>
           <option value="proj_tower_50floor">Test B — 50 Katlı Finans Kulesi</option>
           <option value="proj_campus_multiblock">Test C — Çok Bloklu Teknoloji Kampüsü</option>
         </select>
-        <span class="project-badge">v6.1 Belge Çözümleyici</span>
+        <span class="project-badge">v6.1.1 Evrensel Guard</span>
       </div>
 
       <div class="header-actions">
@@ -74,7 +74,7 @@
         <button class="step-node" id="stepNode4" data-stage="4" aria-label="Aşama 4: Taslak Plan">
           <span class="step-number">4</span>
           <span class="step-label">Taslak Plan</span>
-          <span class="step-badge badge-pending">Uyumlu Render</span>
+          <span class="step-badge badge-pending">Guard Korumalı</span>
         </button>
       </div>
     </nav>
@@ -85,7 +85,7 @@
       <span>•</span>
       <span>Demo mimari değerlendirmesi — resmî mevzuat ve yerel idare verisi bağlı değildir.</span>
       <span>•</span>
-      <span>Belge kapsamı aktif bağlamla uyumlu olmayan hiçbir çalışma alanı içeriği gösterilemez.</span>
+      <span>Çalışma alanında gösterilecek her içerik, DOM’a eklenmeden önce aktif çalışma kapsamına göre doğrulanır.</span>
     </div>
 
     <!-- MAIN CONVERSATION-FIRST WORKSPACE LAYOUT -->
@@ -166,9 +166,8 @@
               <div class="summary-item highlight"><span class="summary-label">Tahmini Brüt Kapalı Alan</span><span class="summary-value" id="summaryGrossArea">190 – 220 m²</span></div>
             </div>
 
-            <div class="floor-tab-bar">
-              <button class="floor-tab active" data-floor="ground" id="floorTabGround">1. Bölge / Zemin</button>
-              <button class="floor-tab" data-floor="upper" id="floorTabUpper">2. Bölge / Üst Kat</button>
+            <div class="floor-tab-bar" id="programFloorTabs">
+              <!-- Dynamically generated from EntityHierarchy -->
             </div>
 
             <div class="space-cards-container active" id="spacesGround"><div class="space-cards-grid" id="spaceGridGround"></div></div>
@@ -203,9 +202,10 @@
             </div>
 
             <div class="plan-controls-toolbar">
-              <div class="plan-floor-tabs">
-                <button class="plan-floor-btn active" id="planFloorGroundBtn" data-floor="ground">1. Kat / Bölge</button>
-                <button class="plan-floor-btn" id="planFloorUpperBtn" data-floor="upper">2. Kat / Bölge</button>
+              <!-- Dynamically generated level tabs from EntityHierarchy -->
+              <div class="plan-floor-tabs" id="planFloorTabs">
+                <button class="plan-floor-btn active" id="planFloorGroundBtn" data-floor="ground">Zemin Kat</button>
+                <button class="plan-floor-btn" id="planFloorUpperBtn" data-floor="upper">Üst Kat</button>
               </div>
 
               <button class="advanced-tools-toggle-btn" id="toggleAdvancedToolsBtn">
@@ -225,12 +225,9 @@
               <!-- Rendered dynamically by PlanEditor / WorkspacePresenter / RenderCompatibilityGuard -->
             </div>
 
-            <!-- DEMO SCENARIOS SHORTCUT BAR -->
-            <div class="demo-scenarios-bar">
-              <span class="scenario-label">⚡ Hızlı Demo Senaryoları:</span>
-              <button class="scenario-btn" id="demoScenarioMasterBath">🛁 Ebeveyn Banyosunu Kuzeye Taşı</button>
-              <button class="scenario-btn" id="demoScenarioFloorOverlay">🏢 Alt ve Üst Kat İlişkisini Açıkla</button>
-              <button class="scenario-btn" id="demoScenarioOrientation">☀️ Cephe Yönlenmesini Göster</button>
+            <!-- SCOPED DEMO SCENARIOS SHORTCUT BAR -->
+            <div class="demo-scenarios-bar" id="demoScenariosBar">
+              <!-- Dynamically rendered scoped actions -->
             </div>
 
           </div>
@@ -240,7 +237,7 @@
         <div class="stage-view hidden" id="architectStageView">
           <div class="architect-scroll-area">
             <div class="arch-banner">
-              <h2>Scoped Mimar Karar Raporu (v6.1)</h2>
+              <h2>Scoped Mimar Karar Raporu (v6.1.1)</h2>
               <p>Mimar raporu yalnız aktif projenin bileşik scope anahtarına uygunsa render edilir.</p>
             </div>
 
@@ -265,7 +262,7 @@
           <div class="chat-header-top-row">
             <h2 class="panel-title" id="panelTitle">BRIF.AI Mimari Asistan</h2>
             
-            <!-- Scoped Chat Message Filter Dropdown (Requirement 10) -->
+            <!-- Scoped Chat Message Filter Dropdown (Requirement 6) -->
             <select id="chatScopeFilterSelect" class="chat-filter-dropdown" title="Konuşma Filtresi">
               <option value="active_scope" selected>Aktif Kapsam</option>
               <option value="active_decision">Aktif Karar</option>
@@ -343,7 +340,7 @@
     </div>
   </div>
 
-  <!-- MODULAR SCRIPTS (v6.1 Platform Architecture) -->
+  <!-- MODULAR SCRIPTS (v6.1.1 Platform Architecture) -->
   <script src="js/entity_hierarchy.js"></script>
   <script src="js/scoped_document_store.js"></script>
   <script src="js/workspace_scope_resolver.js"></script>
@@ -357,6 +354,7 @@
   <script src="js/workspace_presenter.js"></script>
   <script src="js/contextual_assistant.js"></script>
   <script src="js/conversation_orchestrator.js"></script>
+  <script src="js/test_scope_guard.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

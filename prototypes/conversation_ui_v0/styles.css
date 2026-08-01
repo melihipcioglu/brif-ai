@@ -1,5 +1,5 @@
 /* ==========================================================================
-   BRIF.AI — Scope-Driven Workspace Platform v6.1 Stylesheet
+   BRIF.AI — Universal Scoped Rendering Platform v6.1.1 Stylesheet
    ========================================================================== */
 
 :root {
@@ -86,8 +86,9 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 
 .global-disclaimer-bar { background-color: #FFFBEB; border-bottom: 1px solid #FDE68A; padding: 6px 24px; font-size: 11px; font-weight: 600; color: #B45309; display: flex; align-items: center; justify-content: center; gap: 12px; }
 
-/* Honest Empty State Workspace Component (Requirement 6) */
+/* Honest Empty State Workspace Component */
 .empty-state-workspace-card { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 40px 24px; background-color: #FAFBFB; border: 2px dashed var(--color-border-hover); border-radius: var(--radius-lg); margin: 20px 0; gap: 12px; width: 100%; }
+.empty-state-workspace-card.report-empty { background-color: #FFFBEB; border-color: #F59E0B; }
 .empty-state-icon { font-size: 36px; }
 .empty-state-title { font-size: 15px; font-weight: 800; color: var(--color-brand-primary); }
 .empty-state-desc { font-size: 12.5px; color: var(--color-text-secondary); max-width: 480px; }
@@ -96,7 +97,12 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 .empty-act-btn.highlight { background-color: var(--color-brand-light); border-color: #A7F3D0; color: var(--color-brand-primary); font-weight: 700; }
 .empty-act-btn.disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* Breadcrumb Bar (Requirement 9) */
+/* Simplified Suspended Context Top Line (Requirement 9) */
+.suspended-context-line { display: flex; align-items: center; justify-content: space-between; background-color: #FEF3C7; border: 1px solid #FDE68A; padding: 6px 14px; border-radius: var(--radius-md); font-size: 11.5px; color: #B45309; margin-bottom: 10px; }
+.suspended-text { font-weight: 600; }
+.resume-context-link { background: none; border: none; font-weight: 800; color: #92400E; cursor: pointer; text-decoration: underline; }
+
+/* Breadcrumb Bar */
 .workspace-breadcrumb-bar { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--color-text-tertiary); background-color: var(--color-surface-subtle); padding: 6px 12px; border-radius: var(--radius-md); border: 1px solid var(--color-border); margin-bottom: 10px; flex-wrap: wrap; }
 .breadcrumb-item.active { font-weight: 700; color: var(--color-brand-primary); }
 .breadcrumb-sep { color: var(--color-border-hover); }
@@ -119,19 +125,11 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 .drawer-handle-pill { width: 36px; height: 4px; border-radius: 2px; background-color: var(--color-border-hover); margin-bottom: 4px; }
 .drawer-handle-title { font-size: 12px; font-weight: 700; color: var(--color-text-secondary); }
 
-/* Suspended Context Banner */
-.suspended-context-banner { display: flex; align-items: center; justify-content: space-between; background-color: #FFFBEB; border: 1.5px solid #F59E0B; padding: 12px 18px; border-radius: var(--radius-md); margin-bottom: 14px; box-shadow: var(--shadow-sm); }
-.suspended-banner-content { display: flex; align-items: center; gap: 10px; }
-.suspended-icon { font-size: 18px; }
-.suspended-text-group strong { font-size: 12.5px; color: #92400E; }
-.suspended-text-group p { font-size: 11.5px; color: #B45309; }
-.resume-context-btn { background-color: #FFFFFF; border: 1px solid #D97706; color: #B45309; padding: 6px 12px; border-radius: var(--radius-md); font-size: 11.5px; font-weight: 700; cursor: pointer; white-space: nowrap; }
-
 /* Stage Views */
 .stage-view { display: flex; flex-direction: column; height: 100%; }
 .stage-view.hidden { display: none !important; }
 
-/* Stage 1 Live Dashboard & Provenance (Requirement 13) */
+/* Stage 1 Live Dashboard & Provenance */
 .stage1-workspace-container { padding: 24px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 18px; }
 .dashboard-header-banner { background-color: var(--color-brand-light); border: 1px solid #A7F3D0; padding: 16px 20px; border-radius: var(--radius-lg); }
 .dashboard-header-banner h3 { font-size: 17px; font-weight: 800; color: var(--color-brand-primary); }
@@ -172,7 +170,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 .space-rationale { font-size: 11px; color: var(--color-text-secondary); background-color: var(--color-surface-subtle); padding: 5px 8px; border-radius: var(--radius-sm); }
 .space-card-btn { background-color: var(--color-brand-light); border: 1px solid #A7F3D0; color: var(--color-brand-primary); padding: 6px; border-radius: var(--radius-sm); font-size: 11px; font-weight: 700; cursor: pointer; text-align: center; }
 
-/* Clean Readability Overlay Grid & Side Legend Panel (Requirement 14) */
+/* Clean Readability Overlay Grid & Side Legend Panel */
 .overlay-readable-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; align-items: start; }
 .overlay-svg-container { width: 100%; min-height: 380px; background-color: #FFFFFF; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 8px; }
 .overlay-legend-panel { background-color: var(--color-surface-subtle); border: 1px solid var(--color-border); padding: 14px; border-radius: var(--radius-md); display: flex; flex-direction: column; gap: 10px; }
@@ -185,7 +183,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 .code-badge.merdiven { background-color: #FEF08A; color: #854D0E; }
 .code-badge.tesisat { background-color: #DBEAFE; color: #1E40AF; }
 
-/* Rich Persistent Chat Panel & Scoped Message Filter Dropdown (Requirement 10) */
+/* Rich Persistent Chat Panel & Scoped Message Filter Dropdown */
 .panel-header { padding: 14px 16px 10px; border-bottom: 1px solid var(--color-border); display: flex; flex-direction: column; gap: 6px; background-color: #FFFFFF; }
 .chat-header-top-row { display: flex; align-items: center; justify-content: space-between; }
 .panel-title { font-size: 14px; font-weight: 800; color: var(--color-brand-primary); }

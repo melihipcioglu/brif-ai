@@ -1,9 +1,10 @@
 /**
- * BRIF.AI — Render Compatibility Guard (v6.1 Platform Architecture)
+ * BRIF.AI — Render Compatibility Guard (v6.1.1 Universal Platform Architecture)
  *
  * Core architectural guard enforcing:
- * "No workspace content may render unless its document scope is compatible with the active context."
- * Clears stale DOM content and renders honest empty states when compatibility fails.
+ * "Every rendered workspace artifact must be resolved and validated against the active workspace scope before it enters the DOM."
+ *
+ * Bypassing this guard logs [BRIF Scope Violation] in dev mode.
  */
 
 class RenderCompatibilityGuard {
@@ -11,48 +12,51 @@ class RenderCompatibilityGuard {
     this.hierarchy = hierarchy || new EntityHierarchy();
   }
 
+  // Universal Document Compatibility Validator (Requirement 5)
   isDocumentCompatible(doc, activeContext) {
-    if (!doc || !activeContext) return false;
+    if (!doc || !activeContext) {
+      console.warn('[BRIF Scope Violation] Null document or active context passed to guard.');
+      return false;
+    }
 
-    // 1. Status must be available
+    // Status must be available
     if (doc.status !== 'available') return false;
 
-    // 2. Project ID must match
-    if (doc.projectId !== activeContext.projectId) return false;
+    // Scope check: Project ID
+    const docProj = doc.scope ? doc.scope.projectId : doc.projectId;
+    if (docProj && docProj !== activeContext.projectId) return false;
 
-    // 3. If buildingId defined on doc, must match activeContext
-    if (doc.buildingId && activeContext.buildingId && doc.buildingId !== activeContext.buildingId) {
-      return false;
-    }
+    // Scope check: Building ID
+    const docBldg = doc.scope ? doc.scope.buildingId : doc.buildingId;
+    if (docBldg && activeContext.buildingId && docBldg !== activeContext.buildingId) return false;
 
-    // 4. If levelId defined on doc, must match activeContext
-    if (doc.levelId && activeContext.levelId && doc.levelId !== activeContext.levelId) {
-      return false;
-    }
+    // Scope check: Level ID
+    const docLvl = doc.scope ? doc.scope.levelId : doc.levelId;
+    if (docLvl && activeContext.levelId && docLvl !== activeContext.levelId) return false;
 
-    // 5. If zoneId defined on doc, must match activeContext
-    if (doc.zoneId && activeContext.zoneId && doc.zoneId !== activeContext.zoneId) {
-      return false;
-    }
+    // Scope check: Zone ID
+    const docZone = doc.scope ? doc.scope.zoneId : doc.zoneId;
+    if (docZone && activeContext.zoneId && docZone !== activeContext.zoneId) return false;
 
-    // 6. If entityId defined on doc, must match activeContext
-    if (doc.entityId && activeContext.entityId && doc.entityId !== activeContext.entityId) {
-      return false;
-    }
+    // Scope check: Entity ID
+    const docEnt = doc.scope ? doc.scope.entityId : doc.entityId;
+    if (docEnt && activeContext.entityId && docEnt !== activeContext.entityId) return false;
+
+    // Scope check: Decision ID (For Decision Reports)
+    const docDec = doc.scope ? doc.scope.decisionId : doc.decisionId;
+    if (docDec && activeContext.decisionId && docDec !== activeContext.decisionId) return false;
 
     return true;
   }
 
-  // Render Honest Empty State Component (Requirement 6)
+  // General Honest Empty State Renderer
   renderEmptyState(container, activeContext, scopeTitle) {
     if (!container) return;
-
-    // Clear stale DOM content immediately — no leftover plans!
-    container.innerHTML = '';
+    container.innerHTML = ''; // Clear stale DOM content immediately
 
     const title = scopeTitle || this.hierarchy.getScopeTitle(activeContext);
 
-    const emptyHtml = `
+    container.innerHTML = `
       <div class="empty-state-workspace-card">
         <div class="empty-state-icon">📂</div>
         <h3 class="empty-state-title">Bu kapsam için çalışma alanı verisi bulunmuyor</h3>
@@ -63,13 +67,35 @@ class RenderCompatibilityGuard {
         <div class="empty-state-actions">
           <button class="empty-act-btn" id="btnEmptyShowUpper">Üst Kapsamı Göster</button>
           <button class="empty-act-btn" id="btnEmptySelectLevel">Başka Kat Seç</button>
-          <button class="empty-act-btn disabled" title="Prototip demo aksiyonu">Belge Ekle (Demo)</button>
           <button class="empty-act-btn highlight" id="btnResumeContext">↩ Önceki Bağlama Dön</button>
         </div>
       </div>
     `;
+  }
 
-    container.innerHTML = emptyHtml;
+  // Architect Report Specific Empty State Renderer (Requirement 3)
+  renderReportEmptyState(container, activeContext, incompatibleReportTitle) {
+    if (!container) return;
+    container.innerHTML = '';
+
+    const title = this.hierarchy.getScopeTitle(activeContext);
+    const incTitle = incompatibleReportTitle ? ` (${incompatibleReportTitle})` : '';
+
+    container.innerHTML = `
+      <div class="empty-state-workspace-card report-empty">
+        <div class="empty-state-icon">📜</div>
+        <h3 class="empty-state-title">Bu aktif kapsam için mimar karar raporu bulunmuyor</h3>
+        <p class="empty-state-desc">
+          Şu anda <strong>${escapeHtml(title)}</strong> kapsamındasınız. Başka bir kapsama ait mimar kararları${escapeHtml(incTitle)} bu görünümle uyumlu olmadığı için gösterilmiyor.
+        </p>
+
+        <div class="empty-state-actions">
+          <button class="empty-act-btn highlight" id="btnShowScopeDecisions">Aktif Kapsamdaki Kararları Göster</button>
+          <button class="empty-act-btn" id="btnResumeContext">Önceki Karara Dön</button>
+          <button class="empty-act-btn" id="btnOpenAllProjectDecisions">Tüm Proje Kararlarını Aç</button>
+        </div>
+      </div>
+    `;
   }
 }
 

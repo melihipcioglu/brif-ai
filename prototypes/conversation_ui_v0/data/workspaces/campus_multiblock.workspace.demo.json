@@ -65,6 +65,35 @@
           { "id": "space_hr_office", "name": "İnsan Kaynakları Çalışma Alanı", "area": 70, "floor": "Blok B / 2. Kat", "source": "İdari yönetim" }
         ]
       }
+    },
+    {
+      "documentId": "doc_campus_lab_report",
+      "documentType": "architect_report",
+      "projectId": "proj_campus_multiblock",
+      "buildingId": "block_a_r_d",
+      "levelId": "lvl_2_block_a",
+      "zoneId": "zone_lab",
+      "entityId": "space_robotics_lab",
+      "scenarioId": null,
+      "decisionId": "dec_robotics_lab",
+      "scopeType": "entity",
+      "status": "available",
+      "displayName": "Robotik Laboratuvarı Yerleşim Raporu",
+      "sourceType": "demo",
+      "payload": {
+        "title": "Karar #201 (Teknoloji Kampüsü Laboratuvarı)",
+        "status": "Uygulandı",
+        "userRequest": "Robotik test alanı için yüksek taşıyıcı kapasite ve teknik tesisat.",
+        "clarifiedNeed": "Ağır yük ve direkt egzoz havalandırma erişimi.",
+        "interpretation": "AR-GE bloğunda teknik çekirdeğe bitişik laboratuvar kurgusu.",
+        "decision": "Blok A 2. Kat Laboratuvar Konumlandırması Onaylandı",
+        "meta": { "source": "Teknik şartname", "confidence": "Yüksek" }
+      }
     }
+  ],
+  "scopedActions": [
+    { "actionId": "act_campus_lab", "displayName": "🔬 Laboratuvar Servis İlişkisini Göster", "handler": "triggerCampusLabScenario" },
+    { "actionId": "act_campus_blocks", "displayName": "🌉 Bloklar Arası Bağlantıyı Açıkla", "handler": "triggerCampusBlocksScenario" },
+    { "actionId": "act_campus_tech", "displayName": "⚡ Teknik Destek Zonunu Vurgula", "handler": "triggerCampusTechScenario" }
   ]
 }

@@ -66,6 +66,35 @@
           { "id": "space_breakroom_32", "name": "Dinlenme & Mutfak Alanı", "area": 25, "floor": "32. Kat", "source": "Ergonomi standardı" }
         ]
       }
+    },
+    {
+      "documentId": "doc_tower_18_report",
+      "documentType": "architect_report",
+      "projectId": "proj_tower_50floor",
+      "buildingId": "tower_a",
+      "levelId": "lvl_18",
+      "zoneId": "zone_exec_18",
+      "entityId": "space_meeting_18a",
+      "scenarioId": null,
+      "decisionId": "dec_meeting_18a",
+      "scopeType": "entity",
+      "status": "available",
+      "displayName": "18A Toplantı Odası Yerleşim Raporu",
+      "sourceType": "demo",
+      "payload": {
+        "title": "Karar #101 (Finans Kulesi Toplantı Odası)",
+        "status": "Uygulandı",
+        "userRequest": "Yönetim katında 20 kişilik prestijli toplantı odası ihtiyacı.",
+        "clarifiedNeed": "Asansör çekirdeğine doğrudan erişim ve akustik yalıtım.",
+        "interpretation": "Kurumsal yönetim alanında çekirdeğe yakın, protokol erişimli toplantı düzeni.",
+        "decision": "18A Toplantı Odası Yerleşimi Onaylandı",
+        "meta": { "source": "Kurumsal alan standardı", "confidence": "Yüksek" }
+      }
     }
+  ],
+  "scopedActions": [
+    { "actionId": "act_tower_meeting", "displayName": "👥 Toplantı Odası İlişkisini İncele", "handler": "triggerTowerMeetingScenario" },
+    { "actionId": "act_tower_core", "displayName": "🛗 Dolaşım Çekirdeğini Göster", "handler": "triggerTowerCoreScenario" },
+    { "actionId": "act_tower_floors", "displayName": "🏢 Katlar Arası Bağlantıyı Açıkla", "handler": "triggerTowerFloorsScenario" }
   ]
 }

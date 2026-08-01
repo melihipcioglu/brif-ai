@@ -1,8 +1,8 @@
 /**
- * BRIF.AI — Conversation Orchestrator & State Engine (v6.1 Platform Architecture)
+ * BRIF.AI — Conversation Orchestrator & State Engine (v6.1.1 Platform Architecture)
  *
  * Atomically updates workspace on project switches, filters conversation by active scope,
- * and attaches context snapshots to every message.
+ * attaches context snapshots to every message, and handles scoped actions for all project types.
  */
 
 class ConversationOrchestrator {
@@ -19,10 +19,9 @@ class ConversationOrchestrator {
     this.intentParser = new DemoIntentParser();
 
     this.chatContainerId = 'chatMessages';
-    this.allChatMessages = []; // Full message history with context snapshots
-    this.chatFilterMode = 'active_scope'; // 'active_scope', 'active_decision', 'active_level', 'active_project', 'all'
+    this.allChatMessages = [];
+    this.chatFilterMode = 'active_scope';
 
-    // Subscribe to state machine updates
     this.stateMachine.subscribe((ctx) => {
       this.validateAndSyncUI(ctx);
       this.renderFilteredChatMessages();
@@ -48,7 +47,6 @@ class ConversationOrchestrator {
     }
   }
 
-  // Atomic Workspace Transition on Project Switch (Requirement 15)
   selectProject(projId) {
     let initPayload = { projectId: "proj_house_2story", buildingId: "bldg_main", levelId: "lvl_ground", entityId: "space_study" };
 
@@ -58,7 +56,6 @@ class ConversationOrchestrator {
       initPayload = { projectId: "proj_campus_multiblock", buildingId: "block_a_r_d", levelId: "lvl_2_block_a", entityId: "space_robotics_lab" };
     }
 
-    // Atomic State Transition
     this.stateMachine.dispatch({
       type: "PROJECT_SELECTED",
       payload: initPayload
@@ -67,7 +64,6 @@ class ConversationOrchestrator {
     const ctx = this.stateMachine.getContext();
     const title = this.hierarchy.getScopeTitle(ctx);
 
-    // Update Presenter atomically
     if (this.presenter) {
       this.presenter.render({ activeContext: ctx });
     }
@@ -119,7 +115,6 @@ class ConversationOrchestrator {
     this.renderFilteredChatMessages();
   }
 
-  // Scoped Chat Message Filtering (Requirement 10)
   renderFilteredChatMessages() {
     const chatContainer = document.getElementById(this.chatContainerId);
     if (!chatContainer) return;
@@ -138,10 +133,9 @@ class ConversationOrchestrator {
         return msg.snapshot.projectId === ctx.projectId && msg.snapshot.levelId === ctx.levelId;
       }
       if (this.chatFilterMode === 'active_decision') {
-        return msg.snapshot.scenarioId === ctx.scenarioId;
+        return msg.snapshot.scenarioId === ctx.scenarioId || msg.snapshot.decisionId === ctx.decisionId;
       }
 
-      // Default 'active_scope': matches current project & building
       return msg.snapshot.projectId === ctx.projectId && msg.snapshot.buildingId === ctx.buildingId;
     });
 
@@ -234,6 +228,28 @@ class ConversationOrchestrator {
     this.stateMachine.dispatch({ type: "SCENARIO_STARTED", payload: { scenarioId: "orientation" } });
     if (this.presenter) this.presenter.setMode('orientation');
     this.appendAssistantMessage("Cephe yönlenmesini kat planı üzerinde gösteriyorum.", ["Kuzey cephesini göster", "Güney salon ilişkisini göster", "Normal plana dön"]);
+  }
+
+  // Scoped Tower Handlers
+  triggerTowerMeetingScenario() {
+    this.appendAssistantMessage("👥 A Kulesi 18. Kat Yönetim Toplantı Odası (18A) protokol ve akustik ilişkisi inceleniyor.");
+  }
+  triggerTowerCoreScenario() {
+    this.appendAssistantMessage("🛗 50 Katlı Finans Kulesi yüksek hızlı asansör ve servis çekirdeği düşey hatları vurgulandı.");
+  }
+  triggerTowerFloorsScenario() {
+    this.appendAssistantMessage("🏢 18. Kat (Yönetim) ile 32. Kat (Operasyon) arasındaki düşey iletişim aksı simüle ediliyor.");
+  }
+
+  // Scoped Campus Handlers
+  triggerCampusLabScenario() {
+    this.appendAssistantMessage("🔬 Blok A (AR-GE) Robotik Araştırma Laboratuvarı ağır yük zemin ve havalandırma aksı doğrulandı.");
+  }
+  triggerCampusBlocksScenario() {
+    this.appendAssistantMessage("🌉 AR-GE Binası (Blok A) ile İdari Bina (Blok B) arasındaki tüp geçit bağlantısı vurgulandı.");
+  }
+  triggerCampusTechScenario() {
+    this.appendAssistantMessage("⚡ Kampüs merkezi yüksek gerilim ve teknik destek zonu erişimleri inceleniyor.");
   }
 
   syncStateWithHistory() {

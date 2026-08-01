@@ -58,16 +58,69 @@
       "data": {
         "summary": { "netArea": "148 – 168 m²", "circArea": "32 – 42 m²", "grossArea": "190 – 220 m²" },
         "groundSpaces": [
-          { "id": "space_living", "name": "Salon & Yaşam Alanı", "area": 34, "floor": "ground", "source": "Mimar varsayımı" },
-          { "id": "space_kitchen", "name": "Mutfak", "area": 16, "floor": "ground", "source": "Mimar varsayımı" },
-          { "id": "space_study", "name": "Çalışma Odası", "area": 12, "floor": "ground", "source": "Kullanıcı talebi" }
+          { "id": "space_living", "name": "Salon & Yaşam Alanı", "area": 34, "floor": "Zemin Kat", "source": "Mimar varsayımı" },
+          { "id": "space_kitchen", "name": "Mutfak", "area": 16, "floor": "Zemin Kat", "source": "Mimar varsayımı" },
+          { "id": "space_study", "name": "Çalışma Odası", "area": 12, "floor": "Zemin Kat", "source": "Kullanıcı talebi" }
         ],
         "upperSpaces": [
-          { "id": "space_master_suite", "name": "Ebeveyn Süiti", "area": 24, "floor": "upper", "source": "Mimar varsayımı" },
-          { "id": "space_master_bath", "name": "Ebeveyn Banyosu", "area": 7, "floor": "upper", "source": "Sohbette konuşuldu" },
-          { "id": "space_child1", "name": "1. Çocuk Odası", "area": 14, "floor": "upper", "source": "Hane yapısı" }
+          { "id": "space_master_suite", "name": "Ebeveyn Süiti", "area": 24, "floor": "Üst Kat", "source": "Mimar varsayımı" },
+          { "id": "space_master_bath", "name": "Ebeveyn Banyosu", "area": 7, "floor": "Üst Kat", "source": "Sohbette konuşuldu" },
+          { "id": "space_child1", "name": "1. Çocuk Odası", "area": 14, "floor": "Üst Kat", "source": "Hane yapısı" }
         ]
       }
+    },
+    {
+      "documentId": "doc_house_study_report",
+      "documentType": "architect_report",
+      "projectId": "proj_house_2story",
+      "buildingId": "bldg_main",
+      "levelId": "lvl_ground",
+      "zoneId": "zone_living",
+      "entityId": "space_study",
+      "scenarioId": null,
+      "decisionId": "dec_study_isolation",
+      "scopeType": "entity",
+      "status": "available",
+      "displayName": "Çalışma Odası Akustik İzolasyon Raporu",
+      "sourceType": "demo",
+      "payload": {
+        "title": "Karar #1 (Çalışma Odası)",
+        "status": "Uygulandı",
+        "userRequest": "Eşim evden çalışıyor, online toplantılar yapıyor.",
+        "clarifiedNeed": "Çalışma sırasında tam ses izolasyonu ve sessizlik.",
+        "interpretation": "Tam zamanlı evden çalışma için yüksek akustik mahremiyet ve kapalı oda kurgusu.",
+        "decision": "Alternatif A (Tam Akustik İzolasyon) Seçildi",
+        "meta": { "source": "Doğruladan kullanıcı beyanı", "confidence": "Yüksek" }
+      }
+    },
+    {
+      "documentId": "doc_house_bath_report",
+      "documentType": "architect_report",
+      "projectId": "proj_house_2story",
+      "buildingId": "bldg_main",
+      "levelId": "lvl_upper",
+      "zoneId": "zone_private",
+      "entityId": "space_master_bath",
+      "scenarioId": "master_bath_relocation",
+      "decisionId": "dec_master_bath",
+      "scopeType": "scenario",
+      "status": "available",
+      "displayName": "Ebeveyn Banyosu Taşınması Karar Raporu",
+      "sourceType": "demo",
+      "payload": {
+        "title": "Karar #2 (Ebeveyn Banyosu)",
+        "status": "Karar bekleniyor",
+        "userRequest": "Ebeveyn banyosu burada olmasın, kuzey tarafında olsun.",
+        "clarifiedNeed": "Banyonun yataktan görünmemesi ve giyinme alanından erişilmesi.",
+        "interpretation": "Ebeveyn süitinde sıralı erişim hiyerarşisi (Yatak → Giyinme → Banyo) ve mahremiyet önceliği.",
+        "decision": "1. Seçenek (Kuzey Banyo) İncelemede",
+        "meta": { "source": "Takip cevabıyla netleştirildi", "confidence": "Yüksek" }
+      }
     }
+  ],
+  "scopedActions": [
+    { "actionId": "act_master_bath", "displayName": "🛁 Ebeveyn Banyosunu Kuzeye Taşı", "handler": "triggerMasterBathScenario" },
+    { "actionId": "act_floor_overlay", "displayName": "🏢 Alt ve Üst Kat İlişkisini Açıkla", "handler": "triggerFloorOverlayScenario" },
+    { "actionId": "act_orientation", "displayName": "☀️ Cephe Yönlenmesini Göster", "handler": "triggerOrientationScenario" }
   ]
 }

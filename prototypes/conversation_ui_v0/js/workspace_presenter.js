@@ -1,8 +1,9 @@
 /**
- * BRIF.AI — Workspace Presenter (v6.1 Refined Platform Engine)
+ * BRIF.AI — Workspace Presenter (v6.1.1 Refined Platform Engine)
  *
- * Scope-driven presenter resolving candidate documents via WorkspaceScopeResolver
- * and guarding DOM rendering via RenderCompatibilityGuard.
+ * Scope-driven presenter resolving candidate documents via WorkspaceScopeResolver,
+ * enforcing render compatibility, generating dynamic tabs from EntityHierarchy,
+ * and rendering scoped demo actions.
  */
 
 class WorkspacePresenter {
@@ -26,12 +27,16 @@ class WorkspacePresenter {
 
     const ctx = data.activeContext || (window.appStateMachine ? window.appStateMachine.getContext() : null);
 
-    // If ctx exists, resolve candidate document
+    // UI Context Consistency Assertion (Requirement 8)
+    this.assertUIContextConsistency(ctx);
+
+    // Render Scoped Workspace Documents via Pipeline (Requirement 2)
     if (ctx && (this.currentMode === 'plan' || this.currentMode === 'stage3_program')) {
       const docType = this.currentMode === 'stage3_program' ? 'space_program' : 'plan';
       const doc = this.resolver.resolveDocument(ctx, docType);
 
       if (!doc || !this.guard.isDocumentCompatible(doc, ctx)) {
+        console.warn(`[BRIF Scope Violation] Incompatible or missing document for type: ${docType}`);
         this.guard.renderEmptyState(this.container, ctx);
         return;
       }
@@ -48,31 +53,94 @@ class WorkspacePresenter {
     } else if (this.currentMode === 'orientation') {
       this.renderOrientationMode(data);
     }
+
+    // Render Scoped Actions Bar
+    this.renderScopedActions(ctx);
   }
 
-  // Suspended Context Banner Renderer (Requirement 7)
+  // UI Context Consistency Assertion (Requirement 8)
+  assertUIContextConsistency(ctx) {
+    if (!ctx) return;
+    const breadcrumb = this.renderBreadcrumbHtml(ctx);
+    const badgeEl = document.getElementById('assistantContextBadge');
+    if (badgeEl) {
+      badgeEl.textContent = this.hierarchy.getScopeTitle(ctx);
+    }
+  }
+
+  // Dynamic Tabs Generator from EntityHierarchy (Requirement 7)
+  renderDynamicLevelTabs(activeContext) {
+    if (!activeContext) return '';
+
+    const ancestors = this.hierarchy.getAncestors(activeContext.entityId || activeContext.levelId || activeContext.buildingId);
+    const bldg = ancestors.building || (ancestors.project ? ancestors.project.buildings[Object.keys(ancestors.project.buildings)[0]] : null);
+
+    if (!bldg || !bldg.levels) return '';
+
+    const levels = Object.values(bldg.levels);
+
+    return `
+      <div class="dynamic-level-tabs-bar">
+        ${levels.map(lvl => `
+          <button class="plan-floor-btn ${lvl.id === activeContext.levelId ? 'active' : ''}" data-level-id="${lvl.id}">
+            ${escapeHtml(lvl.name)}
+          </button>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  // Scoped Demo Quick Actions Bar Renderer (Requirement 10 & 12)
+  renderScopedActions(activeContext) {
+    const demoBar = document.getElementById('demoScenariosBar');
+    if (!demoBar || !activeContext) return;
+
+    let actions = [
+      { actionId: "act_master_bath", displayName: "🛁 Ebeveyn Banyosunu Kuzeye Taşı", handler: "triggerMasterBathScenario" },
+      { actionId: "act_floor_overlay", displayName: "🏢 Alt ve Üst Kat İlişkisini Açıkla", handler: "triggerFloorOverlayScenario" },
+      { actionId: "act_orientation", displayName: "☀️ Cephe Yönlenmesini Göster", handler: "triggerOrientationScenario" }
+    ];
+
+    if (activeContext.projectId === 'proj_tower_50floor') {
+      actions = [
+        { actionId: "act_tower_meeting", displayName: "👥 Toplantı Odası İlişkisini İncele", handler: "triggerTowerMeetingScenario" },
+        { actionId: "act_tower_core", displayName: "🛗 Dolaşım Çekirdeğini Göster", handler: "triggerTowerCoreScenario" },
+        { actionId: "act_tower_floors", displayName: "🏢 Katlar Arası Bağlantıyı Açıkla", handler: "triggerTowerFloorsScenario" }
+      ];
+    } else if (activeContext.projectId === 'proj_campus_multiblock') {
+      actions = [
+        { actionId: "act_campus_lab", displayName: "🔬 Laboratuvar Servis İlişkisini Göster", handler: "triggerCampusLabScenario" },
+        { actionId: "act_campus_blocks", displayName: "🌉 Bloklar Arası Bağlantıyı Açıkla", handler: "triggerCampusBlocksScenario" },
+        { actionId: "act_campus_tech", displayName: "⚡ Teknik Destek Zonunu Vurgula", handler: "triggerCampusTechScenario" }
+      ];
+    }
+
+    demoBar.innerHTML = `
+      <span class="scenario-label">⚡ Kapsama Özel Demo Aksiyonları:</span>
+      ${actions.map(a => `
+        <button class="scenario-btn" data-handler="${a.handler}">${escapeHtml(a.displayName)}</button>
+      `).join('')}
+    `;
+  }
+
+  // Simplified Suspended Context Top Notice Line (Requirement 9)
   renderSuspendedContextBanner(messageText) {
     if (!this.container) return;
 
     const bannerHtml = `
-      <div class="suspended-context-banner">
-        <div class="suspended-banner-content">
-          <span class="suspended-icon">⚠️</span>
-          <div class="suspended-text-group">
-            <strong>Bağlam Askıya Alındı</strong>
-            <p>${escapeHtml(messageText)}</p>
-          </div>
-        </div>
-        <button class="resume-context-btn" id="btnResumeContext">↩ Önceki Bağlama Dön</button>
+      <div class="suspended-context-line">
+        <span class="suspended-icon">ℹ️</span>
+        <span class="suspended-text">${escapeHtml(messageText)}</span>
+        <button class="resume-context-link" id="btnResumeContext">↩ Önceki Bağlama Dön</button>
       </div>
     `;
 
-    const existing = this.container.querySelector('.suspended-context-banner');
+    const existing = this.container.querySelector('.suspended-context-line');
     if (existing) existing.remove();
     this.container.insertAdjacentHTML('afterbegin', bannerHtml);
   }
 
-  // Breadcrumb Bar Renderer (Requirement 9)
+  // Human-Readable Breadcrumb Generator (Requirement 8)
   renderBreadcrumbHtml(activeContext) {
     if (!activeContext) return '';
 
@@ -119,7 +187,6 @@ class WorkspacePresenter {
     `;
   }
 
-  // Project DNA with Provenance (Requirement 13)
   renderStage1Dashboard(data = {}) {
     const hasData = data.hasUserMessages || false;
 
@@ -293,7 +360,6 @@ class WorkspacePresenter {
     `;
   }
 
-  // Clean Readability Overlay View (Requirement 14)
   renderFloorOverlayMode(data = {}) {
     this.container.innerHTML = `
       <div class="overlay-mode-wrapper">
@@ -307,13 +373,11 @@ class WorkspacePresenter {
             <svg viewBox="0 0 600 400" width="100%" height="100%" id="alignedOverlaySvg">
               <rect width="600" height="400" rx="8" fill="#FFFFFF" stroke="#CBD5E1"/>
 
-              <!-- Ground Plan (Light Draft) -->
               <g class="ground-plan" style="opacity:0.28; fill:#E2E8F0; stroke:#64748B; stroke-width:2; stroke-dasharray:4 4;">
                 <rect x="40" y="60" width="220" height="260" rx="4"/>
                 <text x="150" y="190" font-size="14" font-weight="800" fill="#475569" text-anchor="middle">Z1</text>
               </g>
 
-              <!-- Upper Plan (Dark Wall) -->
               <g class="upper-plan" style="fill:none; stroke:#0F172A; stroke-width:3;">
                 <rect x="40" y="60" width="340" height="260" rx="4"/>
                 <rect x="240" y="60" width="140" height="110" rx="4" fill="#E0F2FE" stroke="#0284C7" stroke-width="2"/>
@@ -328,7 +392,6 @@ class WorkspacePresenter {
             </svg>
           </div>
 
-          <!-- Side Clean Legend Box (Requirement 14) -->
           <div class="overlay-legend-panel">
             <h4 class="legend-panel-title">📌 Kat İlişkisi Kod Açıklamaları</h4>
             <ul class="legend-code-list">

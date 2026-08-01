@@ -290,31 +290,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // Demo Scenario Buttons
-  const demoScenarioMasterBath = document.getElementById('demoScenarioMasterBath');
-  const demoScenarioFloorOverlay = document.getElementById('demoScenarioFloorOverlay');
-  const demoScenarioOrientation = document.getElementById('demoScenarioOrientation');
-
-  if (demoScenarioMasterBath) {
-    demoScenarioMasterBath.addEventListener('click', () => {
-      orchestrator.appendUserMessage('Ebeveyn banyosu burada olmasın, kuzey tarafında olsun.');
-      setTimeout(() => orchestrator.triggerMasterBathScenario('Ebeveyn banyosu burada olmasın, kuzey tarafında olsun.'), 300);
-    });
-  }
-
-  if (demoScenarioFloorOverlay) {
-    demoScenarioFloorOverlay.addEventListener('click', () => {
-      orchestrator.appendUserMessage('Alt planla üst plan üst üste gelince burada ne olduğunu anlamadım.');
-      setTimeout(() => orchestrator.triggerFloorOverlayScenario(), 300);
-    });
-  }
-
-  if (demoScenarioOrientation) {
-    demoScenarioOrientation.addEventListener('click', () => {
-      orchestrator.appendUserMessage('Burası kuzey cephesi olmasın.');
-      setTimeout(() => orchestrator.triggerOrientationScenario(), 300);
-    });
-  }
+  // Dynamic Scoped Demo Action Buttons Delegation
+  document.addEventListener('click', (e) => {
+    const scenarioBtn = e.target.closest('.scenario-btn');
+    if (scenarioBtn && scenarioBtn.dataset.handler) {
+      const handler = scenarioBtn.dataset.handler;
+      if (typeof orchestrator[handler] === 'function') {
+        orchestrator[handler]();
+      }
+    }
+  });
 
   function populateSpaceGrids() {
     const groundGrid = document.getElementById('spaceGridGround');
