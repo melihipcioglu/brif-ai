@@ -1,0 +1,70 @@
+{
+  "projectId": "proj_campus_multiblock",
+  "documents": [
+    {
+      "documentId": "doc_campus_block_a_plan",
+      "documentType": "plan",
+      "projectId": "proj_campus_multiblock",
+      "buildingId": "block_a_r_d",
+      "levelId": "lvl_2_block_a",
+      "zoneId": "zone_lab",
+      "entityId": null,
+      "scopeType": "level",
+      "status": "available",
+      "displayName": "Blok A (AR-GE) 2. Kat Laboratuvar Planı",
+      "sourceType": "demo",
+      "data": {
+        "svgType": "campus_lab_block",
+        "spaces": [
+          { "id": "space_robotics_lab", "name": "Robotik Araştırma Laboratuvarı", "area": 120, "color": "#F3E8FF" },
+          { "id": "space_prototype_shop", "name": "Prototip Atölyesi", "area": 60, "color": "#FEF3C7" },
+          { "id": "space_tech_storage", "name": "Teknik Depo", "area": 30, "color": "#E2E8F0" }
+        ]
+      }
+    },
+    {
+      "documentId": "doc_campus_block_b_plan",
+      "documentType": "plan",
+      "projectId": "proj_campus_multiblock",
+      "buildingId": "block_b_admin",
+      "levelId": "lvl_2_block_b",
+      "zoneId": "zone_hr",
+      "entityId": null,
+      "scopeType": "level",
+      "status": "available",
+      "displayName": "Blok B (İdari) 2. Kat Mülakat Odaları Planı",
+      "sourceType": "demo",
+      "data": {
+        "svgType": "campus_admin_block",
+        "spaces": [
+          { "id": "space_interview_b2", "name": "B2 Mülakat Odası", "area": 25, "color": "#EFF6FF" },
+          { "id": "space_hr_office", "name": "İnsan Kaynakları Çalışma Alanı", "area": 70, "color": "#ECFDF5" }
+        ]
+      }
+    },
+    {
+      "documentId": "doc_campus_program",
+      "documentType": "space_program",
+      "projectId": "proj_campus_multiblock",
+      "buildingId": null,
+      "levelId": null,
+      "zoneId": null,
+      "entityId": null,
+      "scopeType": "project",
+      "status": "available",
+      "displayName": "Teknoloji Kampüsü Mekân Programı",
+      "sourceType": "demo",
+      "data": {
+        "summary": { "netArea": "2.400 m² Net", "circArea": "600 m² Dolaşım", "grossArea": "3.000 m² Brüt" },
+        "groundSpaces": [
+          { "id": "space_robotics_lab", "name": "Robotik Araştırma Laboratuvarı", "area": 120, "floor": "Blok A / 2. Kat", "source": "AR-GE gereksinimi" },
+          { "id": "space_prototype_shop", "name": "Prototip Atölyesi", "area": 60, "floor": "Blok A / 2. Kat", "source": "Teknik şartname" }
+        ],
+        "upperSpaces": [
+          { "id": "space_interview_b2", "name": "B2 Mülakat Odası", "area": 25, "floor": "Blok B / 2. Kat", "source": "İK standartları" },
+          { "id": "space_hr_office", "name": "İnsan Kaynakları Çalışma Alanı", "area": 70, "floor": "Blok B / 2. Kat", "source": "İdari yönetim" }
+        ]
+      }
+    }
+  ]
+}

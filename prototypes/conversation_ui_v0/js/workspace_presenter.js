@@ -1,12 +1,18 @@
 /**
- * BRIF.AI — Workspace Presenter (v6.0 Refined Engine)
+ * BRIF.AI — Workspace Presenter (v6.1 Refined Platform Engine)
  *
- * Renders main workspace views and generic Suspended Context Banner.
+ * Scope-driven presenter resolving candidate documents via WorkspaceScopeResolver
+ * and guarding DOM rendering via RenderCompatibilityGuard.
  */
 
 class WorkspacePresenter {
-  constructor(containerId) {
+  constructor(containerId, options = {}) {
     this.container = document.getElementById(containerId);
+    this.hierarchy = options.hierarchy || new EntityHierarchy();
+    this.store = options.store || new ScopedDocumentStore();
+    this.resolver = options.resolver || new WorkspaceScopeResolver(this.hierarchy, this.store);
+    this.guard = options.guard || new RenderCompatibilityGuard(this.hierarchy);
+
     this.currentMode = 'plan';
   }
 
@@ -17,6 +23,19 @@ class WorkspacePresenter {
 
   render(data = {}) {
     if (!this.container) return;
+
+    const ctx = data.activeContext || (window.appStateMachine ? window.appStateMachine.getContext() : null);
+
+    // If ctx exists, resolve candidate document
+    if (ctx && (this.currentMode === 'plan' || this.currentMode === 'stage3_program')) {
+      const docType = this.currentMode === 'stage3_program' ? 'space_program' : 'plan';
+      const doc = this.resolver.resolveDocument(ctx, docType);
+
+      if (!doc || !this.guard.isDocumentCompatible(doc, ctx)) {
+        this.guard.renderEmptyState(this.container, ctx);
+        return;
+      }
+    }
 
     if (this.currentMode === 'stage1_dashboard') {
       this.renderStage1Dashboard(data);
@@ -31,7 +50,7 @@ class WorkspacePresenter {
     }
   }
 
-  // Suspended Context Banner Renderer (Requirement 3)
+  // Suspended Context Banner Renderer (Requirement 7)
   renderSuspendedContextBanner(messageText) {
     if (!this.container) return;
 
@@ -48,10 +67,34 @@ class WorkspacePresenter {
       </div>
     `;
 
-    // Prepend or show banner
     const existing = this.container.querySelector('.suspended-context-banner');
     if (existing) existing.remove();
     this.container.insertAdjacentHTML('afterbegin', bannerHtml);
+  }
+
+  // Breadcrumb Bar Renderer (Requirement 9)
+  renderBreadcrumbHtml(activeContext) {
+    if (!activeContext) return '';
+
+    const ancestors = this.hierarchy.getAncestors(activeContext.entityId || activeContext.levelId || activeContext.buildingId);
+    const crumbs = [];
+
+    if (ancestors.project) crumbs.push(ancestors.project.name);
+    if (ancestors.building) crumbs.push(ancestors.building.name);
+    if (ancestors.level) crumbs.push(ancestors.level.name);
+    if (ancestors.zone) crumbs.push(ancestors.zone.name);
+    if (ancestors.entity && ancestors.entity.type === 'space') crumbs.push(ancestors.entity.name);
+
+    if (crumbs.length === 0) return '';
+
+    return `
+      <div class="workspace-breadcrumb-bar">
+        ${crumbs.map((c, i) => `
+          <span class="breadcrumb-item ${i === crumbs.length - 1 ? 'active' : ''}">${escapeHtml(c)}</span>
+          ${i < crumbs.length - 1 ? '<span class="breadcrumb-sep">›</span>' : ''}
+        `).join('')}
+      </div>
+    `;
   }
 
   renderWorkflowTrackerHtml(currentStep = 4) {
@@ -76,35 +119,34 @@ class WorkspacePresenter {
     `;
   }
 
+  // Project DNA with Provenance (Requirement 13)
   renderStage1Dashboard(data = {}) {
     const hasData = data.hasUserMessages || false;
 
     this.container.innerHTML = `
       <div class="stage1-dashboard-wrapper">
         <div class="dashboard-header-banner">
-          <h3>🧠 Şu Ana Kadar Sizi Nasıl Anladım?</h3>
-          <p>Sohbet ilerledikçe evinizin yaşam ritmi, kullanım alışkanlıkları ve öncelikleri burada sentezlenir.</p>
+          <h3>🧠 Sizi Nasıl Anladım? (Proje DNA Özeti)</h3>
+          <p>Sohbet ilerledikçe evinizin yaşam ritmi, kullanım alışkanlıkları ve öncelikleri kaynaklarıyla burada sentezlenir.</p>
         </div>
 
         <div class="dashboard-cards-grid">
           <div class="dna-card ${hasData ? 'updated' : ''}">
             <div class="dna-card-header"><span class="dna-icon">👨‍👩‍👧‍👦</span> <strong>Hane Yapısı &amp; Düzen</strong></div>
             <p>${hasData ? '4 kişi — 2 yetişkin (ebeveyn) ve 2 okul çağında çocuk.' : 'Konuşma ilerledikçe hane yapınız burada oluşacak.'}</p>
+            <div class="provenance-tag">📌 Kaynak: ${hasData ? 'Kullanıcı beyanı (Güven: Yüksek)' : 'Henüz konuşulmadı'}</div>
           </div>
 
           <div class="dna-card ${hasData ? 'updated' : ''}">
             <div class="dna-card-header"><span class="dna-icon">⏰</span> <strong>Günlük Kullanım Ritmi</strong></div>
             <p>${hasData ? '16:00 sonrası çocuk kullanım yoğunluğu, gündüz online toplantılar.' : 'Günlük zaman akışınız sohbetle buraya yansıyacak.'}</p>
+            <div class="provenance-tag">📌 Kaynak: ${hasData ? 'Kullanıcı beyanı (Güven: Yüksek)' : 'Henüz konuşulmadı'}</div>
           </div>
 
           <div class="dna-card highlight ${hasData ? 'updated' : ''}">
             <div class="dna-card-header"><span class="dna-icon">🛡️</span> <strong>Mahremiyet Öncelikleri</strong></div>
             <p>${hasData ? 'Evden çalışma sırasında yüksek akustik ayrışma ve ses izolasyonu.' : 'Mahremiyet tercihleriniz sohbetle buraya işlenecek.'}</p>
-          </div>
-
-          <div class="dna-card ${hasData ? 'updated' : ''}">
-            <div class="dna-card-header"><span class="dna-icon">🏡</span> <strong>Kullanım Dengesi</strong></div>
-            <p>${hasData ? 'Ortak aile alanı + gerektiğinde kapalı bireysel çalışma alanı.' : 'Bireysel ve ortak alan dengeniz burada belirlenecek.'}</p>
+            <div class="provenance-tag">📌 Kaynak: ${hasData ? 'Doğrudan kullanıcı talebi' : 'Demo proje varsayımı'}</div>
           </div>
 
           <div class="dna-card pending">
@@ -115,6 +157,7 @@ class WorkspacePresenter {
           <div class="dna-card project-dna">
             <div class="dna-card-header"><span class="dna-icon">🧬</span> <strong>Proje DNA Özeti</strong></div>
             <p><strong>Aile odaklı • Kontrollü ayrışma • Dönüşebilir mekânlar</strong></p>
+            <div class="provenance-tag">🏷️ Demo proje varsayımı</div>
           </div>
         </div>
       </div>
@@ -185,8 +228,6 @@ class WorkspacePresenter {
                 <text x="205" y="90" font-size="10" font-weight="700" fill="#6B21A8" text-anchor="middle" transform="rotate(-90 205 90)">Giyinme</text>
                 <rect x="245" y="20" width="80" height="140" fill="#F0FDF4" stroke="#166534" stroke-width="2.5" rx="4"/>
                 <text x="285" y="80" font-size="10" font-weight="800" fill="#14532D" text-anchor="middle" transform="rotate(-90 285 80)">Kuzey Banyo</text>
-                <path d="M 60 100 L 140 50 L 240 50" fill="none" stroke="#10B981" stroke-width="2" stroke-dasharray="4 2"/>
-                <polygon points="245,50 238,46 238,54" fill="#10B981"/>
               </svg>
             </div>
 
@@ -221,8 +262,6 @@ class WorkspacePresenter {
                 <text x="105" y="80" font-size="11" font-weight="700" fill="#1E40AF" text-anchor="middle">Yatak Odası</text>
                 <rect x="200" y="50" width="120" height="110" fill="#FEF3C7" stroke="#D97706" stroke-width="2" rx="4"/>
                 <text x="260" y="105" font-size="10" font-weight="700" fill="#B45309" text-anchor="middle">Giyinmeden Girişli Banyo</text>
-                <line x1="200" y1="35" x2="200" y2="50" stroke="#DC2626" stroke-width="3"/>
-                <text x="190" y="40" font-size="9" fill="#DC2626" font-weight="800">🚫</text>
               </svg>
             </div>
 
@@ -254,55 +293,51 @@ class WorkspacePresenter {
     `;
   }
 
+  // Clean Readability Overlay View (Requirement 14)
   renderFloorOverlayMode(data = {}) {
     this.container.innerHTML = `
       <div class="overlay-mode-wrapper">
         <div class="overlay-header-bar">
           <span class="overlay-tag">🏢 Kat İlişkisi Anlatım Modu</span>
-          <p>Soluk çizgiler Zemin Katı (%28 saydam), koyu çizgiler Üst Katı gösterir. Mavi alanlar ıslak hacimler, sarı alan merdiven boşluğudur.</p>
+          <p>Plan üzerinde kısa kodlar gösterilmektedir. Açıklamalar sağ paneldedir.</p>
         </div>
 
-        <div class="overlay-legend-bar">
-          <span class="legend-item"><span class="leg-box zemin"></span> Zemin Kat (Soluk %28)</span>
-          <span class="legend-item"><span class="leg-box ust"></span> Üst Kat (Koyu)</span>
-          <span class="legend-item"><span class="leg-box islak"></span> Islak Hacimler</span>
-          <span class="legend-item"><span class="leg-box merdiven"></span> Merdiven Boşluğu</span>
-          <span class="legend-item"><span class="leg-line tesisat"></span> Düşey Tesisat Aksı</span>
-        </div>
+        <div class="overlay-readable-grid">
+          <div class="overlay-svg-container">
+            <svg viewBox="0 0 600 400" width="100%" height="100%" id="alignedOverlaySvg">
+              <rect width="600" height="400" rx="8" fill="#FFFFFF" stroke="#CBD5E1"/>
 
-        <div class="overlay-filter-toolbar">
-          <button class="overlay-filter-btn" id="btnOverlayUpperOnly">Yalnız Üst Kat</button>
-          <button class="overlay-filter-btn active" id="btnOverlayTransparent">Alt Katı Saydam Göster</button>
-          <button class="overlay-filter-btn" id="btnOverlayWetCores">Islak Hacimleri Vurgula</button>
-          <button class="overlay-filter-btn" id="btnOverlayStairs">Merdiven Boşluğunu Göster</button>
-          <button class="overlay-filter-btn" id="btnOverlayNormal">Normal Plana Dön</button>
-        </div>
+              <!-- Ground Plan (Light Draft) -->
+              <g class="ground-plan" style="opacity:0.28; fill:#E2E8F0; stroke:#64748B; stroke-width:2; stroke-dasharray:4 4;">
+                <rect x="40" y="60" width="220" height="260" rx="4"/>
+                <text x="150" y="190" font-size="14" font-weight="800" fill="#475569" text-anchor="middle">Z1</text>
+              </g>
 
-        <div class="overlay-svg-container">
-          <svg viewBox="0 0 840 540" width="100%" height="100%" id="alignedOverlaySvg">
-            <rect width="840" height="540" rx="12" fill="#FFFFFF" stroke="#CBD5E1"/>
+              <!-- Upper Plan (Dark Wall) -->
+              <g class="upper-plan" style="fill:none; stroke:#0F172A; stroke-width:3;">
+                <rect x="40" y="60" width="340" height="260" rx="4"/>
+                <rect x="240" y="60" width="140" height="110" rx="4" fill="#E0F2FE" stroke="#0284C7" stroke-width="2"/>
+                <text x="310" y="120" font-size="14" font-weight="800" fill="#0369A1" text-anchor="middle">Ü1</text>
 
-            <g class="ground-plan" style="opacity:0.28; fill:#E2E8F0; stroke:#64748B; stroke-width:2; stroke-dasharray:4 4;">
-              <rect x="60" y="100" width="190" height="240" rx="4"/>
-              <text x="155" y="210" font-size="11" font-weight="700" fill="#475569" text-anchor="middle">Zemin Mutfak (Soluk)</text>
-              <rect x="260" y="100" width="130" height="100" rx="4" fill="#E0F2FE" stroke="#0284C7"/>
-              <text x="325" y="150" font-size="11" font-weight="700" fill="#0284C7" text-anchor="middle">Alt Kat Mutfak/WC Çekirdeği</text>
-            </g>
+                <rect x="420" y="160" width="120" height="160" rx="4" fill="#FEF08A" stroke="#CA8A04" stroke-width="2.5"/>
+                <text x="480" y="240" font-size="14" font-weight="800" fill="#854D0E" text-anchor="middle">M1</text>
+              </g>
 
-            <g class="upper-plan" style="fill:none; stroke:#0F172A; stroke-width:3.5;">
-              <rect x="60" y="100" width="330" height="280" rx="4"/>
-              <text x="200" y="310" font-size="11" font-weight="700" fill="#0F172A" text-anchor="middle">Üst Kat Ebeveyn Süiti</text>
+              <line x1="310" y1="40" x2="310" y2="180" stroke="#0284C7" stroke-width="2.5" stroke-dasharray="6 3"/>
+              <text x="320" y="52" font-size="11" font-weight="800" fill="#0284C7">T1</text>
+            </svg>
+          </div>
 
-              <rect x="260" y="100" width="130" height="110" rx="4" fill="#E0F2FE" stroke="#0284C7" stroke-width="2.5"/>
-              <text x="325" y="145" font-size="11" font-weight="700" fill="#0369A1" text-anchor="middle">Üst Kat Ebeveyn Banyosu</text>
-
-              <rect x="430" y="240" width="130" height="180" rx="4" fill="#FEF08A" stroke="#CA8A04" stroke-width="3"/>
-              <text x="495" y="320" font-size="12" font-weight="800" fill="#854D0E" text-anchor="middle">MERDİVEN BOŞLUĞU</text>
-            </g>
-
-            <line x1="325" y1="80" x2="325" y2="230" stroke="#0284C7" stroke-width="2" stroke-dasharray="6 3"/>
-            <text x="335" y="90" font-size="10" font-weight="700" fill="#0284C7">↕ Düşey Tesisat Yakınlığı Aksı</text>
-          </svg>
+          <!-- Side Clean Legend Box (Requirement 14) -->
+          <div class="overlay-legend-panel">
+            <h4 class="legend-panel-title">📌 Kat İlişkisi Kod Açıklamaları</h4>
+            <ul class="legend-code-list">
+              <li><strong class="code-badge zemin">Z1</strong> Zemin kat servis/ıslak hacim çekirdeği</li>
+              <li><strong class="code-badge ust">Ü1</strong> Üst kat ebeveyn banyosu</li>
+              <li><strong class="code-badge merdiven">M1</strong> Merdiven / düşey boşluk</li>
+              <li><strong class="code-badge tesisat">T1</strong> Yaklaşık düşey tesisat aksı</li>
+            </ul>
+          </div>
         </div>
       </div>
     `;
@@ -320,23 +355,10 @@ class WorkspacePresenter {
           <svg viewBox="0 0 840 540" width="100%" height="100%">
             <rect width="840" height="540" rx="12" fill="#FFFFFF" stroke="#E2E8F0"/>
             <rect x="50" y="40" width="740" height="28" fill="#DBEAFE" rx="4"/>
-            <text x="420" y="58" font-size="11.5" font-weight="800" fill="#1E40AF" text-anchor="middle">KUZEY CEPHE (SERVİS &amp; BANYO ALANLARI)</text>
-
+            <text x="420" y="58" font-size="11.5" font-weight="800" fill="#1E40AF" text-anchor="middle">KUZEY CEPHE (SERVİS ALANLARI)</text>
             <rect x="50" y="470" width="740" height="28" fill="#FEF3C7" rx="4"/>
-            <text x="420" y="488" font-size="11.5" font-weight="800" fill="#B45309" text-anchor="middle">GÜNEY CEPHE (SABAH/ÖĞLE GÜNEŞİ - SALON &amp; TERAS)</text>
-
+            <text x="420" y="488" font-size="11.5" font-weight="800" fill="#B45309" text-anchor="middle">GÜNEY CEPHE (SALON &amp; TERAS)</text>
             <rect x="70" y="80" width="700" height="380" fill="none" stroke="#1E293B" stroke-width="4" rx="6"/>
-            <rect x="90" y="100" width="240" height="200" fill="#EFF6FF" stroke="#2563EB" stroke-width="2" rx="4"/>
-            <text x="210" y="190" font-size="13" font-weight="700" fill="#1E40AF" text-anchor="middle">Ebeveyn Süiti</text>
-
-            <rect x="350" y="100" width="180" height="150" fill="#F0FDF4" stroke="#166534" stroke-width="2.5" rx="4"/>
-            <text x="440" y="175" font-size="12.5" font-weight="800" fill="#14532D" text-anchor="middle">Önerilen Kuzey Banyo</text>
-
-            <g transform="translate(730, 130)">
-              <circle cx="0" cy="0" r="18" fill="#F8FAFC" stroke="#0F172A" stroke-width="2"/>
-              <path d="M0 -12 L6 8 L0 3 L-6 8 Z" fill="#0F172A"/>
-              <text x="0" y="24" font-size="10" font-weight="800" fill="#0F172A" text-anchor="middle">K</text>
-            </g>
           </svg>
         </div>
       </div>

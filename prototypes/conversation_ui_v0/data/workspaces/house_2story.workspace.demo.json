@@ -1,0 +1,73 @@
+{
+  "projectId": "proj_house_2story",
+  "documents": [
+    {
+      "documentId": "doc_house_ground_plan",
+      "documentType": "plan",
+      "projectId": "proj_house_2story",
+      "buildingId": "bldg_main",
+      "levelId": "lvl_ground",
+      "zoneId": null,
+      "entityId": null,
+      "scopeType": "level",
+      "status": "available",
+      "displayName": "Zemin Kat Şematik Planı",
+      "sourceType": "demo",
+      "data": {
+        "svgType": "residential_ground",
+        "spaces": [
+          { "id": "space_living", "name": "Salon & Yaşam Alanı", "area": 34, "color": "#E0F2FE" },
+          { "id": "space_kitchen", "name": "Mutfak", "area": 16, "color": "#DCFCE7" },
+          { "id": "space_study", "name": "Çalışma Odası", "area": 12, "color": "#FEF3C7" }
+        ]
+      }
+    },
+    {
+      "documentId": "doc_house_upper_plan",
+      "documentType": "plan",
+      "projectId": "proj_house_2story",
+      "buildingId": "bldg_main",
+      "levelId": "lvl_upper",
+      "zoneId": null,
+      "entityId": null,
+      "scopeType": "level",
+      "status": "available",
+      "displayName": "Üst Kat Şematik Planı",
+      "sourceType": "demo",
+      "data": {
+        "svgType": "residential_upper",
+        "spaces": [
+          { "id": "space_master_suite", "name": "Ebeveyn Süiti", "area": 24, "color": "#EFF6FF" },
+          { "id": "space_master_bath", "name": "Ebeveyn Banyosu", "area": 7, "color": "#F0FDF4" },
+          { "id": "space_child1", "name": "1. Çocuk Odası", "area": 14, "color": "#F3E8FF" }
+        ]
+      }
+    },
+    {
+      "documentId": "doc_house_program",
+      "documentType": "space_program",
+      "projectId": "proj_house_2story",
+      "buildingId": "bldg_main",
+      "levelId": null,
+      "zoneId": null,
+      "entityId": null,
+      "scopeType": "project",
+      "status": "available",
+      "displayName": "Konut Mekân Programı",
+      "sourceType": "demo",
+      "data": {
+        "summary": { "netArea": "148 – 168 m²", "circArea": "32 – 42 m²", "grossArea": "190 – 220 m²" },
+        "groundSpaces": [
+          { "id": "space_living", "name": "Salon & Yaşam Alanı", "area": 34, "floor": "ground", "source": "Mimar varsayımı" },
+          { "id": "space_kitchen", "name": "Mutfak", "area": 16, "floor": "ground", "source": "Mimar varsayımı" },
+          { "id": "space_study", "name": "Çalışma Odası", "area": 12, "floor": "ground", "source": "Kullanıcı talebi" }
+        ],
+        "upperSpaces": [
+          { "id": "space_master_suite", "name": "Ebeveyn Süiti", "area": 24, "floor": "upper", "source": "Mimar varsayımı" },
+          { "id": "space_master_bath", "name": "Ebeveyn Banyosu", "area": 7, "floor": "upper", "source": "Sohbette konuşuldu" },
+          { "id": "space_child1", "name": "1. Çocuk Odası", "area": 14, "floor": "upper", "source": "Hane yapısı" }
+        ]
+      }
+    }
+  ]
+}

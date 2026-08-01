@@ -1,49 +1,45 @@
 /**
- * BRIF.AI — Change History & Dynamic Professional Architect Report (v5.2 Refined)
+ * BRIF.AI — Change History & Dynamic Professional Architect Report (v6.1 Refined)
  *
- * Generates fully localized (Turkish) professional decision report based on active session state.
+ * Generates localized (Turkish) professional decision report based on active scope key.
+ * Shows honest empty state if report does not belong to active project/level scope.
  */
 
 class ChangeHistory {
   constructor() {
     this.sessionState = {
-      activeStage: 1,
-      activeAlternative: 'A',
-      activeFloor: 'upper',
-      selectedSpaceId: 'master_bath',
-      selectedSpaceName: 'Ebeveyn Banyosu',
+      projectId: 'proj_house_2story',
+      buildingId: 'bldg_main',
+      levelId: 'lvl_ground',
+      selectedSpaceId: 'space_study',
       activeScenario: null,
-      conversationStep: 'idle',
-      userRequest: '',
-      clarifiedNeeds: [],
-      presentedOptions: [],
-      selectedOption: null,
       decisionStatus: 'Karar bekleniyor'
     };
-
-    this.historyStack = [];
-    this.redoStack = [];
   }
 
   setSessionState(state) {
     this.sessionState = { ...this.sessionState, ...state };
   }
 
-  recordChange(changeEvent) {
-    this.historyStack.push({
-      timestamp: new Date().toISOString(),
-      ...changeEvent
-    });
-    this.redoStack = [];
-  }
-
   renderArchitectReport() {
     const st = this.sessionState;
 
-    // If Master Bath Scenario is active
+    // Check scope mismatch for Master Bath decision (Requirement 11)
     if (st.activeScenario === 'master_bath_relocation') {
+      // Must be in house_2story project
+      if (st.projectId !== 'proj_house_2story') {
+        return `
+          <div class="empty-state-workspace-card">
+            <div class="empty-state-icon">📋</div>
+            <h3 class="empty-state-title">Bu görünümde seçili karara ait rapor bulunmuyor</h3>
+            <p class="empty-state-desc">
+              Ebeveyn banyosu taşınması kararı Konut projesine aittir. Aktif proje kapsamı farklı olduğundan bu rapor sızdırılmamıştır.
+            </p>
+          </div>
+        `;
+      }
+
       const userReq = st.userRequest || 'Ebeveyn banyosunun kuzey tarafına alınması.';
-      const clarified = st.clarifiedNeeds.length > 0 ? st.clarifiedNeeds.join(', ') : 'Banyonun yataktan görünmemesi ve giyinme alanından erişilmesi.';
       const decisionText = st.decisionStatus || 'Karar bekleniyor';
 
       return `
@@ -60,59 +56,92 @@ class ChangeHistory {
             </div>
 
             <div class="decision-section">
-              <strong>2. Takipte Açıklanan İhtiyaç:</strong>
-              <p>"${escapeHtml(clarified)}"</p>
-            </div>
-
-            <div class="decision-section">
-              <strong>3. Sistemin Mimari Yorumu:</strong>
+              <strong>2. Sistemin Mimari Yorumu:</strong>
               <p>Ebeveyn süitinde sıralı erişim hiyerarşisi (Yatak → Giyinme → Banyo) ve görsel mahremiyet önceliği.</p>
             </div>
 
             <div class="decision-section">
-              <strong>4. Sunulan Seçenekler:</strong>
-              <ul>
-                <li>Seçenek 1 — Banyoyu kuzeye taşıma (Güçlü Mahremiyet)</li>
-                <li>Seçenek 2 — Konumu koruyup girişi giyinme alandan açma (Tesisat Korumalı)</li>
-              </ul>
-            </div>
-
-            <div class="decision-section">
-              <strong>5. Yapılan Demo Ön Kontroller:</strong>
+              <strong>3. Yapılan Demo Ön Kontroller:</strong>
               <ul>
                 <li>Alt kat ıslak hacim ilişkisi şematik olarak incelendi</li>
                 <li>Kapı–dolap çakışması ve geçiş genişliği değerlendirildi</li>
-                <li>Dış cephe pencere havalandırma varsayımı denetlendi</li>
               </ul>
             </div>
 
             <div class="decision-section">
-              <strong>6. Kullanıcının Kararı:</strong>
+              <strong>4. Kullanıcının Kararı:</strong>
               <p class="user-choice-highlight">${escapeHtml(decisionText)}</p>
             </div>
 
-            <div class="decision-section">
-              <strong>7. Açık Kalan Konular:</strong>
-              <p>Dış cephe pencere açılımı ve alt kat tesisat aksı kesinleştirmesi.</p>
-            </div>
-
-            <div class="decision-section">
-              <strong>8. Mimara Aktarılacak Not:</strong>
-              <p>Gerçek arsa yönlenmesi, komşu cephe mesafeleri ve idare yönetmeliğiyle yeniden değerlendirilmelidir.</p>
-            </div>
-
             <div class="decision-meta-row">
+              <span><strong>Kapsam Anahtarı:</strong> proj_house_2story/bldg_main/lvl_upper/space_master_bath</span> • 
               <span><strong>Kaynak:</strong> Kullanıcı sohbet beyanı</span> • 
-              <span><strong>Güven Düzeyi:</strong> Yüksek</span> • 
-              <span><strong>Doğrulama Durumu:</strong> Takip cevabıyla netleştirildi</span> • 
-              <span><strong>Teknik Durum:</strong> Demo ön kontrolde incelendi</span>
+              <span><strong>Güven Düzeyi:</strong> Yüksek</span>
             </div>
           </div>
         </div>
       `;
     }
 
-    // Default Study Room Scenario Report
+    // Commercial Tower Report
+    if (st.projectId === 'proj_tower_50floor') {
+      return `
+        <div class="architect-decision-summary-grid">
+          <div class="arch-decision-card">
+            <div class="arch-card-header">
+              <span class="decision-num">Karar #101 (Finans Kulesi)</span>
+              <span class="status-badge mandatory">Uygulandı</span>
+            </div>
+
+            <div class="decision-section">
+              <strong>1. Kapsam:</strong>
+              <p>50 Katlı Finans Kulesi › A Kulesi › 18. Kat › Yönetim Zonu</p>
+            </div>
+
+            <div class="decision-section">
+              <strong>2. Kurumsal Yerleşim Kararı:</strong>
+              <p>18A Toplantı Odası yönetim çekirdeğine yakın konumlandırıldı.</p>
+            </div>
+
+            <div class="decision-meta-row">
+              <span><strong>Kapsam Anahtarı:</strong> proj_tower_50floor/tower_a/lvl_18/zone_exec_18</span> • 
+              <span><strong>Kaynak:</strong> Kurumsal alan standardı</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // Technology Campus Report
+    if (st.projectId === 'proj_campus_multiblock') {
+      return `
+        <div class="architect-decision-summary-grid">
+          <div class="arch-decision-card">
+            <div class="arch-card-header">
+              <span class="decision-num">Karar #201 (Teknoloji Kampüsü)</span>
+              <span class="status-badge mandatory">Uygulandı</span>
+            </div>
+
+            <div class="decision-section">
+              <strong>1. Kapsam:</strong>
+              <p>Çok Bloklu Teknoloji Kampüsü › Blok A › 2. Kat</p>
+            </div>
+
+            <div class="decision-section">
+              <strong>2. Laboratuvar Yerleşim Kararı:</strong>
+              <p>Robotik Araştırma Laboratuvarı ağır yük ve havalandırma aksına hizalandı.</p>
+            </div>
+
+            <div class="decision-meta-row">
+              <span><strong>Kapsam Anahtarı:</strong> proj_campus_multiblock/block_a_r_d/lvl_2_block_a</span> • 
+              <span><strong>Kaynak:</strong> Teknik şartname</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // Default Residential Study Report
     return `
       <div class="architect-decision-summary-grid">
         <div class="arch-decision-card">
@@ -123,36 +152,17 @@ class ChangeHistory {
 
           <div class="decision-section">
             <strong>1. Kullanıcının İlk Talebi:</strong>
-            <p>"Eşim evden çalışıyor, online toplantılar yapıyor."</p>
+            <p>"Evden çalışma ve online toplantılar."</p>
           </div>
 
           <div class="decision-section">
-            <strong>2. Takipte Açıklanan İhtiyaç:</strong>
-            <p>"Çalışma sırasında tam ses izolasyonu ve sessizlik."</p>
-          </div>
-
-          <div class="decision-section">
-            <strong>3. Sistemin Mimari Yorumu:</strong>
-            <p>Tam zamanlı evden çalışma için yüksek akustik mahremiyet ve kapalı oda kurgusu.</p>
-          </div>
-
-          <div class="decision-section">
-            <strong>4. Sunulan Seçenekler:</strong>
-            <ul>
-              <li>Alternatif A — Tam Akustik İzolasyon (Kapalı Çalışma Odası)</li>
-              <li>Alternatif B — Kayar Panelli Esnek Çalışma Alanı</li>
-            </ul>
-          </div>
-
-          <div class="decision-section">
-            <strong>5. Kullanıcının Kararı:</strong>
-            <p class="user-choice-highlight">Alternatif A Seçildi (Uygulandı)</p>
+            <strong>2. Karar:</strong>
+            <p class="user-choice-highlight">Alternatif A (Tam Akustik İzolasyon) Seçildi</p>
           </div>
 
           <div class="decision-meta-row">
-            <span><strong>Kaynak:</strong> Doğrudan kullanıcı beyanı</span> • 
-            <span><strong>Güven Düzeyi:</strong> Yüksek</span> • 
-            <span><strong>Doğrulama Durumu:</strong> Kullanıcı seçimiyle doğrulandı</span>
+            <span><strong>Kapsam Anahtarı:</strong> proj_house_2story/bldg_main/lvl_ground/space_study</span> • 
+            <span><strong>Kaynak:</strong> Doğrudan kullanıcı beyanı</span>
           </div>
         </div>
       </div>

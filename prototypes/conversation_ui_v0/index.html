@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BRIF.AI — Universal Architectural Context Platform v6.0</title>
+  <title>BRIF.AI — Scope-Driven Workspace Platform v6.1</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
@@ -12,22 +12,22 @@
 <body>
   <div class="app-container">
     
-    <!-- TOP HEADER BAR WITH SYNTHETIC PROJECT SELECTOR (Requirement 9) -->
+    <!-- TOP HEADER BAR WITH SYNTHETIC PROJECT SELECTOR -->
     <header class="app-header">
       <div class="header-brand">
         <span class="brand-logo">BRIF<span class="brand-dot">.</span>AI</span>
-        <span class="brand-subtitle">Genel Mimari Bağlam Platformu v6.0</span>
+        <span class="brand-subtitle">Kapsam-Güdümlü Çalışma Alanı v6.1</span>
       </div>
 
-      <!-- Synthetic Multi-Project Selector (Requirement 9) -->
+      <!-- Synthetic Multi-Project Selector -->
       <div class="header-project-selector">
-        <span class="project-tag">Proje Tipi:</span>
+        <span class="project-tag">Proje Kapsamı:</span>
         <select id="syntheticProjectSelect" class="project-dropdown">
           <option value="proj_house_2story" selected>Test A — İki Katlı Müstakil Konut</option>
           <option value="proj_tower_50floor">Test B — 50 Katlı Finans Kulesi</option>
           <option value="proj_campus_multiblock">Test C — Çok Bloklu Teknoloji Kampüsü</option>
         </select>
-        <span class="project-badge">v6.0 Genel Mimari</span>
+        <span class="project-badge">v6.1 Belge Çözümleyici</span>
       </div>
 
       <div class="header-actions">
@@ -67,14 +67,14 @@
         <button class="step-node" id="stepNode3" data-stage="3" aria-label="Aşama 3: Mekân Programı">
           <span class="step-number">3</span>
           <span class="step-label">Mekân Programı</span>
-          <span class="step-badge badge-pending">Kartlı Grid</span>
+          <span class="step-badge badge-pending">Kapsamlı Grid</span>
         </button>
         <div class="step-connector"></div>
 
         <button class="step-node" id="stepNode4" data-stage="4" aria-label="Aşama 4: Taslak Plan">
           <span class="step-number">4</span>
           <span class="step-label">Taslak Plan</span>
-          <span class="step-badge badge-pending">Genel Bağlamlı</span>
+          <span class="step-badge badge-pending">Uyumlu Render</span>
         </button>
       </div>
     </nav>
@@ -85,7 +85,7 @@
       <span>•</span>
       <span>Demo mimari değerlendirmesi — resmî mevzuat ve yerel idare verisi bağlı değildir.</span>
       <span>•</span>
-      <span>Bağlam, oda adlarına değil varlık ilişkilerine ve aktif kapsama göre belirlenir.</span>
+      <span>Belge kapsamı aktif bağlamla uyumlu olmayan hiçbir çalışma alanı içeriği gösterilemez.</span>
     </div>
 
     <!-- MAIN CONVERSATION-FIRST WORKSPACE LAYOUT -->
@@ -154,21 +154,21 @@
         <div class="stage-view hidden" id="stageView3">
           <div class="program-scroll-area">
             <div class="prototype-assumption-banner">
-              <span class="banner-badge">📌 Genel Mimari Varlık Yapısı</span>
-              <p class="banner-text">Mekânlar projenin kat, blok ve zon varlık hiyerarşisi üzerinden tanımlanmıştır.</p>
+              <span class="banner-badge">📌 Scope-Driven Mekân Programı</span>
+              <p class="banner-text">Program kartları seçili proje ve yapı türüne göre çözümlenmektedir.</p>
             </div>
 
             <div class="area-summary-bar">
-              <div class="summary-item"><span class="summary-label">Tahmini Toplam Net Alan</span><span class="summary-value">148 – 168 m²</span></div>
+              <div class="summary-item"><span class="summary-label">Tahmini Toplam Net Alan</span><span class="summary-value" id="summaryNetArea">148 – 168 m²</span></div>
               <div class="summary-divider"></div>
-              <div class="summary-item"><span class="summary-label">Dolaşım &amp; Servis Payı (~22%)</span><span class="summary-value">32 – 42 m²</span></div>
+              <div class="summary-item"><span class="summary-label">Dolaşım &amp; Servis Payı</span><span class="summary-value" id="summaryCircArea">32 – 42 m²</span></div>
               <div class="summary-divider"></div>
-              <div class="summary-item highlight"><span class="summary-label">Tahmini Brüt Kapalı Alan</span><span class="summary-value">190 – 220 m²</span></div>
+              <div class="summary-item highlight"><span class="summary-label">Tahmini Brüt Kapalı Alan</span><span class="summary-value" id="summaryGrossArea">190 – 220 m²</span></div>
             </div>
 
             <div class="floor-tab-bar">
-              <button class="floor-tab active" data-floor="ground" id="floorTabGround">Zemin Kat</button>
-              <button class="floor-tab" data-floor="upper" id="floorTabUpper">Üst Kat</button>
+              <button class="floor-tab active" data-floor="ground" id="floorTabGround">1. Bölge / Zemin</button>
+              <button class="floor-tab" data-floor="upper" id="floorTabUpper">2. Bölge / Üst Kat</button>
             </div>
 
             <div class="space-cards-container active" id="spacesGround"><div class="space-cards-grid" id="spaceGridGround"></div></div>
@@ -184,8 +184,8 @@
               <div class="compact-card-left">
                 <span class="card-icon">📐</span>
                 <div class="card-texts">
-                  <strong class="card-title">Genel Bağlam &amp; Varlık Yapısı</strong>
-                  <span class="card-summary">Bağlam varlık ilişkilerine göre doğrulanır • Yanlış sızma engellenir</span>
+                  <strong class="card-title">Kapsam Çözümleyici &amp; Render Koruması</strong>
+                  <span class="card-summary">Uyumsuz belge gösterilmez • Eski plan temizlenir</span>
                 </div>
               </div>
               <button class="edit-assumptions-btn" id="openAssumptionsBtn">Varsayımları Düzenle</button>
@@ -204,8 +204,8 @@
 
             <div class="plan-controls-toolbar">
               <div class="plan-floor-tabs">
-                <button class="plan-floor-btn active" id="planFloorGroundBtn" data-floor="ground">Zemin Kat Planı</button>
-                <button class="plan-floor-btn" id="planFloorUpperBtn" data-floor="upper">Üst Kat Planı</button>
+                <button class="plan-floor-btn active" id="planFloorGroundBtn" data-floor="ground">1. Kat / Bölge</button>
+                <button class="plan-floor-btn" id="planFloorUpperBtn" data-floor="upper">2. Kat / Bölge</button>
               </div>
 
               <button class="advanced-tools-toggle-btn" id="toggleAdvancedToolsBtn">
@@ -222,7 +222,7 @@
 
             <!-- DYNAMIC INTERACTIVE PLAN EDITOR / PRESENTATION CONTAINER -->
             <div class="plan-svg-container" id="planEditorContainer">
-              <!-- Rendered dynamically by PlanEditor / WorkspacePresenter -->
+              <!-- Rendered dynamically by PlanEditor / WorkspacePresenter / RenderCompatibilityGuard -->
             </div>
 
             <!-- DEMO SCENARIOS SHORTCUT BAR -->
@@ -240,12 +240,12 @@
         <div class="stage-view hidden" id="architectStageView">
           <div class="architect-scroll-area">
             <div class="arch-banner">
-              <h2>Mimar Teknik Brief ve Karar Özeti (v6.0)</h2>
-              <p>Bağlam doğrulayıcı ve varlık hiyerarşisi üzerinden sentezlenen karar özeti.</p>
+              <h2>Scoped Mimar Karar Raporu (v6.1)</h2>
+              <p>Mimar raporu yalnız aktif projenin bileşik scope anahtarına uygunsa render edilir.</p>
             </div>
 
             <div class="arch-card full-width">
-              <h3>📜 Genelleştirilmiş Mimar Karar Raporu</h3>
+              <h3>📜 Genelleştirilmiş Scoped Mimar Raporu</h3>
               <div id="architectDecisionHistory"></div>
             </div>
           </div>
@@ -262,7 +262,18 @@
         </div>
 
         <div class="panel-header">
-          <h2 class="panel-title" id="panelTitle">BRIF.AI Mimari Asistan</h2>
+          <div class="chat-header-top-row">
+            <h2 class="panel-title" id="panelTitle">BRIF.AI Mimari Asistan</h2>
+            
+            <!-- Scoped Chat Message Filter Dropdown (Requirement 10) -->
+            <select id="chatScopeFilterSelect" class="chat-filter-dropdown" title="Konuşma Filtresi">
+              <option value="active_scope" selected>Aktif Kapsam</option>
+              <option value="active_decision">Aktif Karar</option>
+              <option value="active_level">Aktif Kat</option>
+              <option value="active_project">Aktif Proje</option>
+              <option value="all">Tüm Geçmiş</option>
+            </select>
+          </div>
           <span class="context-badge" id="assistantContextBadge">Genel Mimari Bağlam</span>
         </div>
 
@@ -332,8 +343,11 @@
     </div>
   </div>
 
-  <!-- MODULAR SCRIPTS (v6.0 Architecture) -->
+  <!-- MODULAR SCRIPTS (v6.1 Platform Architecture) -->
   <script src="js/entity_hierarchy.js"></script>
+  <script src="js/scoped_document_store.js"></script>
+  <script src="js/workspace_scope_resolver.js"></script>
+  <script src="js/render_compatibility_guard.js"></script>
   <script src="js/context_state_machine.js"></script>
   <script src="js/context_validator.js"></script>
   <script src="js/rule_evaluator.js"></script>

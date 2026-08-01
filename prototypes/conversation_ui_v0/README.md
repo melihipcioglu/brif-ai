@@ -1,10 +1,10 @@
-# BRIF.AI — Universal Architectural Context Platform v6.0
+# BRIF.AI — Scope-Driven Workspace Platform v6.1
 
-Bu klasör, BRIF.AI platformu için hazırlanmış **Genel Bağlam ve Kapsam Yönetimi Sistemi (v6.0)** sürümüdür.
+Bu klasör, BRIF.AI platformu için hazırlanmış **Kapsam-Güdümlü Çalışma Alanı Çözümleyicisi ve Uyumlu Render Koruması (v6.1)** sürümüdür.
 
 > **MİMARİ TEMEL İLKE:**  
-> **Context is determined by entity relationships and active workspace scope, never by room names or project-specific labels.**  
-> *(Bağlam, oda adlarına veya örnek projeye özel koşullara göre değil; varlık ilişkileri ve aktif çalışma kapsamına göre belirlenir.)*
+> **No workspace content may render unless its document scope is compatible with the active context.**  
+> *(Belge kapsamı aktif bağlamla uyumlu olmayan hiçbir çalışma alanı içeriği gösterilemez.)*
 
 ---
 
@@ -22,27 +22,25 @@ Daha sonra tarayıcınızda şu adrese gidin:
 
 ---
 
-## v6.0 Genel Bağlam Mimarisi Yenilikleri
+## v6.1 Kapsam Çözümleyici ve Render Koruması Yenilikleri
 
-1. **Evrensel Varlık Hiyerarşisi (`EntityHierarchy`)**:
-   - `Project -> Building/Block/Tower -> Level/Floor -> Zone/Department -> Space -> Element` hiyerarşisini destekler.
-   - Oda adlarına bağlı kod yazımını tamamen yasaklar.
+1. **Kapsam-Güdümlü Belge Deposu (`ScopedDocumentStore`) & Çözümleyici (`WorkspaceScopeResolver`)**:
+   - Belge seçim önceliği: `entity` > `zone` > `level` > `building` > `project`.
+   - Uyumlu belge bulunamadığında eski projelerin/katların belgeleri asla sızdırılmaz.
 
-2. **Merkezi Bağlam Durum Makinesi (`ContextStateMachine`)**:
-   - Tüm bağlam olayları (`PROJECT_SELECTED`, `LEVEL_SELECTED`, `ENTITY_SELECTED`, `SCENARIO_SUSPENDED` vb.) merkezi reducer üzerinden yönetilir.
-   - Dağınık JS dosyalarının bağımsız olarak etiket değiştirmesini engeller.
+2. **Uyumlu Render Koruması (`RenderCompatibilityGuard`)**:
+   - Uyumsuz belge tespit edildiğinde önceki DOM içeriği anında temizlenir.
+   - Ekranda dürüst boş durum ("Bu kapsam için çalışma alanı verisi bulunmuyor") gösterilir.
 
-3. **Bağlam Uyumluluk Doğrulayıcısı (`ContextValidator`)**:
-   - Her görünüm veya bağlam değişiminde aktif görünüm ile konuşma kapsamının uyumunu denetler.
-   - Uyumsuzluk durumunda eski bağlamı askıya alır (`suspendedContext`) ve çalışma alanında uyarır:
-     `"⚠️ Önceki konu başka bir kat/zon kapsamındaydı. Bu görünümde mevcut katı inceliyoruz."`
-   - Kullanıcı tek tıkla `[↩ Önceki Bağlama Dön]` butonuyla askıdaki bağlama dönebilir.
+3. **İlk Ayrışan Hiyerarşi Seviyesi Hesaplaması**:
+   - Askıya alınan bağlam mesajları hiyerarşik parent zincirine göre dinamik üretilir:
+     - Proje ayrışması: *"Önceki konuşmanız İki Katlı Müstakil Konut projesine aitti. Şimdi 50 Katlı Finans Kulesi projesini inceliyorsunuz."*
+     - Kat ayrışması: *"Önceki konuşmanız 18. Kat kapsamındaydı. Şimdi 32. Kat inceleniyor."*
 
-4. **Konuşma Geçmişi İçin Bağlam Anlık Görüntüleri (Context Snapshots)**:
-   - Her sohbet mesajı `{ messageId, projectId, buildingId, levelId, zoneId, entityId, scenarioId, timestamp }` anlık görüntüsüyle saklanır.
-   - Görünüm değişiminde geçmiş silinmez, ancak yeni kapsamda aktif bağlam gibi sızdırılmaz.
+4. **Teknik ID'lerin UI'dan Kaldırılması & Breadcrumb Üretimi**:
+   - `lvl_ground` veya `tower_a` gibi ham ID'ler kullanıcıya gösterilmez.
+   - İnsan tarafından okunabilir breadcrumb üretilir: `50 Katlı Finans Kulesi › A Kulesi › 18. Kat › Yönetim Zonu`.
 
-5. **Sentetik Çoklu Proje Test Süiti**:
-   - **Test A**: İki katlı müstakil konut (`house_2story`)
-   - **Test B**: 50 katlı finans kulesi (`tower_50floor` — A Kulesi 18. Kat vs 32. Kat)
-   - **Test C**: Çok bloklu teknoloji kampüsü (`campus_multiblock` — Blok A vs Blok B)
+5. **Kapsama Filtrelenmiş Sohbet & Mimar Karar Raporu**:
+   - Sohbet görünümünde aktif kapsama uyan mesajlar gösterilir.
+   - Mimar raporu bileşik kapsam anahtarıyla üretilir; başka projenin raporu ekrana sızdırılmaz.

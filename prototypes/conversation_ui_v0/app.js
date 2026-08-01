@@ -1,29 +1,34 @@
 /**
- * BRIF.AI — Main Orchestration Script (v6.0 Universal Platform Architecture)
+ * BRIF.AI — Main Orchestration Script (v6.1 Scope-Driven Platform Architecture)
  *
- * Integrates EntityHierarchy, ContextStateMachine, ContextValidator,
- * ConversationOrchestrator, WorkspacePresenter, ContextualAssistant, and PlanEditor.
+ * Integrates EntityHierarchy, ScopedDocumentStore, WorkspaceScopeResolver,
+ * RenderCompatibilityGuard, ContextStateMachine, ContextValidator,
+ * ConversationOrchestrator, WorkspacePresenter, and ContextualAssistant.
  */
 
 document.addEventListener('DOMContentLoaded', async () => {
 
-  // Universal Asset Hierarchy & State Engine
+  // Universal Asset Hierarchy & Document Store
   const hierarchy = new EntityHierarchy();
-  const stateMachine = new ContextStateMachine(hierarchy);
-  const validator = new ContextValidator(hierarchy, stateMachine);
+  const store = new ScopedDocumentStore();
+  await store.initialize();
 
+  const resolver = new WorkspaceScopeResolver(hierarchy, store);
+  const guard = new RenderCompatibilityGuard(hierarchy);
+  const stateMachine = new ContextStateMachine(hierarchy);
+  window.appStateMachine = stateMachine; // For presenter data access
+
+  const validator = new ContextValidator(hierarchy, stateMachine);
   const changeHistory = new ChangeHistory();
   const ruleEvaluator = new RuleEvaluator();
 
   const assistant = new ContextualAssistant({ hierarchy, stateMachine });
-  const presenter = new WorkspacePresenter('planEditorContainer');
+  const presenter = new WorkspacePresenter('planEditorContainer', {
+    hierarchy, store, resolver, guard
+  });
 
   const orchestrator = new ConversationOrchestrator({
-    hierarchy: hierarchy,
-    stateMachine: stateMachine,
-    assistant: assistant,
-    presenter: presenter,
-    historyManager: changeHistory
+    hierarchy, stateMachine, store, resolver, assistant, presenter, historyManager: changeHistory
   });
 
   let planEditor = null;
@@ -67,16 +72,25 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Initialize Stage 1 Workspace Dashboard
   const stage1Container = document.getElementById('stage1WorkspaceContainer');
   if (stage1Container) {
-    const stage1Presenter = new WorkspacePresenter('stage1WorkspaceContainer');
+    const stage1Presenter = new WorkspacePresenter('stage1WorkspaceContainer', { hierarchy, store, resolver, guard });
     stage1Presenter.setMode('stage1_dashboard', { hasUserMessages: false });
   }
 
-  // Synthetic Project Selector Dropdown (Requirement 9 Test Suite)
+  // Synthetic Project Selector Dropdown
   const syntheticProjectSelect = document.getElementById('syntheticProjectSelect');
   if (syntheticProjectSelect) {
     syntheticProjectSelect.addEventListener('change', (e) => {
       const projId = e.target.value;
       orchestrator.selectProject(projId);
+      updateArchitectDecisionReport();
+    });
+  }
+
+  // Chat Scope Filter Dropdown (Requirement 10)
+  const chatScopeFilterSelect = document.getElementById('chatScopeFilterSelect');
+  if (chatScopeFilterSelect) {
+    chatScopeFilterSelect.addEventListener('change', (e) => {
+      orchestrator.setChatFilterMode(e.target.value);
     });
   }
 
@@ -161,7 +175,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (activeView) { activeView.classList.remove('hidden'); activeView.classList.add('active'); }
 
     if (stageNum === 1 && stage1Container) {
-      const stage1Presenter = new WorkspacePresenter('stage1WorkspaceContainer');
+      const stage1Presenter = new WorkspacePresenter('stage1WorkspaceContainer', { hierarchy, store, resolver, guard });
       stage1Presenter.setMode('stage1_dashboard', { hasUserMessages: true });
     }
     if (stageNum === 3) populateSpaceGrids();
@@ -226,9 +240,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
-    // Resume Suspended Context Button (Requirement 3)
+    // Empty State & Resume Actions (Requirement 6)
     if (e.target.id === 'btnResumeContext') {
       orchestrator.resumeSuspendedContext();
+      return;
+    }
+    if (e.target.id === 'btnEmptyShowUpper') {
+      const ctx = stateMachine.getContext();
+      orchestrator.selectProject(ctx.projectId);
+      return;
+    }
+    if (e.target.id === 'btnEmptySelectLevel') {
+      switchStage(3);
       return;
     }
 
@@ -294,16 +317,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function populateSpaceGrids() {
-    if (!rawPlanAlternativesData || !planEditor) return;
     const groundGrid = document.getElementById('spaceGridGround');
     const upperGrid = document.getElementById('spaceGridUpper');
     if (!groundGrid || !upperGrid) return;
 
-    const groundSpaces = rawPlanAlternativesData.alternatives[planEditor.currentAlt].floors.ground;
-    const upperSpaces = rawPlanAlternativesData.alternatives[planEditor.currentAlt].floors.upper;
+    const ctx = stateMachine.getContext();
+    const doc = resolver.resolveDocument(ctx, 'space_program');
 
-    groundGrid.innerHTML = groundSpaces.map(s => renderSpaceCardHtml(s)).join('');
-    upperGrid.innerHTML = upperSpaces.map(s => renderSpaceCardHtml(s)).join('');
+    if (doc && doc.data) {
+      groundGrid.innerHTML = doc.data.groundSpaces.map(s => renderSpaceCardHtml(s)).join('');
+      upperGrid.innerHTML = doc.data.upperSpaces.map(s => renderSpaceCardHtml(s)).join('');
+    } else if (rawPlanAlternativesData && planEditor) {
+      const groundSpaces = rawPlanAlternativesData.alternatives[planEditor.currentAlt].floors.ground;
+      const upperSpaces = rawPlanAlternativesData.alternatives[planEditor.currentAlt].floors.upper;
+
+      groundGrid.innerHTML = groundSpaces.map(s => renderSpaceCardHtml(s)).join('');
+      upperGrid.innerHTML = upperSpaces.map(s => renderSpaceCardHtml(s)).join('');
+    }
   }
 
   function renderSpaceCardHtml(s) {
@@ -313,8 +343,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           <h4 class="space-title">${escapeHtml(s.name)}</h4>
           <span class="status-badge mandatory">Zorunlu</span>
         </div>
-        <div class="space-meta">${s.floor === 'ground' ? 'Zemin Kat' : 'Üst Kat'} • ${s.area} m² Net</div>
-        <div class="space-rationale">📌 Dayanak: ${escapeHtml(s.source_type || 'Mimar varsayımı')}</div>
+        <div class="space-meta">${escapeHtml(s.floor || 'Kapsam Tanımlı')} • ${s.area} m² Net</div>
+        <div class="space-rationale">📌 Dayanak: ${escapeHtml(s.source || 'Mimar varsayımı')}</div>
         <button class="space-card-btn" data-space-id="${s.id}" data-space-name="${escapeHtml(s.name)}">💬 Sohbette Değiştir</button>
       </div>
     `;

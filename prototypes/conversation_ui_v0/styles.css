@@ -1,5 +1,5 @@
 /* ==========================================================================
-   BRIF.AI — Universal Architectural Context Platform v6.0 Stylesheet
+   BRIF.AI — Scope-Driven Workspace Platform v6.1 Stylesheet
    ========================================================================== */
 
 :root {
@@ -53,7 +53,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
   box-shadow: 0 0 40px rgba(0, 0, 0, 0.05);
 }
 
-/* Header & Synthetic Project Selector (Requirement 9) */
+/* Header & Synthetic Project Selector */
 .app-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 12px 24px; border-bottom: 1px solid var(--color-border); background-color: var(--color-surface);
@@ -86,6 +86,21 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 
 .global-disclaimer-bar { background-color: #FFFBEB; border-bottom: 1px solid #FDE68A; padding: 6px 24px; font-size: 11px; font-weight: 600; color: #B45309; display: flex; align-items: center; justify-content: center; gap: 12px; }
 
+/* Honest Empty State Workspace Component (Requirement 6) */
+.empty-state-workspace-card { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 40px 24px; background-color: #FAFBFB; border: 2px dashed var(--color-border-hover); border-radius: var(--radius-lg); margin: 20px 0; gap: 12px; width: 100%; }
+.empty-state-icon { font-size: 36px; }
+.empty-state-title { font-size: 15px; font-weight: 800; color: var(--color-brand-primary); }
+.empty-state-desc { font-size: 12.5px; color: var(--color-text-secondary); max-width: 480px; }
+.empty-state-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 6px; }
+.empty-act-btn { background-color: #FFFFFF; border: 1px solid var(--color-border); color: var(--color-text-primary); padding: 8px 14px; border-radius: var(--radius-md); font-size: 12px; font-weight: 600; cursor: pointer; }
+.empty-act-btn.highlight { background-color: var(--color-brand-light); border-color: #A7F3D0; color: var(--color-brand-primary); font-weight: 700; }
+.empty-act-btn.disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Breadcrumb Bar (Requirement 9) */
+.workspace-breadcrumb-bar { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--color-text-tertiary); background-color: var(--color-surface-subtle); padding: 6px 12px; border-radius: var(--radius-md); border: 1px solid var(--color-border); margin-bottom: 10px; flex-wrap: wrap; }
+.breadcrumb-item.active { font-weight: 700; color: var(--color-brand-primary); }
+.breadcrumb-sep { color: var(--color-border-hover); }
+
 /* Main Workspace Layout (~68% / ~32%) */
 .main-workspace { display: flex; flex: 1; overflow: hidden; position: relative; }
 
@@ -104,7 +119,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 .drawer-handle-pill { width: 36px; height: 4px; border-radius: 2px; background-color: var(--color-border-hover); margin-bottom: 4px; }
 .drawer-handle-title { font-size: 12px; font-weight: 700; color: var(--color-text-secondary); }
 
-/* Suspended Context Banner (Requirement 3) */
+/* Suspended Context Banner */
 .suspended-context-banner { display: flex; align-items: center; justify-content: space-between; background-color: #FFFBEB; border: 1.5px solid #F59E0B; padding: 12px 18px; border-radius: var(--radius-md); margin-bottom: 14px; box-shadow: var(--shadow-sm); }
 .suspended-banner-content { display: flex; align-items: center; gap: 10px; }
 .suspended-icon { font-size: 18px; }
@@ -116,7 +131,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 .stage-view { display: flex; flex-direction: column; height: 100%; }
 .stage-view.hidden { display: none !important; }
 
-/* Stage 1 Live Dashboard */
+/* Stage 1 Live Dashboard & Provenance (Requirement 13) */
 .stage1-workspace-container { padding: 24px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 18px; }
 .dashboard-header-banner { background-color: var(--color-brand-light); border: 1px solid #A7F3D0; padding: 16px 20px; border-radius: var(--radius-lg); }
 .dashboard-header-banner h3 { font-size: 17px; font-weight: 800; color: var(--color-brand-primary); }
@@ -130,6 +145,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 .dna-card.project-dna { grid-column: 1 / -1; background-color: #FEF3C7; border-color: #FDE68A; }
 .dna-card-header { font-size: 13px; font-weight: 700; color: var(--color-brand-primary); display: flex; align-items: center; gap: 6px; }
 .dna-card p { font-size: 12px; color: var(--color-text-secondary); }
+.provenance-tag { font-size: 10px; color: var(--color-text-tertiary); font-weight: 600; background-color: var(--color-surface-subtle); padding: 3px 6px; border-radius: var(--radius-sm); width: fit-content; margin-top: 2px; }
 
 /* Stage 3 Space Program Cards Grid */
 .program-scroll-area, .plan-scroll-area, .architect-scroll-area, .pref-scroll-area { padding: 20px; overflow-y: auto; flex: 1; }
@@ -155,6 +171,51 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 .space-meta { font-size: 11.5px; color: var(--color-text-tertiary); font-weight: 600; }
 .space-rationale { font-size: 11px; color: var(--color-text-secondary); background-color: var(--color-surface-subtle); padding: 5px 8px; border-radius: var(--radius-sm); }
 .space-card-btn { background-color: var(--color-brand-light); border: 1px solid #A7F3D0; color: var(--color-brand-primary); padding: 6px; border-radius: var(--radius-sm); font-size: 11px; font-weight: 700; cursor: pointer; text-align: center; }
+
+/* Clean Readability Overlay Grid & Side Legend Panel (Requirement 14) */
+.overlay-readable-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; align-items: start; }
+.overlay-svg-container { width: 100%; min-height: 380px; background-color: #FFFFFF; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 8px; }
+.overlay-legend-panel { background-color: var(--color-surface-subtle); border: 1px solid var(--color-border); padding: 14px; border-radius: var(--radius-md); display: flex; flex-direction: column; gap: 10px; }
+.legend-panel-title { font-size: 12.5px; font-weight: 800; color: var(--color-brand-primary); }
+.legend-code-list { list-style: none; display: flex; flex-direction: column; gap: 8px; font-size: 11.5px; }
+.legend-code-list li { display: flex; align-items: center; gap: 8px; }
+.code-badge { font-size: 10.5px; font-weight: 800; padding: 2px 6px; border-radius: var(--radius-sm); min-width: 26px; text-align: center; }
+.code-badge.zemin { background-color: #E2E8F0; color: #475569; }
+.code-badge.ust { background-color: #E0F2FE; color: #0369A1; }
+.code-badge.merdiven { background-color: #FEF08A; color: #854D0E; }
+.code-badge.tesisat { background-color: #DBEAFE; color: #1E40AF; }
+
+/* Rich Persistent Chat Panel & Scoped Message Filter Dropdown (Requirement 10) */
+.panel-header { padding: 14px 16px 10px; border-bottom: 1px solid var(--color-border); display: flex; flex-direction: column; gap: 6px; background-color: #FFFFFF; }
+.chat-header-top-row { display: flex; align-items: center; justify-content: space-between; }
+.panel-title { font-size: 14px; font-weight: 800; color: var(--color-brand-primary); }
+.chat-filter-dropdown { background-color: var(--color-surface-subtle); border: 1px solid var(--color-border); font-size: 11px; font-weight: 700; color: var(--color-brand-primary); padding: 3px 8px; border-radius: var(--radius-md); outline: none; cursor: pointer; }
+.context-badge { font-size: 10.5px; font-weight: 700; color: var(--color-brand-accent); background-color: var(--color-brand-light); padding: 3px 8px; border-radius: var(--radius-full); width: fit-content; }
+
+.rich-chat-body { padding: 14px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; }
+.chat-messages { display: flex; flex-direction: column; gap: 14px; }
+
+.message { display: flex; gap: 8px; max-width: 94%; }
+.message.ai-message { align-self: flex-start; }
+.message.user-message { align-self: flex-end; flex-direction: row-reverse; }
+
+.message-avatar { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 700; flex-shrink: 0; }
+.message-avatar.brif { background-color: var(--color-brand-primary); color: #FFFFFF; }
+.message-avatar.user { background-color: #3B82F6; color: #FFFFFF; }
+.message-content { background-color: var(--color-surface-subtle); padding: 10px 12px; border-radius: var(--radius-lg); font-size: 12.5px; }
+.user-message .message-content { background-color: #EFF6FF; border: 1px solid #BFDBFE; }
+.message-sender { font-size: 10px; font-weight: 700; color: var(--color-text-tertiary); margin-bottom: 3px; }
+
+.suggestion-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chip-btn { background-color: #FFFFFF; border: 1px solid var(--color-brand-accent); color: var(--color-brand-primary); padding: 5px 10px; border-radius: var(--radius-full); font-size: 11px; font-weight: 600; cursor: pointer; }
+.chip-btn:hover { background-color: var(--color-brand-light); }
+
+.contextual-assistant-footer { padding: 10px 14px; border-top: 1px solid var(--color-border); background-color: var(--color-surface); display: flex; flex-direction: column; gap: 6px; }
+.chat-header-room-info { font-size: 10.5px; color: var(--color-brand-primary); background-color: var(--color-brand-light); padding: 4px 8px; border-radius: var(--radius-sm); font-weight: 600; }
+.chat-header-room-info.hidden { display: none; }
+
+.assistant-chat-form .input-wrapper { display: flex; gap: 8px; align-items: center; background-color: var(--color-surface-subtle); padding: 6px 10px; border-radius: var(--radius-md); border: 1px solid var(--color-border); }
+.assistant-chat-form textarea { flex: 1; border: none; background: none; resize: none; outline: none; font-size: 12px; }
 
 /* Stage 4 Plan & Workspace Presenter */
 .plan-assumptions-compact-card { display: flex; align-items: center; justify-content: space-between; background-color: #FFFBEB; border: 1px solid #F59E0B; padding: 10px 14px; border-radius: var(--radius-md); margin-bottom: 12px; }
@@ -208,36 +269,6 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 
 .options-footer-bar { display: flex; justify-content: center; margin-top: 8px; }
 .opt-footer-btn { background: none; border: 1px solid var(--color-border); padding: 6px 12px; border-radius: var(--radius-md); font-size: 11.5px; color: var(--color-text-secondary); cursor: pointer; }
-
-/* Rich Persistent Chat Panel (~32% Right Side) */
-.panel-header { padding: 14px 16px 10px; border-bottom: 1px solid var(--color-border); display: flex; flex-direction: column; gap: 4px; background-color: #FFFFFF; }
-.panel-title { font-size: 14px; font-weight: 800; color: var(--color-brand-primary); }
-.context-badge { font-size: 10.5px; font-weight: 700; color: var(--color-brand-accent); background-color: var(--color-brand-light); padding: 3px 8px; border-radius: var(--radius-full); width: fit-content; }
-
-.rich-chat-body { padding: 14px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; }
-.chat-messages { display: flex; flex-direction: column; gap: 14px; }
-
-.message { display: flex; gap: 8px; max-width: 94%; }
-.message.ai-message { align-self: flex-start; }
-.message.user-message { align-self: flex-end; flex-direction: row-reverse; }
-
-.message-avatar { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 700; flex-shrink: 0; }
-.message-avatar.brif { background-color: var(--color-brand-primary); color: #FFFFFF; }
-.message-avatar.user { background-color: #3B82F6; color: #FFFFFF; }
-.message-content { background-color: var(--color-surface-subtle); padding: 10px 12px; border-radius: var(--radius-lg); font-size: 12.5px; }
-.user-message .message-content { background-color: #EFF6FF; border: 1px solid #BFDBFE; }
-.message-sender { font-size: 10px; font-weight: 700; color: var(--color-text-tertiary); margin-bottom: 3px; }
-
-.suggestion-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.chip-btn { background-color: #FFFFFF; border: 1px solid var(--color-brand-accent); color: var(--color-brand-primary); padding: 5px 10px; border-radius: var(--radius-full); font-size: 11px; font-weight: 600; cursor: pointer; }
-.chip-btn:hover { background-color: var(--color-brand-light); }
-
-.contextual-assistant-footer { padding: 10px 14px; border-top: 1px solid var(--color-border); background-color: var(--color-surface); display: flex; flex-direction: column; gap: 6px; }
-.chat-header-room-info { font-size: 10.5px; color: var(--color-brand-primary); background-color: var(--color-brand-light); padding: 4px 8px; border-radius: var(--radius-sm); font-weight: 600; }
-.chat-header-room-info.hidden { display: none; }
-
-.assistant-chat-form .input-wrapper { display: flex; gap: 8px; align-items: center; background-color: var(--color-surface-subtle); padding: 6px 10px; border-radius: var(--radius-md); border: 1px solid var(--color-border); }
-.assistant-chat-form textarea { flex: 1; border: none; background: none; resize: none; outline: none; font-size: 12px; }
 
 /* Dynamic Professional Architect Report */
 .arch-card { background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 16px; border-radius: var(--radius-lg); }
