@@ -9,7 +9,7 @@ class LocalLLMGateway {
     this.hierarchy = options.hierarchy;
     this.orchestrator = options.orchestrator;
     this.baseUrl = (options.baseUrl || 'http://127.0.0.1:8000').replace(/\/$/, '');
-    this.timeoutMs = options.timeoutMs || 120000;
+    this.timeoutMs = options.timeoutMs || 600000;
   }
 
   async interpret(message) {
