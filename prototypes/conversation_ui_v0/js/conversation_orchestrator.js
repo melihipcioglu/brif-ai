@@ -1,8 +1,8 @@
 /**
- * BRIF.AI — Conversation Orchestrator & State Engine (v5.1 Engine)
+ * BRIF.AI — Conversation Orchestrator & State Engine (v5.2 Refined)
  *
- * Manages conversation session state, Turkish text normalization, step-by-step progress,
- * and workspace synchronization.
+ * Single Source of Truth Session State, stage-aware greetings,
+ * and user/system/architect separation.
  */
 
 class ConversationOrchestrator {
@@ -14,27 +14,57 @@ class ConversationOrchestrator {
 
     this.chatContainerId = 'chatMessages';
 
-    // Single Source of Truth Session State (Requirement 10)
+    // Unified Session Context State (Requirement 1 & 10)
     this.sessionState = {
-      activeScenario: null, // 'master_bath_relocation', 'floor_overlay', 'orientation', 'resize_study'
-      stage: 'idle', // 'awaiting_reason', 'evaluating', 'presenting_options', 'applied', 'deferred'
+      activeStage: 1,
+      activeAlternative: 'a',
+      activeFloor: 'ground',
+      selectedSpaceId: 'study',
+      selectedSpaceName: 'Çalışma Odası',
+      activeScenario: null, // 'master_bath_relocation', 'floor_overlay', 'orientation'
+      conversationStep: 'idle', // 'awaiting_reason', 'evaluating', 'presenting_options', 'applied', 'deferred'
       userRequest: '',
       clarifiedNeeds: [],
       presentedOptions: [],
       selectedOption: null,
-      checks: [],
-      decisionStatus: 'pending'
+      decisionStatus: 'Karar bekleniyor'
     };
+  }
+
+  setStage(stageNum) {
+    this.sessionState.activeStage = stageNum;
+    this.assistant.setContext({ stage: stageNum });
+
+    // Stage-Aware Initial Assistant Greeting (Requirement 3)
+    if (stageNum === 3) {
+      this.appendAssistantMessage(
+        "Mekân programını inceliyoruz. Çalışma odası şu anda 10–12 m² aralığında tanımlı. Alanı, konumu veya zorunluluk durumunu konuşarak değiştirebiliriz."
+      );
+    } else if (stageNum === 4) {
+      this.appendAssistantMessage(
+        "Alternatif A’nın üst katını inceliyoruz. Ebeveyn banyosunun konumu ve erişimi hakkında konuşabilirsiniz."
+      );
+    }
+  }
+
+  selectSpace(spaceId, spaceName) {
+    this.sessionState.selectedSpaceId = spaceId;
+    this.sessionState.selectedSpaceName = spaceName;
+    this.assistant.setContext({ spaceId: spaceId, spaceName: spaceName });
+
+    // "Sohbette Değiştir" Action Response (Requirement 14)
+    this.appendAssistantMessage(
+      `📌 **${escapeHtml(spaceName)}** seçildi. Bu mekânın alanını, katını veya kullanım önceliğini sohbet üzerinden değiştirebiliriz.`
+    );
   }
 
   handleUserMessage(messageText) {
     if (!messageText) return;
 
-    // Normalize text
     const norm = this.intentParser.normalizeText(messageText);
 
-    // 1. If we are currently awaiting a reason for Master Bath Relocation (State Engine)
-    if (this.sessionState.activeScenario === 'master_bath_relocation' && this.sessionState.stage === 'awaiting_reason') {
+    // 1. If currently awaiting reason for Master Bath
+    if (this.sessionState.activeScenario === 'master_bath_relocation' && this.sessionState.conversationStep === 'awaiting_reason') {
       const reasonType = this.intentParser.parseMasterBathReason(messageText);
       this.processMasterBathReason(messageText, reasonType);
       return;
@@ -58,16 +88,25 @@ class ConversationOrchestrator {
       return;
     }
 
-    // 5. Contextual Assistant Default Process
+    // 5. Default Contextual Assistant Process
     const result = this.assistant.processUserMessage(messageText);
     this.appendAssistantMessage(result.aiResponseText);
   }
 
   triggerMasterBathScenario(userRequestText) {
     this.sessionState.activeScenario = 'master_bath_relocation';
-    this.sessionState.stage = 'awaiting_reason';
+    this.sessionState.conversationStep = 'awaiting_reason';
+    this.sessionState.selectedSpaceId = 'master_bath';
+    this.sessionState.selectedSpaceName = 'Ebeveyn Banyosu';
     this.sessionState.userRequest = userRequestText || 'Ebeveyn banyosunun kuzey tarafına alınması.';
-    this.sessionState.decisionStatus = 'pending';
+    this.sessionState.decisionStatus = 'Karar bekleniyor';
+
+    // Update Context Badge dynamically (Requirement 1 & 2 Fix)
+    this.assistant.setContext({
+      activeScenario: 'master_bath_relocation',
+      spaceId: 'master_bath',
+      spaceName: 'Ebeveyn Banyosu'
+    });
 
     this.appendAssistantMessage(
       "Banyoyu kuzey kenarına almak istiyorsunuz. Buradaki önceliğiniz yataktan görünmemesi mi, giyinme alanından erişilmesi mi, yoksa daha mahrem bir kullanım mı?",
@@ -83,10 +122,10 @@ class ConversationOrchestrator {
   }
 
   processMasterBathReason(reasonText, reasonType) {
-    this.sessionState.stage = 'evaluating';
+    this.sessionState.conversationStep = 'evaluating';
     this.sessionState.clarifiedNeeds.push(reasonText);
 
-    // Show Progress View in Main Workspace (Requirement 2)
+    // Render Analysis Progress View in Workspace (Requirement 2)
     if (this.presenter) {
       this.presenter.setMode('progress', {
         steps: [
@@ -100,21 +139,27 @@ class ConversationOrchestrator {
       });
     }
 
-    // Progress step animation simulation
     setTimeout(() => {
-      this.sessionState.stage = 'presenting_options';
+      this.sessionState.conversationStep = 'presenting_options';
       this.sessionState.presentedOptions = [
         'Seçenek 1 — Banyoyu Kuzeye Taşımak (Güçlü Mahremiyet)',
         'Seçenek 2 — Konumu Koru, Giriş Yönünü Değiştir (Tesisat Korumalı)'
       ];
 
-      // Render Options Side-by-Side in Workspace (Requirement 3)
       if (this.presenter) {
         this.presenter.setMode('options_side_by_side');
       }
 
+      // Clear Separation of User Intent, System Interpretation & Architectural Recommendation (Requirement 5)
+      const formattedResponse = `
+        🗣️ <strong>Sözlü Beyan:</strong> "${escapeHtml(reasonText)}"<br>
+        🧠 <strong>Sistemin Yorumu:</strong> Ebeveyn süitinde mahremiyet ve görünmezlik önceliği.<br>
+        📐 <strong>Mimari Öneri:</strong> Yatak → Giyinme → Banyo sıralı erişim hiyerarşisi.<br><br>
+        Bu doğrultuda hazırlanan 2 farklı mimari çözümü çalışma alanında sunuyorum.
+      `;
+
       this.appendAssistantMessage(
-        `Anladım. İstediğiniz yalnız bir konum değişikliği değil; yatak odası → giyinme → banyo hiyerarşisi. Bunu iki farklı mimari seçenek olarak çalışma alanında hazırladım. Seçeneklerden birini onaylayabilir veya inceleyebilirsiniz.`,
+        formattedResponse,
         [
           "1. Seçeneği Uygula",
           "2. Seçeneği Uygula",
@@ -128,12 +173,12 @@ class ConversationOrchestrator {
 
   applyMasterBathOption(optionNum) {
     this.sessionState.selectedOption = optionNum;
-    this.sessionState.stage = 'applied';
-    this.sessionState.decisionStatus = `Seçenek ${optionNum} Seçildi`;
+    this.sessionState.conversationStep = 'applied';
+    this.sessionState.decisionStatus = `Seçenek ${optionNum} Seçildi (Uygulandı)`;
 
     const optTitle = optionNum === 1 ? '1. Seçenek (Banyoyu Kuzeye Taşımak)' : '2. Seçenek (Mevcut konumu koruyup girişi değiştirmek)';
 
-    this.appendAssistantMessage(`✅ ${optTitle} başarıyla plan kararlarına işlendi.`);
+    this.appendAssistantMessage(`✅ ${optTitle} onaylandı ve şematik plana uygulandı.`);
 
     if (this.presenter) {
       this.presenter.setMode('options_side_by_side', { selectedOption: optionNum });
@@ -143,26 +188,29 @@ class ConversationOrchestrator {
   }
 
   deferMasterBathDecision() {
-    this.sessionState.stage = 'deferred';
-    this.sessionState.decisionStatus = 'Karar Mimara Bırakıldı';
+    this.sessionState.conversationStep = 'deferred';
+    this.sessionState.decisionStatus = 'Mimara Bırakıldı';
 
-    this.appendAssistantMessage(`📌 Karar teyidi mimar değerlendirmesine bırakıldı. Karar Raporuna not eklendi.`);
+    this.appendAssistantMessage(`📌 Karar teyidi mimar değerlendirmesine bırakıldı. Mimar Karar Raporuna not eklendi.`);
 
     this.syncStateWithHistory();
   }
 
   triggerFloorOverlayScenario() {
     this.sessionState.activeScenario = 'floor_overlay';
+    this.assistant.setContext({ activeScenario: 'floor_overlay' });
+
     if (this.presenter) {
       this.presenter.setMode('overlay');
     }
 
     this.appendAssistantMessage(
-      "Bunu iki katı aynı koordinat düzleminde üst üste göstererek açıklayayım. Soluk alan zemin kattır. Üstteki canlı mavi alan ebeveyn banyosudur. Düşey tesisat aksı kesikli çizgiyle gösterilmiştir. Sarı alan ise merdiven boşluğudur.",
+      "Soluk çizgiler zemin katı, koyu çizgiler üst katı gösteriyor. Mavi alanlar iki kattaki ıslak hacimlerdir. Kesikli çizgi, tesisatın düşeyde yakın tutulduğu yaklaşık aksı gösterir.",
       [
         "Sadece üst katı göster",
-        "Alt katı yarı saydam göster",
-        "Islak hacimleri göster",
+        "Alt katı saydam göster",
+        "Islak hacimleri vurgula",
+        "Merdiven boşluğunu göster",
         "Normal plana dön"
       ]
     );
@@ -170,12 +218,14 @@ class ConversationOrchestrator {
 
   triggerOrientationScenario() {
     this.sessionState.activeScenario = 'orientation';
+    this.assistant.setContext({ activeScenario: 'orientation' });
+
     if (this.presenter) {
       this.presenter.setMode('orientation');
     }
 
     this.appendAssistantMessage(
-      "Cephe yönlenmesini gerçek plan üzerinde gösteriyorum. Kuzey cephesi servis alanları, Güney cephesi salon ve teras için ayarlanmıştır. Bu bir prototip varsayımıdır.",
+      "Kuzey cephesi doğrudan güneş ihtiyacı daha düşük servis hacimleri için değerlendirilebilir. Ancak gerçek karar arsa yönü, komşu yapılar, açıklıklar ve yerel koşullarla doğrulanmalıdır.",
       ["Kuzey cephesini göster", "Güney salon ilişkisini göster", "Normal plana dön"]
     );
   }
@@ -223,7 +273,7 @@ class ConversationOrchestrator {
       <div class="message-avatar brif">B</div>
       <div class="message-content">
         <div class="message-sender">BRIF.AI Mimari Asistan</div>
-        <div class="message-text">${escapeHtml(text)}</div>
+        <div class="message-text">${text}</div>
         ${chipsHtml}
       </div>
     `;

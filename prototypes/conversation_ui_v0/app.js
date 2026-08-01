@@ -1,7 +1,7 @@
 /**
- * BRIF.AI — Main Orchestration Script (v5.1 Engine)
+ * BRIF.AI — Main Orchestration Script (v5.2 Refined Engine)
  *
- * Integrates ConversationOrchestrator, WorkspacePresenter, ContextualAssistant,
+ * Connects ConversationOrchestrator, WorkspacePresenter, ContextualAssistant,
  * PlanEditor, RuleEvaluator, and ChangeHistory.
  */
 
@@ -35,11 +35,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Initialize Plan Editor
   planEditor = new PlanEditor('planEditorContainer', {
     onSpaceSelect: (space) => {
-      assistant.setContext({ spaceId: space.id, spaceName: space.name });
-      const input = document.getElementById('assistantUserInput');
-      if (input) {
-        input.placeholder = `${space.name} hakkında neyi değiştirmek veya anlamak istiyorsunuz?`;
-      }
+      orchestrator.selectSpace(space.id, space.name);
     },
     onPlanChange: (event) => {
       const space = planEditor.getSpaceById(event.spaceId);
@@ -61,7 +57,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     planEditor.loadData(rawPlanAlternativesData);
   }
 
-  // Initialize Stage 1 Workspace Dashboard (Requirement 6)
+  // Initialize Stage 1 Workspace Dashboard (Requirement 13)
   const stage1Container = document.getElementById('stage1WorkspaceContainer');
   if (stage1Container) {
     const stage1Presenter = new WorkspacePresenter('stage1WorkspaceContainer');
@@ -103,9 +99,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // --------------------------------------------------------------------------
-  // Collapsible Secondary Manual CAD Tools (Requirement 20)
-  // --------------------------------------------------------------------------
+  // Collapsible Secondary Manual Tools
   const toggleAdvancedToolsBtn = document.getElementById('toggleAdvancedToolsBtn');
   const advancedToolsPanel = document.getElementById('advancedToolsPanel');
 
@@ -116,7 +110,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // --------------------------------------------------------------------------
-  // Stage Stepper Navigation
+  // Stage Stepper Navigation (Stage-Aware Greetings)
   // --------------------------------------------------------------------------
   const stepNodes = document.querySelectorAll('.step-node');
   const stageViews = document.querySelectorAll('.stage-view');
@@ -133,7 +127,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       toggleArchitectView(false);
     }
 
-    assistant.setContext({ stage: stageNum });
+    orchestrator.setStage(stageNum);
 
     stepNodes.forEach(node => {
       const num = parseInt(node.dataset.stage, 10);
@@ -162,7 +156,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // --------------------------------------------------------------------------
-  // Toggle Architect View (Requirement 4 Dynamic Report Fix)
+  // Toggle Architect View
   // --------------------------------------------------------------------------
   const toggleViewBtn = document.getElementById('toggleViewBtn');
   const toggleBtnText = document.getElementById('toggleBtnText');
@@ -190,7 +184,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // --------------------------------------------------------------------------
-  // Chat Submission & Event Delegation (NO ALERT!)
+  // Chat Submission & Event Delegation
   // --------------------------------------------------------------------------
   const assistantChatForm = document.getElementById('assistantChatForm');
   const assistantUserInput = document.getElementById('assistantUserInput');
@@ -210,9 +204,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // Event Delegation for Quick Reply Chips & Workspace Option Buttons (No alert!)
+  // Event Delegation for Quick Reply Chips & Workspace Option Buttons
   document.addEventListener('click', (e) => {
-    // Quick Reply Chips
     const chipBtn = e.target.closest('.chip-btn');
     if (chipBtn && chipBtn.dataset.reply) {
       const replyText = chipBtn.dataset.reply;
@@ -223,25 +216,37 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
-    // Workspace Option 1 Apply Button (No alert!)
     if (e.target.id === 'btnApplyOpt1') {
       orchestrator.applyMasterBathOption(1);
       updateArchitectDecisionReport();
       return;
     }
 
-    // Workspace Option 2 Apply Button (No alert!)
     if (e.target.id === 'btnApplyOpt2') {
       orchestrator.applyMasterBathOption(2);
       updateArchitectDecisionReport();
       return;
     }
 
-    // Defer Decision Button
     if (e.target.id === 'btnDeferDecision') {
       orchestrator.deferMasterBathDecision();
       updateArchitectDecisionReport();
       return;
+    }
+
+    // Space Card "Sohbette Değiştir" Button Delegation (Requirement 14)
+    const spaceBtn = e.target.closest('.space-card-btn');
+    if (spaceBtn) {
+      const spaceId = spaceBtn.dataset.spaceId;
+      const spaceName = spaceBtn.dataset.spaceName;
+      if (spaceId && spaceName) {
+        orchestrator.selectSpace(spaceId, spaceName);
+        const input = document.getElementById('assistantUserInput');
+        if (input) {
+          input.value = `${spaceName} hakkında düzenleme yapalım`;
+          input.focus();
+        }
+      }
     }
   });
 
@@ -272,7 +277,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // --------------------------------------------------------------------------
-  // Space Program Cards Grid Population (Requirement 5 Fix)
+  // Space Program Cards Grid Population (Requirement 14 Fix)
   // --------------------------------------------------------------------------
   function populateSpaceGrids() {
     if (!rawPlanAlternativesData || !planEditor) return;
@@ -296,7 +301,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         </div>
         <div class="space-meta">${s.floor === 'ground' ? 'Zemin Kat' : 'Üst Kat'} • ${s.area} m² Net</div>
         <div class="space-rationale">📌 Dayanak: ${escapeHtml(s.source_type || 'Mimar varsayımı')}</div>
-        <button class="space-card-btn" onclick="document.getElementById('assistantUserInput').value='${escapeHtml(s.name)} hakkında düzenleme yapalım'; document.getElementById('assistantUserInput').focus();">💬 Sohbetle Değiştir</button>
+        <button class="space-card-btn" data-space-id="${s.id}" data-space-name="${escapeHtml(s.name)}">💬 Sohbette Değiştir</button>
       </div>
     `;
   }

@@ -1,14 +1,15 @@
 /**
- * BRIF.AI — Contextual Assistant Core Engine (v4 Demo)
+ * BRIF.AI — Contextual Assistant Core Engine (v5.2 Refined)
  *
- * Provides a single, stage-aware assistant instance across all 4 stages
- * and Architect View. Manages conversation memory (last 8 turns), context badges,
- * action proposal cards, and rule evaluation synthesis.
+ * Single persistent assistant managing session context state, dynamic context badges,
+ * and stage-aware greetings.
  */
 
 class ContextualAssistant {
   constructor(options = {}) {
-    this.historyMemory = []; // Keeps last 8 turns
+    this.historyMemory = []; // Keeps last 16 messages
+
+    // Single Unified Session Context State (Requirement 1 & 2)
     this.currentContext = {
       stage: 1,
       prefRound: 1,
@@ -16,14 +17,13 @@ class ContextualAssistant {
       floor: 'ground',
       spaceId: 'study',
       spaceName: 'Çalışma Odası',
-      isArchitectView: false
+      activeScenario: null,
+      isArchitectView: false,
+      workflowStep: 1
     };
 
     this.intentParser = new DemoIntentParser();
     this.ruleEvaluator = new RuleEvaluator();
-
-    this.onActionProposed = options.onActionProposed || (() => {});
-    this.onActionExecuted = options.onActionExecuted || (() => {});
   }
 
   setContext(newCtx) {
@@ -40,23 +40,32 @@ class ContextualAssistant {
     let badgeText = '';
 
     if (ctx.isArchitectView) {
-      badgeText = 'Mimar Önizlemesi — Teyit Gereken Kararlar';
+      const spaceStr = ctx.spaceName ? ` — ${ctx.spaceName} Kararı` : '';
+      badgeText = `Mimar Önizlemesi${spaceStr}`;
+    } else if (ctx.activeScenario === 'master_bath_relocation') {
+      badgeText = 'Ebeveyn Banyosu hakkında konuşuyorsunuz';
+    } else if (ctx.activeScenario === 'floor_overlay') {
+      badgeText = 'Kat İlişkisi Anlatımı';
+    } else if (ctx.activeScenario === 'orientation') {
+      badgeText = `Cephe Yönlenmesi — ${ctx.spaceName || 'Ebeveyn Süiti'}`;
     } else if (ctx.stage === 1) {
-      badgeText = 'Yaşamınızı Anlama — Sohbet Diyaloğu';
+      badgeText = 'Yaşamınızı Anlama — Hane Yapısı';
     } else if (ctx.stage === 2) {
       badgeText = `Görsel Tercihler — Tur ${ctx.prefRound}`;
     } else if (ctx.stage === 3) {
-      badgeText = `Mekân Programı — ${ctx.spaceName || 'Tüm Mekânlar'} Seçili`;
+      badgeText = `Mekân Programı — ${ctx.spaceName || 'Tüm Mekânlar'}`;
     } else if (ctx.stage === 4) {
       const altText = ctx.alternative === 'a' ? 'Alternatif A' : 'Alternatif B';
       const floorText = ctx.floor === 'ground' ? 'Zemin Kat' : 'Üst Kat';
-      badgeText = `Taslak Plan — ${altText} / ${floorText} — ${ctx.spaceName || 'Çalışma Odası'} Seçili`;
+      badgeText = ctx.spaceName 
+        ? `${ctx.spaceName} hakkında konuşuyorsunuz` 
+        : `Taslak Plan — ${altText} / ${floorText}`;
     }
 
     badgeEl.textContent = badgeText;
 
     if (headerInfo) {
-      if (ctx.stage === 4 && ctx.spaceName) {
+      if (ctx.spaceName && (ctx.stage === 4 || ctx.stage === 3)) {
         headerInfo.innerHTML = `📌 <strong>${escapeHtml(ctx.spaceName)}</strong> hakkında konuşuyorsunuz.`;
         headerInfo.classList.remove('hidden');
       } else {
@@ -66,24 +75,18 @@ class ContextualAssistant {
   }
 
   processUserMessage(messageText) {
-    // Record turn in memory (last 8 turns)
     this.historyMemory.push({ role: 'user', text: messageText });
     if (this.historyMemory.length > 16) {
       this.historyMemory = this.historyMemory.slice(-16);
     }
 
-    // Parse Intent into Structured Payload
     const actionPayload = this.intentParser.parseMessage(messageText, this.currentContext);
-
-    // Evaluate Rules
     const dummySpace = { id: actionPayload.target.space_id, use_type: 'work' };
     const evaluationResults = this.ruleEvaluator.evaluateSpaceOperation(dummySpace, actionPayload.operation.type, {
       narrow_edge: actionPayload.operation.narrow_edge,
-      is_misleading_rename: actionPayload.special_case === 'misleading_bypass',
-      rename_text: actionPayload.operation.rename_text
+      is_misleading_rename: actionPayload.special_case === 'misleading_bypass'
     });
 
-    // Response Generation with Natural Variations (Requirement 17)
     let aiResponseText = '';
     const intent = actionPayload.intent;
 
@@ -92,19 +95,11 @@ class ContextualAssistant {
     } else if (actionPayload.special_case === 'misleading_bypass') {
       aiResponseText = evaluationResults[0].user_message;
     } else if (intent === 'resize_space') {
-      aiResponseText = `Çalışma alanını küçültme talebinizi hazırladım. 14 m²'den 10–11 m²'ye indirme işlemini aşağıdaki etki kartından önizleyebilirsiniz.`;
+      aiResponseText = `${this.currentContext.spaceName || 'Çalışma odası'} alanını küçültme talebinizi değerlendirdim. Ön kontrolden geçen iki opsiyonu çalışma alanında inceleyebilirsiniz.`;
     } else if (intent === 'move_space') {
-      aiResponseText = `Seçili mekânı taşıma simülasyonu hazırlandı. Komşu mekân ve sirkülasyon etkilerini kart üzerinden inceleyebilirsiniz.`;
-    } else if (intent === 'swap_spaces') {
-      aiResponseText = `Mutfak ve çalışma alanı takas etki analizi oluşturuldu.`;
-    } else if (intent === 'lock_space') {
-      aiResponseText = `Çalışma odası kilitlendi. Artık sürükleme veya sohbet komutlarıyla değiştirilemez. Değişiklikleri serbest mekânlar üzerinden deneyeceğim.`;
-    } else if (intent === 'undo') {
-      aiResponseText = `Son yapılan değişiklik geri alındı.`;
-    } else if (intent === 'ambiguous_request') {
-      aiResponseText = `Bu prototipte bu isteği otomatik işleyemiyorum. Değiştirmek istediğiniz mekânı seçip büyütme, taşıma veya ilişki değiştirme işlemlerinden birini seçebilirsiniz.`;
+      aiResponseText = `Seçili mekânı taşıma simülasyonunu hazırladım. Komşu alanlar üzerindeki sirkülasyon etkisini kartlar üzerinden görebilirsiniz.`;
     } else {
-      aiResponseText = `İfade ettiğiniz konuyu not aldım: "${messageText}". Bu durumu şematik plan kararlarına yansıtacağız.`;
+      aiResponseText = `Talebinizi not aldım: "${messageText}". Bu durumu şematik plan kararlarına ve mimar özetine yansıtacağız.`;
     }
 
     this.historyMemory.push({ role: 'assistant', text: aiResponseText });
