@@ -119,8 +119,8 @@
     }
   ],
   "scopedActions": [
-    { "actionId": "act_master_bath", "displayName": "🛁 Ebeveyn Banyosunu Kuzeye Taşı", "handler": "triggerMasterBathScenario" },
-    { "actionId": "act_floor_overlay", "displayName": "🏢 Alt ve Üst Kat İlişkisini Açıkla", "handler": "triggerFloorOverlayScenario" },
-    { "actionId": "act_orientation", "displayName": "☀️ Cephe Yönlenmesini Göster", "handler": "triggerOrientationScenario" }
+    { "actionId": "act_master_bath", "displayName": "🛁 Ebeveyn Süiti İlişkisini İncele", "requiredCapabilities": ["residential_master_suite"], "handler": "triggerMasterBathScenario" },
+    { "actionId": "act_floor_overlay", "displayName": "🏢 Katlar Arası İlişkiyi Açıkla", "requiredCapabilities": ["multi_level_overlay"], "handler": "triggerFloorOverlayScenario" },
+    { "actionId": "act_orientation", "displayName": "☀️ Cephe Yönlenmesini Göster", "requiredCapabilities": ["solar_orientation_review"], "handler": "triggerOrientationScenario" }
   ]
 }

@@ -1,13 +1,15 @@
 /**
- * BRIF.AI — Scoped Document Store (v6.1 Platform Architecture)
+ * BRIF.AI — Scoped Document Store (v6.1.2 Platform Architecture)
  *
  * Central registry holding generic workspace documents for all project types.
  * Matches documents ONLY via entity relationships and scope fields — NEVER room names.
+ * Caches workspace demo packages and scoped actions.
  */
 
 class ScopedDocumentStore {
   constructor() {
     this.documents = [];
+    this.packages = {};
     this.isLoaded = false;
   }
 
@@ -23,6 +25,9 @@ class ScopedDocumentStore {
         const res = await fetch(file);
         if (res.ok) {
           const pkg = await res.json();
+          if (pkg.projectId) {
+            this.packages[pkg.projectId] = pkg;
+          }
           if (pkg.documents) {
             this.documents.push(...pkg.documents);
           }
@@ -32,6 +37,10 @@ class ScopedDocumentStore {
     } catch (err) {
       console.error('ScopedDocumentStore initialization error:', err);
     }
+  }
+
+  getWorkspacePackage(projectId) {
+    return this.packages[projectId] || null;
   }
 
   addDocument(doc) {

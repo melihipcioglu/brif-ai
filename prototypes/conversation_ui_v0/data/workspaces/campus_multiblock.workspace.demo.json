@@ -92,8 +92,8 @@
     }
   ],
   "scopedActions": [
-    { "actionId": "act_campus_lab", "displayName": "🔬 Laboratuvar Servis İlişkisini Göster", "handler": "triggerCampusLabScenario" },
-    { "actionId": "act_campus_blocks", "displayName": "🌉 Bloklar Arası Bağlantıyı Açıkla", "handler": "triggerCampusBlocksScenario" },
-    { "actionId": "act_campus_tech", "displayName": "⚡ Teknik Destek Zonunu Vurgula", "handler": "triggerCampusTechScenario" }
+    { "actionId": "act_campus_lab", "displayName": "🔬 Laboratuvar Servis İlişkisini Göster", "requiredCapabilities": ["laboratory_service_analysis"], "handler": "triggerCampusLabScenario" },
+    { "actionId": "act_campus_blocks", "displayName": "🌉 Bloklar Arası Bağlantıyı Açıkla", "requiredCapabilities": ["campus_block_connection"], "handler": "triggerCampusBlocksScenario" },
+    { "actionId": "act_campus_tech", "displayName": "⚡ Teknik Destek Zonunu Vurgula", "requiredCapabilities": ["technical_zone_review"], "handler": "triggerCampusTechScenario" }
   ]
 }

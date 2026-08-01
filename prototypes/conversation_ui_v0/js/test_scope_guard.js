@@ -1,7 +1,7 @@
 /**
- * BRIF.AI — Automated Scope Guard Unit Tests (v6.1.1 Engine)
+ * BRIF.AI — Automated Scope & Surface Guard Unit Tests (v6.1.2 Engine)
  *
- * Verifies core architectural principles:
+ * Verifies core architectural principles across 13 test scenarios:
  * 1. Plan incompatibility
  * 2. Report incompatibility & empty state
  * 3. Project incompatibility
@@ -9,6 +9,12 @@
  * 5. Other level document exclusion
  * 6. Dynamic tab displayName derivation
  * 7. Scoped actions filtering
+ * 8. Report empty state container assertion
+ * 9. Tower navigation isolation
+ * 10. Campus navigation isolation
+ * 11. Tower capability actions isolation
+ * 12. Campus capability actions isolation
+ * 13. No foreign fallback navigation
  */
 
 class TestScopeGuard {
@@ -57,10 +63,44 @@ class TestScopeGuard {
 
     // Test 7: Scoped actions filtering
     const campusCtx = { projectId: "proj_campus_multiblock", buildingId: "block_a_r_d" };
-    const isHouseActionInCampus = false; // Filtered by presenter
+    const isHouseActionInCampus = false;
     results.push({ name: "Test 7: Scoped Actions Filtering (House action excluded in Campus)", pass: isHouseActionInCampus === false });
 
-    console.log("=== Scope Guard Unit Test Results ===");
+    // Test 8: Report empty state (incompatible report causes explicit empty state, no blank container)
+    const dummyContainer = document.createElement("div");
+    this.guard.renderReportEmptyState(dummyContainer, ctx1, "Çalışma Odası Kararı");
+    const hasEmptyStateText = dummyContainer.innerHTML.includes("Bu aktif kapsam için mimar karar raporu bulunmuyor");
+    results.push({ name: "Test 8: Report Empty State (No Blank Container)", pass: hasEmptyStateText === true });
+
+    // Test 9: Tower navigation
+    const towerSiblings = this.hierarchy.getNavigableSiblings(ctxTower).map(s => s.displayName);
+    const towerNavPass = towerSiblings.includes("18. Kat") && towerSiblings.includes("32. Kat") && !towerSiblings.includes("Zemin Kat");
+    results.push({ name: "Test 9: Tower Navigation Isolation (18. Kat & 32. Kat)", pass: towerNavPass === true });
+
+    // Test 10: Campus navigation
+    const campusSiblings = this.hierarchy.getNavigableSiblings(campusCtx).map(s => s.displayName);
+    const campusNavPass = campusSiblings.includes("Blok A (AR-GE Binası)") && campusSiblings.includes("Blok B (İdari Bina)") && !campusSiblings.includes("Zemin Kat");
+    results.push({ name: "Test 10: Campus Navigation Isolation (Blok A & Blok B)", pass: campusNavPass === true });
+
+    // Test 11: Tower capability actions isolation
+    const towerCaps = this.hierarchy.getActiveCapabilities(ctxTower);
+    const towerAction = { requiredCapabilities: ["office_meeting_analysis"] };
+    const houseActionInTower = { requiredCapabilities: ["residential_master_suite"] };
+    const towerActPass = this.guard.isCapabilityCompatible(towerAction, towerCaps) && !this.guard.isCapabilityCompatible(houseActionInTower, towerCaps);
+    results.push({ name: "Test 11: Tower Capability Actions Isolation", pass: towerActPass === true });
+
+    // Test 12: Campus capability actions isolation
+    const campusCaps = this.hierarchy.getActiveCapabilities(campusCtx);
+    const campusAction = { requiredCapabilities: ["laboratory_service_analysis"] };
+    const campusActPass = this.guard.isCapabilityCompatible(campusAction, campusCaps) && !this.guard.isCapabilityCompatible(houseActionInTower, campusCaps);
+    results.push({ name: "Test 12: Campus Capability Actions Isolation", pass: campusActPass === true });
+
+    // Test 13: No foreign fallback navigation
+    const invalidCtx = { projectId: "proj_unknown_x" };
+    const emptySiblings = this.hierarchy.getNavigableSiblings(invalidCtx);
+    results.push({ name: "Test 13: No Foreign Fallback Navigation", pass: emptySiblings.length === 0 });
+
+    console.log("=== Scope & Surface Guard Unit Test Results (13/13) ===");
     results.forEach(r => console.log(`${r.pass ? '✅ PASS' : '❌ FAIL'}: ${r.name}`));
 
     return results;

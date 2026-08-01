@@ -1,5 +1,5 @@
 /**
- * BRIF.AI — Main Orchestration Script (v6.1 Scope-Driven Platform Architecture)
+ * BRIF.AI — Main Orchestration Script (v6.1.2 Scope-Driven Platform Architecture)
  *
  * Integrates EntityHierarchy, ScopedDocumentStore, WorkspaceScopeResolver,
  * RenderCompatibilityGuard, ContextStateMachine, ContextValidator,
@@ -30,6 +30,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const orchestrator = new ConversationOrchestrator({
     hierarchy, stateMachine, store, resolver, assistant, presenter, historyManager: changeHistory
   });
+  window.appOrchestrator = orchestrator;
 
   let planEditor = null;
   let rawPlanAlternativesData = null;
@@ -86,7 +87,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // Chat Scope Filter Dropdown (Requirement 10)
+  // Chat Scope Filter Dropdown (Requirement 8)
   const chatScopeFilterSelect = document.getElementById('chatScopeFilterSelect');
   if (chatScopeFilterSelect) {
     chatScopeFilterSelect.addEventListener('change', (e) => {
@@ -229,6 +230,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Event Delegation
   document.addEventListener('click', (e) => {
+    // Dynamic Level Navigation Tab Click Delegation
+    const floorBtn = e.target.closest('.plan-floor-btn');
+    if (floorBtn && floorBtn.dataset.entityId) {
+      const entityId = floorBtn.dataset.entityId;
+      const entityType = floorBtn.dataset.entityType;
+      if (entityType === 'building') {
+        stateMachine.dispatch({ type: 'BUILDING_SELECTED', payload: { buildingId: entityId } });
+      } else {
+        orchestrator.selectLevel(entityId);
+      }
+      return;
+    }
+
     // Quick Reply Chips
     const chipBtn = e.target.closest('.chip-btn');
     if (chipBtn && chipBtn.dataset.reply) {
@@ -240,7 +254,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
-    // Empty State & Resume Actions (Requirement 6)
+    // Empty State & Resume Actions (Requirements 3 & 9)
     if (e.target.id === 'btnResumeContext') {
       orchestrator.resumeSuspendedContext();
       return;
@@ -254,6 +268,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       switchStage(3);
       return;
     }
+    if (e.target.id === 'btnShowScopeDecisions') {
+      orchestrator.setChatFilterMode('active_decision');
+      return;
+    }
+    if (e.target.id === 'btnOpenAllProjectDecisions') {
+      orchestrator.setChatFilterMode('all');
+      return;
+    }
+    if (e.target.id === 'btnReturnToCustomerView') {
+      toggleArchitectView(false);
+      return;
+    }
 
     // Workspace Option 1 Apply Button
     if (e.target.id === 'btnApplyOpt1') {
@@ -265,13 +291,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Workspace Option 2 Apply Button
     if (e.target.id === 'btnApplyOpt2') {
       orchestrator.applyMasterBathOption(2);
-      updateArchitectDecisionReport();
-      return;
-    }
-
-    // Defer Decision Button
-    if (e.target.id === 'btnDeferDecision') {
-      orchestrator.deferMasterBathDecision();
       updateArchitectDecisionReport();
       return;
     }

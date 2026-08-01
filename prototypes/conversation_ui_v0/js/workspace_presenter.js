@@ -1,9 +1,8 @@
 /**
- * BRIF.AI — Workspace Presenter (v6.1.1 Refined Platform Engine)
+ * BRIF.AI — Workspace Presenter & Surface Engine (v6.1.2 Refined Platform Engine)
  *
- * Scope-driven presenter resolving candidate documents via WorkspaceScopeResolver,
- * enforcing render compatibility, generating dynamic tabs from EntityHierarchy,
- * and rendering scoped demo actions.
+ * Scope-driven presenter resolving candidate documents and workspace surfaces via EntityHierarchy siblings,
+ * enforcing render compatibility and capability checks.
  */
 
 class WorkspacePresenter {
@@ -30,13 +29,16 @@ class WorkspacePresenter {
     // UI Context Consistency Assertion (Requirement 8)
     this.assertUIContextConsistency(ctx);
 
+    // Render Dynamic Navigation Tabs strictly derived from Sibling Entities (Requirements 4 & 5)
+    this.renderDynamicNavigationTabs(ctx);
+
     // Render Scoped Workspace Documents via Pipeline (Requirement 2)
     if (ctx && (this.currentMode === 'plan' || this.currentMode === 'stage3_program')) {
       const docType = this.currentMode === 'stage3_program' ? 'space_program' : 'plan';
       const doc = this.resolver.resolveDocument(ctx, docType);
 
       if (!doc || !this.guard.isDocumentCompatible(doc, ctx)) {
-        console.warn(`[BRIF Scope Violation] Incompatible or missing document for type: ${docType}`);
+        console.warn(`[BRIF Görünüm Uyum Kontrolü] Uyumsuz veya eksik belge türü: ${docType}`);
         this.guard.renderEmptyState(this.container, ctx);
         return;
       }
@@ -54,76 +56,77 @@ class WorkspacePresenter {
       this.renderOrientationMode(data);
     }
 
-    // Render Scoped Actions Bar
+    // Render Capability-Based Scoped Actions Bar (Requirements 6 & 7)
     this.renderScopedActions(ctx);
   }
 
   // UI Context Consistency Assertion (Requirement 8)
   assertUIContextConsistency(ctx) {
     if (!ctx) return;
-    const breadcrumb = this.renderBreadcrumbHtml(ctx);
     const badgeEl = document.getElementById('assistantContextBadge');
     if (badgeEl) {
       badgeEl.textContent = this.hierarchy.getScopeTitle(ctx);
     }
   }
 
-  // Dynamic Tabs Generator from EntityHierarchy (Requirement 7)
-  renderDynamicLevelTabs(activeContext) {
-    if (!activeContext) return '';
+  // Dynamic Navigation Tabs derived strictly from Navigable Siblings (Requirements 4 & 5)
+  renderDynamicNavigationTabs(activeContext) {
+    const planTabsContainer = document.getElementById('planFloorTabs');
+    const programTabsContainer = document.getElementById('programFloorTabs');
 
-    const ancestors = this.hierarchy.getAncestors(activeContext.entityId || activeContext.levelId || activeContext.buildingId);
-    const bldg = ancestors.building || (ancestors.project ? ancestors.project.buildings[Object.keys(ancestors.project.buildings)[0]] : null);
+    if (!activeContext) return;
 
-    if (!bldg || !bldg.levels) return '';
+    const siblings = this.hierarchy.getNavigableSiblings(activeContext);
 
-    const levels = Object.values(bldg.levels);
+    // ABSENCE OF SCOPED NAVIGATION MUST NEVER CAUSE FALLBACK TO ANOTHER PROJECT'S NAVIGATION!
+    if (!siblings || siblings.length === 0) {
+      if (planTabsContainer) planTabsContainer.innerHTML = '<span class="nav-empty-tag">Bu kapsam için alternatif seviye tanımlanmamış</span>';
+      if (programTabsContainer) programTabsContainer.innerHTML = '<span class="nav-empty-tag">Bu kapsam için alternatif seviye tanımlanmamış</span>';
+      return;
+    }
 
-    return `
-      <div class="dynamic-level-tabs-bar">
-        ${levels.map(lvl => `
-          <button class="plan-floor-btn ${lvl.id === activeContext.levelId ? 'active' : ''}" data-level-id="${lvl.id}">
-            ${escapeHtml(lvl.name)}
-          </button>
-        `).join('')}
-      </div>
-    `;
+    const tabsHtml = siblings.map(sib => `
+      <button class="plan-floor-btn ${sib.isActive ? 'active' : ''}" data-entity-id="${sib.entityId}" data-entity-type="${sib.entityType}">
+        ${escapeHtml(sib.displayName)}
+      </button>
+    `).join('');
+
+    if (planTabsContainer) planTabsContainer.innerHTML = tabsHtml;
+    if (programTabsContainer) programTabsContainer.innerHTML = tabsHtml;
   }
 
-  // Scoped Demo Quick Actions Bar Renderer (Requirement 10 & 12)
+  // Capability-Based Scoped Actions Bar Renderer (Requirements 6 & 7)
   renderScopedActions(activeContext) {
     const demoBar = document.getElementById('demoScenariosBar');
     if (!demoBar || !activeContext) return;
 
-    let actions = [
-      { actionId: "act_master_bath", displayName: "🛁 Ebeveyn Banyosunu Kuzeye Taşı", handler: "triggerMasterBathScenario" },
-      { actionId: "act_floor_overlay", displayName: "🏢 Alt ve Üst Kat İlişkisini Açıkla", handler: "triggerFloorOverlayScenario" },
-      { actionId: "act_orientation", displayName: "☀️ Cephe Yönlenmesini Göster", handler: "triggerOrientationScenario" }
-    ];
+    const activeCapabilities = this.hierarchy.getActiveCapabilities(activeContext);
+    const docPackage = this.store.getWorkspacePackage(activeContext.projectId);
 
-    if (activeContext.projectId === 'proj_tower_50floor') {
-      actions = [
-        { actionId: "act_tower_meeting", displayName: "👥 Toplantı Odası İlişkisini İncele", handler: "triggerTowerMeetingScenario" },
-        { actionId: "act_tower_core", displayName: "🛗 Dolaşım Çekirdeğini Göster", handler: "triggerTowerCoreScenario" },
-        { actionId: "act_tower_floors", displayName: "🏢 Katlar Arası Bağlantıyı Açıkla", handler: "triggerTowerFloorsScenario" }
-      ];
-    } else if (activeContext.projectId === 'proj_campus_multiblock') {
-      actions = [
-        { actionId: "act_campus_lab", displayName: "🔬 Laboratuvar Servis İlişkisini Göster", handler: "triggerCampusLabScenario" },
-        { actionId: "act_campus_blocks", displayName: "🌉 Bloklar Arası Bağlantıyı Açıkla", handler: "triggerCampusBlocksScenario" },
-        { actionId: "act_campus_tech", displayName: "⚡ Teknik Destek Zonunu Vurgula", handler: "triggerCampusTechScenario" }
-      ];
+    if (!docPackage || !docPackage.scopedActions) {
+      demoBar.innerHTML = '';
+      return;
+    }
+
+    // Filter actions by capability matching (Requirement 6)
+    const validActions = docPackage.scopedActions.filter(act => {
+      return this.guard.isCapabilityCompatible(act, activeCapabilities);
+    });
+
+    if (validActions.length === 0) {
+      demoBar.innerHTML = '';
+      return;
     }
 
     demoBar.innerHTML = `
       <span class="scenario-label">⚡ Kapsama Özel Demo Aksiyonları:</span>
-      ${actions.map(a => `
+      ${validActions.map(a => `
         <button class="scenario-btn" data-handler="${a.handler}">${escapeHtml(a.displayName)}</button>
       `).join('')}
     `;
   }
 
-  // Simplified Suspended Context Top Notice Line (Requirement 9)
+  // Simplified Single Suspended Context Top Notice Line (Requirement 10)
   renderSuspendedContextBanner(messageText) {
     if (!this.container) return;
 
@@ -140,7 +143,6 @@ class WorkspacePresenter {
     this.container.insertAdjacentHTML('afterbegin', bannerHtml);
   }
 
-  // Human-Readable Breadcrumb Generator (Requirement 8)
   renderBreadcrumbHtml(activeContext) {
     if (!activeContext) return '';
 

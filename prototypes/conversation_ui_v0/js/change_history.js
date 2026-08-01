@@ -1,8 +1,9 @@
 /**
- * BRIF.AI — Change History & Scoped Architect Report Renderer (v6.1.1 Refined)
+ * BRIF.AI — Change History & Scoped Architect Report Renderer (v6.1.2 Refined)
  *
  * Enforces scope compatibility via RenderCompatibilityGuard before rendering decision reports.
  * Displays human-readable scope breadcrumb instead of raw technical IDs.
+ * Guarantees no rejected render path ends in an unexplained blank container.
  */
 
 class ChangeHistory {
@@ -26,18 +27,20 @@ class ChangeHistory {
     this.sessionState = { ...this.sessionState, ...state };
   }
 
-  // Scoped Decision Report Renderer (Requirements 3 & 11)
+  // Scoped Decision Report Renderer (Requirements 3, 9, 11 & 12)
   renderArchitectReport() {
     const st = this.sessionState;
+    const container = document.getElementById('architectDecisionHistory');
+
     const doc = this.resolver.resolveDocument(st, 'architect_report');
 
-    // If report is missing or incompatible with activeContext (Requirement 3)
+    // If report is missing or incompatible with activeContext (Requirement 3: NO BLANK REPORT AREA)
     if (!doc || !this.guard.isDocumentCompatible(doc, st)) {
-      console.warn(`[BRIF Scope Violation] Report scope mismatch for active context: ${st.levelId || st.projectId}`);
-      
-      const container = document.getElementById('architectDecisionHistory');
+      console.warn(`[BRIF Görünüm Uyum Kontrolü] Karar raporu kapsam uyumsuzluğu: ${st.levelId || st.projectId}`);
+
       if (container) {
         this.guard.renderReportEmptyState(container, st, "Çalışma Odası Kararı");
+        return container.innerHTML;
       }
       return '';
     }
@@ -54,7 +57,7 @@ class ChangeHistory {
 
     const humanBreadcrumb = crumbs.join(' › ');
 
-    return `
+    const html = `
       <div class="architect-decision-summary-grid">
         <div class="arch-decision-card highlight">
           <div class="arch-card-header">
@@ -85,6 +88,12 @@ class ChangeHistory {
         </div>
       </div>
     `;
+
+    if (container) {
+      container.innerHTML = html;
+    }
+
+    return html;
   }
 }
 

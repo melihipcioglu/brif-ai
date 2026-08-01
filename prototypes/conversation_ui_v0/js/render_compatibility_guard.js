@@ -1,10 +1,10 @@
 /**
- * BRIF.AI — Render Compatibility Guard (v6.1.1 Universal Platform Architecture)
+ * BRIF.AI — Surface & Scope Compatibility Guard (v6.1.2 Platform Architecture)
  *
- * Core architectural guard enforcing:
- * "Every rendered workspace artifact must be resolved and validated against the active workspace scope before it enters the DOM."
+ * Core architectural principle:
+ * "Every visible workspace surface must be resolved from the active scope and its capabilities."
  *
- * Bypassing this guard logs [BRIF Scope Violation] in dev mode.
+ * Ensures no rejected render path ends in an unexplained blank container.
  */
 
 class RenderCompatibilityGuard {
@@ -12,14 +12,13 @@ class RenderCompatibilityGuard {
     this.hierarchy = hierarchy || new EntityHierarchy();
   }
 
-  // Universal Document Compatibility Validator (Requirement 5)
+  // Universal Document & Surface Scope Compatibility Validator (Requirements 1 & 2)
   isDocumentCompatible(doc, activeContext) {
     if (!doc || !activeContext) {
-      console.warn('[BRIF Scope Violation] Null document or active context passed to guard.');
+      console.warn('[BRIF Görünüm Uyum Kontrolü] Geçersiz belge veya aktif kapsam.');
       return false;
     }
 
-    // Status must be available
     if (doc.status !== 'available') return false;
 
     // Scope check: Project ID
@@ -49,10 +48,19 @@ class RenderCompatibilityGuard {
     return true;
   }
 
-  // General Honest Empty State Renderer
+  // Capability Compatibility Validator (Requirement 6)
+  isCapabilityCompatible(action, activeCapabilities) {
+    if (!action) return false;
+    const reqCaps = action.requiredCapabilities || [];
+    if (reqCaps.length === 0) return true;
+
+    return reqCaps.every(cap => activeCapabilities.includes(cap));
+  }
+
+  // Context-Derived Explicit Empty State Renderer (Requirements 3 & 9)
   renderEmptyState(container, activeContext, scopeTitle) {
     if (!container) return;
-    container.innerHTML = ''; // Clear stale DOM content immediately
+    container.innerHTML = ''; // Clear stale content immediately
 
     const title = scopeTitle || this.hierarchy.getScopeTitle(activeContext);
 
@@ -61,7 +69,7 @@ class RenderCompatibilityGuard {
         <div class="empty-state-icon">📂</div>
         <h3 class="empty-state-title">Bu kapsam için çalışma alanı verisi bulunmuyor</h3>
         <p class="empty-state-desc">
-          Şu anda <strong>${escapeHtml(title)}</strong> için şematik plan veya belge verisi tanımlanmamış. Önceki görünümün verileri bu görünümde kullanılmayacaktır.
+          Şu anda <strong>${escapeHtml(title)}</strong> kapsamındasınız. Bu kapsamla uyumlu şematik plan veya belge verisi tanımlanmamış. Başka projeye ait plan kullanılmayacaktır.
         </p>
 
         <div class="empty-state-actions">
@@ -73,26 +81,27 @@ class RenderCompatibilityGuard {
     `;
   }
 
-  // Architect Report Specific Empty State Renderer (Requirement 3)
+  // Architect Decision Report Specific Explicit Empty State Renderer (Requirements 3 & 9)
   renderReportEmptyState(container, activeContext, incompatibleReportTitle) {
     if (!container) return;
-    container.innerHTML = '';
+    container.innerHTML = ''; // Clear container — NO BLANK CONTAINERS!
 
     const title = this.hierarchy.getScopeTitle(activeContext);
     const incTitle = incompatibleReportTitle ? ` (${incompatibleReportTitle})` : '';
 
     container.innerHTML = `
-      <div class="empty-state-workspace-card report-empty">
+      <div class="empty-state-workspace-card report-empty" id="reportEmptyStateContainer">
         <div class="empty-state-icon">📜</div>
         <h3 class="empty-state-title">Bu aktif kapsam için mimar karar raporu bulunmuyor</h3>
         <p class="empty-state-desc">
-          Şu anda <strong>${escapeHtml(title)}</strong> kapsamındasınız. Başka bir kapsama ait mimar kararları${escapeHtml(incTitle)} bu görünümle uyumlu olmadığı için gösterilmiyor.
+          Şu anda <strong>${escapeHtml(title)}</strong> kapsamındasınız. Mevcut mimar kararları${escapeHtml(incTitle)} farklı bir kapsama ait olduğu için gösterilmiyor.
         </p>
 
         <div class="empty-state-actions">
-          <button class="empty-act-btn highlight" id="btnShowScopeDecisions">Aktif Kapsamdaki Kararları Göster</button>
-          <button class="empty-act-btn" id="btnResumeContext">Önceki Karara Dön</button>
+          <button class="empty-act-btn highlight" id="btnShowScopeDecisions">Bu Kapsamdaki Kararları Göster</button>
           <button class="empty-act-btn" id="btnOpenAllProjectDecisions">Tüm Proje Kararlarını Aç</button>
+          <button class="empty-act-btn" id="btnResumeContext">Önceki Karara Dön</button>
+          <button class="empty-act-btn" id="btnReturnToCustomerView">Müşteri Görünümüne Dön</button>
         </div>
       </div>
     `;

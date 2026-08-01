@@ -1,8 +1,9 @@
 /**
- * BRIF.AI — Universal Architectural Entity Hierarchy (v6.0 Platform Architecture)
+ * BRIF.AI — Universal Architectural Entity Hierarchy (v6.1.2 Platform Architecture)
  *
  * Universal data model supporting:
  * Project -> Building / Block / Tower -> Level / Floor -> Zone / Department -> Space -> Architectural Element
+ * Provides dynamic navigable sibling resolution and capabilities mapping.
  */
 
 class EntityHierarchy {
@@ -79,13 +80,13 @@ class EntityHierarchy {
                 id: "lvl_18",
                 type: "level",
                 parentId: "tower_a",
-                name: "18. Kat (Yönetim Katı)",
+                name: "18. Kat",
                 zones: {
                   zone_exec_18: {
                     id: "zone_exec_18",
                     type: "zone",
                     parentId: "lvl_18",
-                    name: "Yönetici Deparmanı",
+                    name: "Yönetici Departmanı",
                     spaces: {
                       space_meeting_18a: { id: "space_meeting_18a", type: "space", parentId: "zone_exec_18", name: "18A Yönetim Toplantı Odası", area: 45 }
                     }
@@ -96,7 +97,7 @@ class EntityHierarchy {
                 id: "lvl_32",
                 type: "level",
                 parentId: "tower_a",
-                name: "32. Kat (Operasyon Katı)",
+                name: "32. Kat",
                 zones: {
                   zone_ops_32: {
                     id: "zone_ops_32",
@@ -214,7 +215,6 @@ class EntityHierarchy {
 
     ancestors.entity = target;
 
-    // Traverse upwards
     for (const projId in this.projects) {
       const proj = this.projects[projId];
       for (const bldgId in proj.buildings) {
@@ -255,7 +255,53 @@ class EntityHierarchy {
     return ancestors;
   }
 
-  // Generate dynamic, room-name-independent Scope Title (Requirement 8)
+  // Get Navigable Sibling Entities for Active Context (Requirement 4)
+  getNavigableSiblings(activeContext) {
+    if (!activeContext) return [];
+
+    const ancestors = this.getAncestors(activeContext.entityId || activeContext.levelId || activeContext.buildingId);
+
+    // Multi-block campus level 1 navigation: buildings (Blok A, Blok B)
+    if (activeContext.projectId === 'proj_campus_multiblock' && ancestors.project) {
+      return Object.values(ancestors.project.buildings).map(bldg => ({
+        entityId: bldg.id,
+        entityType: 'building',
+        displayName: bldg.name,
+        parentId: ancestors.project.id,
+        isActive: bldg.id === activeContext.buildingId
+      }));
+    }
+
+    // Default level navigation: levels within current building (e.g. Zemin Kat, Üst Kat OR 18. Kat, 32. Kat)
+    if (ancestors.building && ancestors.building.levels) {
+      return Object.values(ancestors.building.levels).map(lvl => ({
+        entityId: lvl.id,
+        entityType: 'level',
+        displayName: lvl.name,
+        parentId: ancestors.building.id,
+        isActive: lvl.id === activeContext.levelId
+      }));
+    }
+
+    return [];
+  }
+
+  // Get Active Capabilities for Active Context (Requirement 6)
+  getActiveCapabilities(activeContext) {
+    if (!activeContext) return [];
+
+    const caps = [];
+    if (activeContext.projectId === 'proj_house_2story') {
+      caps.push('residential_master_suite', 'multi_level_overlay', 'solar_orientation_review');
+    } else if (activeContext.projectId === 'proj_tower_50floor') {
+      caps.push('office_meeting_analysis', 'office_core_circulation', 'multi_level_overlay');
+    } else if (activeContext.projectId === 'proj_campus_multiblock') {
+      caps.push('laboratory_service_analysis', 'campus_block_connection', 'technical_zone_review');
+    }
+    return caps;
+  }
+
+  // Generate dynamic, room-name-independent Scope Title (Requirement 8 & 11)
   getScopeTitle(activeContext) {
     if (!activeContext) return "Genel Proje Bağlamı";
 

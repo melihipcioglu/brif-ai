@@ -1,5 +1,5 @@
 /**
- * BRIF.AI — Centralized Context State Machine & Reducer (v6.0 Engine)
+ * BRIF.AI — Centralized Context State Machine & Reducer (v6.1.2 Platform Architecture)
  *
  * Universal state machine handling context transitions and preventing
  * fragmented JS files from directly mutating visible context text.
@@ -8,7 +8,7 @@
 class ContextStateMachine {
   constructor(hierarchy) {
     this.hierarchy = hierarchy || new EntityHierarchy();
-    
+
     // Generic ActiveContext Model (Requirement 2)
     this.activeContext = {
       projectId: "proj_house_2story",
@@ -40,7 +40,7 @@ class ContextStateMachine {
     return { ...this.activeContext };
   }
 
-  // Central Event Reducer (Requirement 7)
+  // Central Event Reducer
   dispatch(action) {
     const type = action.type;
     const payload = action.payload || {};
@@ -50,13 +50,22 @@ class ContextStateMachine {
         this.activeContext.projectId = payload.projectId;
         this.activeContext.buildingId = payload.buildingId || null;
         this.activeContext.levelId = payload.levelId || null;
+        this.activeContext.zoneId = payload.zoneId || null; // Reset zoneId on project switch
         this.activeContext.entityId = payload.entityId || null;
         this.activeContext.workspaceScope = { projectId: payload.projectId, levelId: payload.levelId, buildingId: payload.buildingId };
         break;
 
       case "LEVEL_SELECTED":
         this.activeContext.levelId = payload.levelId;
+        this.activeContext.zoneId = null; // Reset zoneId on level switch
         this.activeContext.workspaceScope.levelId = payload.levelId;
+        break;
+
+      case "BUILDING_SELECTED":
+        this.activeContext.buildingId = payload.buildingId;
+        this.activeContext.levelId = null;
+        this.activeContext.zoneId = null;
+        this.activeContext.workspaceScope.buildingId = payload.buildingId;
         break;
 
       case "ENTITY_SELECTED":

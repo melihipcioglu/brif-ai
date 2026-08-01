@@ -93,8 +93,8 @@
     }
   ],
   "scopedActions": [
-    { "actionId": "act_tower_meeting", "displayName": "👥 Toplantı Odası İlişkisini İncele", "handler": "triggerTowerMeetingScenario" },
-    { "actionId": "act_tower_core", "displayName": "🛗 Dolaşım Çekirdeğini Göster", "handler": "triggerTowerCoreScenario" },
-    { "actionId": "act_tower_floors", "displayName": "🏢 Katlar Arası Bağlantıyı Açıkla", "handler": "triggerTowerFloorsScenario" }
+    { "actionId": "act_tower_meeting", "displayName": "👥 Toplantı Odası İlişkisini İncele", "requiredCapabilities": ["office_meeting_analysis"], "handler": "triggerTowerMeetingScenario" },
+    { "actionId": "act_tower_core", "displayName": "🛗 Dolaşım Çekirdeğini Göster", "requiredCapabilities": ["office_core_circulation"], "handler": "triggerTowerCoreScenario" },
+    { "actionId": "act_tower_floors", "displayName": "🏢 18. ve 32. Kat İlişkisini Açıkla", "requiredCapabilities": ["multi_level_overlay"], "handler": "triggerTowerFloorsScenario" }
   ]
 }
