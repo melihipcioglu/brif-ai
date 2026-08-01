@@ -1,6 +1,6 @@
-# BRIF.AI — Conversation-First Architectural Workspace v5
+# BRIF.AI — Conversation-First Architectural Workspace v5.1
 
-Bu klasör, BRIF.AI mimari karar destek platformu için hazırlanmış sohbet merkezli kullanıcı deneyimi (UX) prototipinin **v5** sürümüdür.
+Bu klasör, BRIF.AI mimari karar destek platformu için hazırlanmış sohbet merkezli kullanıcı deneyimi (UX) prototipinin **v5.1 Kararlı** sürümüdür.
 
 > **DÜRÜSTLÜK VE BİLDİRİM NOTU:**  
 > - **UX Prototipi**: Bu çalışma bir ön yüz (frontend) UX prototipidir; herhangi bir canlı LLM veya yapay zekâ modeli bağlı değildir.
@@ -23,23 +23,32 @@ Daha sonra tarayıcınızda şu adrese gidin:
 
 ---
 
-## v5 Yenilikleri ve Mimari Yapı
+## v5.1 Hata Düzeltmeleri & Düzeltmeler
 
-1. **Sohbet Merkezli Çalışma Alanı (`%68` Sol Çalışma Alanı / `%32` Sağ Sohbet Paneli)**:
-   - Kullanıcı karmaşık CAD araçları kullanmak zorunda kalmaz.
-   - Tüm aşamalarda kesintisiz ve zengin sohbet paneli aktiftir; aşama değiştirildiğinde sohbet geçmişi kaybolmaz.
+1. **Ebeveyn Banyosu Akışı ve Konuşma Durum Yönetimi (`js/conversation_orchestrator.js`)**:
+   - Türkçe karakter normalizasyonu ve durum motoru (`ConversationState`) ile genel fallback hatası ("Bu prototipte bu isteği otomatik işleyemiyorum") tamamen giderilmiştir.
+   - Quick reply ve klavye girdisi aynı senaryoyu kesintisiz yürütür.
 
-2. **Dinamik Görsel Sunum Motoru (`js/workspace_presenter.js`)**:
-   - Sohbet cevaplarına paralel çalışma alanını dinamik günceller.
-   - **Kat İlişkisi Anlatım Modu**: Zemin kat %30 saydam gösterilir, üst kat tesisat hizası ve merdiven boşluğu (sarı) vurgulanır.
-   - **Seçenek Karşılaştırma Modu**: Ebeveyn banyosunu kuzeye taşıma senaryosunda Seçenek 1 ve Seçenek 2 yan yana kartlar hâlinde sunulur.
+2. **Görünür Analiz Değerlendirme Kartı (`js/workspace_presenter.js`)**:
+   - Ana çalışma alanında "Demo mimari değerlendirmesi" etiketli şeffaf 6 adımlı değerlendirme kartı gösterilir.
 
-3. **Profesyonel Mimar Diyaloğu & Senaryo Orkestrasyonu (`js/conversation_orchestrator.js`)**:
-   - Kullanıcı talebini körlemesine uygulamadan önce talebin arkasındaki ihtiyacı anlayan takip soruları sorar.
-   - Mimari değerlendirme aşamalarını (loading progress steps) görünür biçimde simüle eder.
+3. **Seçenek Karşılaştırması & `alert()` Kullanılmaması**:
+   - Değerlendirme sonrasında Seçenek 1 ve Seçenek 2 yan yana çalışma alanında gösterilir. Seçim sonuçları sohbet ve çalışma alanında güncellenir.
 
-4. **İkincil Gelişmiş Araçlar**:
-   - Manuel oda sürükleme, boyutlandırma, kilit ve takas araçları `🛠️ Planı Elle Düzenle (Gelişmiş Araçlar)` altında ikincil araç olarak korunmuştur.
+4. **Dinamik Mimar Karar Raporu (`js/change_history.js`)**:
+   - Mimar raporu sabit demo metninden kurtarılmış; aktif konuşma durumundan (Ebeveyn banyosu talebi, anlaşılan ihtiyaç, seçenekler ve karar durumu) dinamik beslenecek şekilde düzeltilmiştir.
 
-5. **Temiz Mimar Karar Raporu (`js/change_history.js`)**:
-   - Mimar Önizlemesinde son kullanıcı talebi, anlaşılan ihtiyaç, sunulan seçenekler, teknik ön kontroller ve teyit durumunu içeren profesyonel rapor.
+5. **Mekân Programı Kartlı Grid Düzeni**:
+   - Mekân programı ham metin listesinden kartlı grid düzenine geri getirilmiştir.
+
+6. **İlk Ekran ("Yaşam Ritminizi Anlama") Canlı Dashboard**:
+   - Sol taraftaki büyük boş alan yerine canlı "Şu ana kadar sizi nasıl anladım?" paneli eklenmiştir.
+
+7. **Aynı Koordinatta Kat İlişkisi (Overlay)**:
+   - Zemin Kat (%28 saydam) ve Üst Kat aynı SVG koordinat sisteminde çakıştırılmış, metin çakışmaları giderilmiştir.
+
+8. **Gerçek Plan Üzerinde Cephe Yönlenmesi**:
+   - Yönlenme modu boş dikdörtgen yerine gerçek kat planı üzerinde Kuzey (mavi) ve Güney (sarı) cephe bantları ile gösterilir.
+
+9. **Plan Varsayımları Modal Drawer Düzeltmesi**:
+   - Formun sayfa altına taşması engellenmiş, düzgün kapatma ve kaydetme düğmelerine sahip modal drawer haline getirilmiştir.

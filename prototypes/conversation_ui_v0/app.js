@@ -1,5 +1,5 @@
 /**
- * BRIF.AI — Main Orchestration Script (v5 Conversation-First Engine)
+ * BRIF.AI — Main Orchestration Script (v5.1 Engine)
  *
  * Integrates ConversationOrchestrator, WorkspacePresenter, ContextualAssistant,
  * PlanEditor, RuleEvaluator, and ChangeHistory.
@@ -36,7 +36,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   planEditor = new PlanEditor('planEditorContainer', {
     onSpaceSelect: (space) => {
       assistant.setContext({ spaceId: space.id, spaceName: space.name });
-      // When user clicks a space, focus chat input dynamically (Requirement 2)
       const input = document.getElementById('assistantUserInput');
       if (input) {
         input.placeholder = `${space.name} hakkında neyi değiştirmek veya anlamak istiyorsunuz?`;
@@ -62,8 +61,50 @@ document.addEventListener('DOMContentLoaded', async () => {
     planEditor.loadData(rawPlanAlternativesData);
   }
 
+  // Initialize Stage 1 Workspace Dashboard (Requirement 6)
+  const stage1Container = document.getElementById('stage1WorkspaceContainer');
+  if (stage1Container) {
+    const stage1Presenter = new WorkspacePresenter('stage1WorkspaceContainer');
+    stage1Presenter.setMode('stage1_dashboard', { hasUserMessages: false });
+  }
+
   // --------------------------------------------------------------------------
-  // Collapsible Secondary Manual Tools (Requirement 20)
+  // Assumptions Modal Drawer Dialog (Requirement 9 Fix)
+  // --------------------------------------------------------------------------
+  const assumptionsModal = document.getElementById('assumptionsModal');
+  const openAssumptionsBtn = document.getElementById('openAssumptionsBtn');
+  const closeAssumptionsBtn = document.getElementById('closeAssumptionsBtn');
+  const cancelAssumptionsBtn = document.getElementById('cancelAssumptionsBtn');
+  const assumptionsForm = document.getElementById('assumptionsForm');
+
+  if (openAssumptionsBtn && assumptionsModal) {
+    openAssumptionsBtn.addEventListener('click', () => {
+      assumptionsModal.classList.remove('hidden');
+    });
+  }
+
+  if (closeAssumptionsBtn && assumptionsModal) {
+    closeAssumptionsBtn.addEventListener('click', () => {
+      assumptionsModal.classList.add('hidden');
+    });
+  }
+
+  if (cancelAssumptionsBtn && assumptionsModal) {
+    cancelAssumptionsBtn.addEventListener('click', () => {
+      assumptionsModal.classList.add('hidden');
+    });
+  }
+
+  if (assumptionsForm) {
+    assumptionsForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      assumptionsModal.classList.add('hidden');
+      orchestrator.appendAssistantMessage("📌 Plan varsayımları güncellendi.");
+    });
+  }
+
+  // --------------------------------------------------------------------------
+  // Collapsible Secondary Manual CAD Tools (Requirement 20)
   // --------------------------------------------------------------------------
   const toggleAdvancedToolsBtn = document.getElementById('toggleAdvancedToolsBtn');
   const advancedToolsPanel = document.getElementById('advancedToolsPanel');
@@ -75,7 +116,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // --------------------------------------------------------------------------
-  // Stage Stepper Navigation (Preserves Chat History across stages)
+  // Stage Stepper Navigation
   // --------------------------------------------------------------------------
   const stepNodes = document.querySelectorAll('.step-node');
   const stageViews = document.querySelectorAll('.stage-view');
@@ -112,12 +153,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     const activeView = document.getElementById(`stageView${stageNum}`);
     if (activeView) { activeView.classList.remove('hidden'); activeView.classList.add('active'); }
 
+    if (stageNum === 1 && stage1Container) {
+      const stage1Presenter = new WorkspacePresenter('stage1WorkspaceContainer');
+      stage1Presenter.setMode('stage1_dashboard', { hasUserMessages: true });
+    }
     if (stageNum === 3) populateSpaceGrids();
     if (stageNum === 4 && planEditor) planEditor.render();
   }
 
   // --------------------------------------------------------------------------
-  // Toggle Architect View
+  // Toggle Architect View (Requirement 4 Dynamic Report Fix)
   // --------------------------------------------------------------------------
   const toggleViewBtn = document.getElementById('toggleViewBtn');
   const toggleBtnText = document.getElementById('toggleBtnText');
@@ -145,7 +190,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // --------------------------------------------------------------------------
-  // Chat Submission & Quick Replies Handling
+  // Chat Submission & Event Delegation (NO ALERT!)
   // --------------------------------------------------------------------------
   const assistantChatForm = document.getElementById('assistantChatForm');
   const assistantUserInput = document.getElementById('assistantUserInput');
@@ -165,58 +210,50 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // Quick Reply Chips Event Delegation
+  // Event Delegation for Quick Reply Chips & Workspace Option Buttons (No alert!)
   document.addEventListener('click', (e) => {
+    // Quick Reply Chips
     const chipBtn = e.target.closest('.chip-btn');
     if (chipBtn && chipBtn.dataset.reply) {
       const replyText = chipBtn.dataset.reply;
-
-      if (replyText.includes('yataktan') || replyText.includes('giyinme') || replyText.includes('mahrem')) {
-        orchestrator.handleMasterBathFollowup(replyText);
-      } else {
-        orchestrator.appendUserMessage(replyText);
-        setTimeout(() => {
-          orchestrator.handleUserMessage(replyText);
-        }, 300);
-      }
+      orchestrator.appendUserMessage(replyText);
+      setTimeout(() => {
+        orchestrator.handleUserMessage(replyText);
+      }, 300);
+      return;
     }
 
-    // Side-by-Side Option Select Buttons
-    if (e.target.id === 'btnSelectOpt1') {
-      alert('✅ 1. Seçenek (Banyoyu Kuzeye Taşımak) uygulandı.');
-      changeHistory.recordChange({
-        action_type: 'master_bath_relocate_opt1',
-        target_space_id: 'master_bath',
-        target_space_name: 'Ebeveyn Banyosu',
-        user_message: '1. Seçenek uygulandı.',
-        warnings: []
-      });
+    // Workspace Option 1 Apply Button (No alert!)
+    if (e.target.id === 'btnApplyOpt1') {
+      orchestrator.applyMasterBathOption(1);
       updateArchitectDecisionReport();
+      return;
     }
 
-    if (e.target.id === 'btnSelectOpt2') {
-      alert('✅ 2. Seçenek (Mevcut konumu koruyup girişi değiştirmek) uygulandı.');
-      changeHistory.recordChange({
-        action_type: 'master_bath_relocate_opt2',
-        target_space_id: 'master_bath',
-        target_space_name: 'Ebeveyn Banyosu',
-        user_message: '2. Seçenek uygulandı.',
-        warnings: []
-      });
+    // Workspace Option 2 Apply Button (No alert!)
+    if (e.target.id === 'btnApplyOpt2') {
+      orchestrator.applyMasterBathOption(2);
       updateArchitectDecisionReport();
+      return;
+    }
+
+    // Defer Decision Button
+    if (e.target.id === 'btnDeferDecision') {
+      orchestrator.deferMasterBathDecision();
+      updateArchitectDecisionReport();
+      return;
     }
   });
 
-  // Demo Scenario Buttons
+  // Demo Scenario Shortcut Buttons
   const demoScenarioMasterBath = document.getElementById('demoScenarioMasterBath');
   const demoScenarioFloorOverlay = document.getElementById('demoScenarioFloorOverlay');
   const demoScenarioOrientation = document.getElementById('demoScenarioOrientation');
-  const demoScenario2m = document.getElementById('demoScenario2m');
 
   if (demoScenarioMasterBath) {
     demoScenarioMasterBath.addEventListener('click', () => {
       orchestrator.appendUserMessage('Ebeveyn banyosu burada olmasın, kuzey tarafında olsun.');
-      setTimeout(() => orchestrator.triggerMasterBathScenario(), 300);
+      setTimeout(() => orchestrator.triggerMasterBathScenario('Ebeveyn banyosu burada olmasın, kuzey tarafında olsun.'), 300);
     });
   }
 
@@ -234,13 +271,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  if (demoScenario2m) {
-    demoScenario2m.addEventListener('click', () => {
-      orchestrator.appendUserMessage('Yatak odasını iki metre genişliğe düşür.');
-      setTimeout(() => orchestrator.handleUserMessage('Yatak odasını iki metre genişliğe düşür'), 300);
-    });
-  }
-
+  // --------------------------------------------------------------------------
+  // Space Program Cards Grid Population (Requirement 5 Fix)
+  // --------------------------------------------------------------------------
   function populateSpaceGrids() {
     if (!rawPlanAlternativesData || !planEditor) return;
     const groundGrid = document.getElementById('spaceGridGround');
@@ -262,6 +295,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           <span class="status-badge mandatory">Zorunlu</span>
         </div>
         <div class="space-meta">${s.floor === 'ground' ? 'Zemin Kat' : 'Üst Kat'} • ${s.area} m² Net</div>
+        <div class="space-rationale">📌 Dayanak: ${escapeHtml(s.source_type || 'Mimar varsayımı')}</div>
+        <button class="space-card-btn" onclick="document.getElementById('assistantUserInput').value='${escapeHtml(s.name)} hakkında düzenleme yapalım'; document.getElementById('assistantUserInput').focus();">💬 Sohbetle Değiştir</button>
       </div>
     `;
   }

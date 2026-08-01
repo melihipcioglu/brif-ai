@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BRIF.AI — Conversation-First Architectural Workspace v5</title>
+  <title>BRIF.AI — Conversation-First Architectural Workspace v5.1</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
@@ -16,13 +16,13 @@
     <header class="app-header">
       <div class="header-brand">
         <span class="brand-logo">BRIF<span class="brand-dot">.</span>AI</span>
-        <span class="brand-subtitle">Sohbet Merkezli Mimari Çalışma Alanı v5</span>
+        <span class="brand-subtitle">Sohbet Merkezli Mimari Çalışma Alanı v5.1</span>
       </div>
 
       <div class="header-project">
         <span class="project-tag">Proje:</span>
         <span class="project-name">İki Katlı Müstakil Konut Prototipi</span>
-        <span class="project-badge">Sohbet Merkezli</span>
+        <span class="project-badge">v5.1 Kararlı</span>
       </div>
 
       <div class="header-actions">
@@ -62,7 +62,7 @@
         <button class="step-node" id="stepNode3" data-stage="3" aria-label="Aşama 3: Mekân Programı">
           <span class="step-number">3</span>
           <span class="step-label">Mekân Programı</span>
-          <span class="step-badge badge-pending">2 Katlı</span>
+          <span class="step-badge badge-pending">Kartlı Grid</span>
         </button>
         <div class="step-connector"></div>
 
@@ -74,7 +74,7 @@
       </div>
     </nav>
 
-    <!-- GLOBAL DISCLAIMER BAR (Requirement 22) -->
+    <!-- GLOBAL DISCLAIMER BAR (Requirement 14) -->
     <div class="global-disclaimer-bar">
       <span>ℹ️ UX prototipi — gerçek LLM bağlı değildir.</span>
       <span>•</span>
@@ -86,18 +86,17 @@
     <!-- MAIN CONVERSATION-FIRST WORKSPACE LAYOUT -->
     <main class="main-workspace">
       
-      <!-- LEFT MAIN WORKSPACE (~65–70% width) -->
+      <!-- LEFT MAIN WORKSPACE (~68% width) -->
       <section class="stage-workspace">
         
-        <!-- STAGE 1: YAŞAMINIZI ANLAMA -->
+        <!-- STAGE 1: YAŞAMINIZI ANLAMA (Requirement 6 Live Dashboard) -->
         <div class="stage-view active" id="stageView1">
-          <div class="stage-intro-box">
-            <h2>Yaşam Ritminizi Anlama</h2>
-            <p>Evinizin gün içindeki kullanımı, çalışma düzeniniz ve özel öncelikleriniz hakkında sohbet edelim.</p>
+          <div class="stage1-workspace-container" id="stage1WorkspaceContainer">
+            <!-- Rendered dynamically by WorkspacePresenter -->
           </div>
         </div>
 
-        <!-- STAGE 2: GÖRSEL TERCİHLER (3 COMPARATIVE ROUNDS) -->
+        <!-- STAGE 2: GÖRSEL TERCİHLER -->
         <div class="stage-view hidden" id="stageView2">
           <div class="pref-scroll-area">
             <div class="stage-prompt-banner">
@@ -142,40 +141,13 @@
               </div>
             </div>
 
-            <!-- Round 2 & 3 Containers -->
-            <div class="pref-round-container hidden" id="prefRound2">
-              <div class="pref-cards-comparison">
-                <div class="pref-card-large" data-card-id="work_fixed">
-                  <div class="pref-image-wrapper"><img src="assets/preferences/work_separate.svg" alt="Sabit ayrışma"></div>
-                  <div class="pref-card-body"><h3 class="pref-card-title">2A. Sabit Ayrışma</h3></div>
-                </div>
-                <div class="pref-card-large" data-card-id="work_flexible">
-                  <div class="pref-image-wrapper"><img src="assets/preferences/work_flexible.svg" alt="Kayar panelli esnek alan"></div>
-                  <div class="pref-card-body"><h3 class="pref-card-title">2B. Kayar Panelli Esnek Alan</h3></div>
-                </div>
-              </div>
-            </div>
-
-            <div class="pref-round-container hidden" id="prefRound3">
-              <div class="pref-cards-comparison">
-                <div class="pref-card-large" data-card-id="kitchen_open">
-                  <div class="pref-image-wrapper"><img src="assets/preferences/kitchen_open.svg" alt="Açık mutfak"></div>
-                  <div class="pref-card-body"><h3 class="pref-card-title">3A. Açık Mutfak İlişkisi</h3></div>
-                </div>
-                <div class="pref-card-large" data-card-id="kitchen_controlled">
-                  <div class="pref-image-wrapper"><img src="assets/preferences/kitchen_controlled.svg" alt="Kontrollü mutfak"></div>
-                  <div class="pref-card-body"><h3 class="pref-card-title">3B. Kontrollü Mutfak İlişkisi</h3></div>
-                </div>
-              </div>
-            </div>
-
             <div class="stage-footer-actions">
               <button type="button" class="primary-action-btn" id="btnNextToProgram">Mekân Programına Geç</button>
             </div>
           </div>
         </div>
 
-        <!-- STAGE 3: MEKÂN PROGRAMI -->
+        <!-- STAGE 3: MEKÂN PROGRAMI (Requirement 5 Structured Card Grid) -->
         <div class="stage-view hidden" id="stageView3">
           <div class="program-scroll-area">
             <div class="prototype-assumption-banner">
@@ -201,11 +173,10 @@
           </div>
         </div>
 
-        <!-- STAGE 4: TASLAK PLAN (DYNAMIC INTERACTIVE WORKSPACE) -->
+        <!-- STAGE 4: TASLAK PLAN (WORKSPACE PRESENTER) -->
         <div class="stage-view hidden" id="stageView4">
           <div class="plan-scroll-area">
             
-            <!-- Compact Assumptions & Alt Selector Bar -->
             <div class="plan-assumptions-compact-card">
               <div class="compact-card-left">
                 <span class="card-icon">📐</span>
@@ -234,7 +205,7 @@
                 <button class="plan-floor-btn" id="planFloorUpperBtn" data-floor="upper">Üst Kat Planı</button>
               </div>
 
-              <!-- Collapsible Manual CAD Tools (Requirement 20) -->
+              <!-- Collapsible Secondary Manual Tools (Requirement 20) -->
               <button class="advanced-tools-toggle-btn" id="toggleAdvancedToolsBtn">
                 <span>🛠️ Planı Elle Düzenle (Gelişmiş Araçlar)</span>
               </button>
@@ -242,8 +213,8 @@
 
             <!-- SECONDARY MANUAL CAD TOOLBAR (Hidden by default) -->
             <div class="undo-redo-toolbar hidden" id="advancedToolsPanel">
-              <button class="tool-btn" id="undoBtn" title="Geri Al (Ctrl+Z)">↩ Geri Al</button>
-              <button class="tool-btn" id="redoBtn" title="İleri Al (Ctrl+Y)">↪ İleri Al</button>
+              <button class="tool-btn" id="undoBtn" title="Geri Al">↩ Geri Al</button>
+              <button class="tool-btn" id="redoBtn" title="İleri Al">↪ İleri Al</button>
               <button class="tool-btn" id="lockToggleBtn" title="Seçili Mekânı Kilitle">🔒 Mekânı Kilitle</button>
               <button class="tool-btn" id="swapBtn" title="İki Mekânın Yerini Değiştir">🔄 Yer Değiştir (Takas)</button>
             </div>
@@ -259,7 +230,6 @@
               <button class="scenario-btn" id="demoScenarioMasterBath">🛁 Ebeveyn Banyosunu Kuzeye Taşı</button>
               <button class="scenario-btn" id="demoScenarioFloorOverlay">🏢 Alt ve Üst Kat İlişkisini Açıkla</button>
               <button class="scenario-btn" id="demoScenarioOrientation">☀️ Cephe Yönlenmesini Göster</button>
-              <button class="scenario-btn" id="demoScenario2m">🛏️ 2m Yatak Odası Riski</button>
             </div>
 
           </div>
@@ -269,12 +239,12 @@
         <div class="stage-view hidden" id="architectStageView">
           <div class="architect-scroll-area">
             <div class="arch-banner">
-              <h2>Mimar Teknik Brief &amp; Karar Revizyon Raporu</h2>
-              <p>Profesyonel sentezlenmiş mimari karar raporu.</p>
+              <h2>Mimar Teknik Brief &amp; Karar Raporu</h2>
+              <p>Aktif oturum verisinden dinamik sentezlenen karar özeti.</p>
             </div>
 
             <div class="arch-card full-width">
-              <h3>📜 Mimar Karar ve Revizyon Raporu (v5)</h3>
+              <h3>📜 Dinamik Mimar Karar Raporu (v5.1)</h3>
               <div id="architectDecisionHistory"></div>
             </div>
           </div>
@@ -282,7 +252,7 @@
 
       </section>
 
-      <!-- RIGHT CONVERSATION-FIRST SOHBET PANEL (~30–35% width) -->
+      <!-- RIGHT CONVERSATION-FIRST SOHBET PANEL (~32% width) -->
       <aside class="contextual-right-panel" id="contextualPanel">
         
         <div class="drawer-handle-bar" id="drawerHandleBar">
@@ -303,7 +273,7 @@
               <div class="message-content">
                 <div class="message-sender">BRIF.AI Mimari Asistan</div>
                 <div class="message-text">
-                  Hoş geldiniz! Yeni evinizin mimari karar ve planlama sürecinde yanınızdayım. Bana istediğiniz değişikliği doğal dil ile anlatabilir veya sorular sorabilirsiniz.
+                  Hoş geldiniz! Yeni evinizin mimari karar ve planlama sürecinde yanınızdayım. İstediğiniz değişikliği doğal dil ile anlatabilirsiniz.
                 </div>
               </div>
             </div>
@@ -329,24 +299,33 @@
     </main>
   </div>
 
-  <!-- PLAN ASSUMPTIONS MODAL -->
+  <!-- FIXED MODAL DRAWER DIALOG (Requirement 9 Overflow Fix) -->
   <div class="modal-backdrop hidden" id="assumptionsModal">
     <div class="modal-card">
       <div class="modal-header">
         <h3>Plan Varsayımlarını Düzenle (Prototip Simülasyonu)</h3>
-        <button class="close-modal-btn" id="closeAssumptionsBtn">&times;</button>
+        <button type="button" class="close-modal-btn" id="closeAssumptionsBtn" aria-label="Kapat">&times;</button>
       </div>
       <div class="modal-body">
         <form id="assumptionsForm">
           <div class="form-group">
-            <label>Konut Kat Yapısı:</label>
+            <label for="assumpFloors">Konut Kat Yapısı:</label>
             <select id="assumpFloors">
               <option value="two" selected>İki Katlı Konut (Mevcut Varsayım)</option>
               <option value="single">Tek Katlı Konut</option>
             </select>
           </div>
 
+          <div class="form-group">
+            <label for="assumpStudy">Çalışma Odası Konumu:</label>
+            <select id="assumpStudy">
+              <option value="isolated" selected>Kapalı İzolasyon (Alt A)</option>
+              <option value="flexible">Esnek Dönüşüm (Alt B)</option>
+            </select>
+          </div>
+
           <div class="modal-actions">
+            <button type="button" class="cancel-modal-btn" id="cancelAssumptionsBtn">Vazgeç</button>
             <button type="submit" class="save-assump-btn">Varsayımları Uygula</button>
           </div>
         </form>
