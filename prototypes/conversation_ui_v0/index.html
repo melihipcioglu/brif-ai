@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BRIF.AI — Mimari İhtiyaç Analizi &amp; Taslak Plan Prototipi v3</title>
+  <title>BRIF.AI — Mimari İhtiyaç Analizi &amp; Etkileşimli Plan Prototipi v4</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
@@ -16,13 +16,13 @@
     <header class="app-header">
       <div class="header-brand">
         <span class="brand-logo">BRIF<span class="brand-dot">.</span>AI</span>
-        <span class="brand-subtitle">Mimari Karar Destek Platformu v3</span>
+        <span class="brand-subtitle">Mimari Karar Destek Platformu v4</span>
       </div>
 
       <div class="header-project">
         <span class="project-tag">Proje:</span>
         <span class="project-name">İki Katlı Müstakil Konut Prototipi</span>
-        <span class="project-badge">Ön Değerlendirme</span>
+        <span class="project-badge">Şematik v4</span>
       </div>
 
       <div class="header-actions">
@@ -73,25 +73,33 @@
         <button class="step-node" id="stepNode4" data-stage="4" aria-label="Aşama 4: Taslak Plan">
           <span class="step-number">4</span>
           <span class="step-label">Taslak Plan</span>
-          <span class="step-badge badge-pending">Şematik</span>
+          <span class="step-badge badge-pending">Etkileşimli</span>
         </button>
       </div>
     </nav>
 
+    <!-- GLOBAL DISCLAIMER BAR (Requirement 22) -->
+    <div class="global-disclaimer-bar">
+      <span>ℹ️ UX prototipi — gerçek LLM bağlı değildir.</span>
+      <span>•</span>
+      <span>Demo ön kontrolü — resmî mevzuat ve yerel idare verisi bağlı değildir.</span>
+      <span>•</span>
+      <span>Şematik plan — mimari proje veya ruhsat çizimi değildir.</span>
+    </div>
+
     <!-- MAIN WORKSPACE CONTAINER -->
     <main class="main-workspace">
       
-      <!-- LEFT MAIN COLUMN (DYNAMIC STAGE VIEWS ~72%) -->
+      <!-- LEFT MAIN COLUMN (~72% width) -->
       <section class="stage-workspace">
         
-        <!-- STAGE 1: YAŞAMINIZI ANLAMA (CONVERSATION VIEW) -->
+        <!-- STAGE 1: YAŞAMINIZI ANLAMA -->
         <div class="stage-view active" id="stageView1">
           <div class="chat-messages" id="chatMessages">
-            
             <div class="message ai-message">
               <div class="message-avatar brif">B</div>
               <div class="message-content">
-                <div class="message-sender">BRIF.AI Mimari Danışman</div>
+                <div class="message-sender">BRIF.AI Mimari Asistan</div>
                 <div class="message-text">
                   Yeni evinizde günlük yaşamınızı ve mekân kullanımı ritminizi anlamak istiyorum. Ev hafta içinde genellikle nasıl kullanılıyor?
                 </div>
@@ -111,45 +119,24 @@
             <div class="message ai-message" id="latestAiMessage">
               <div class="message-avatar brif">B</div>
               <div class="message-content">
-                <div class="message-sender">BRIF.AI Mimari Danışman</div>
+                <div class="message-sender">BRIF.AI Mimari Asistan</div>
                 <div class="message-text">
-                  Anladım. Eviniz gün içinde tamamen boş kalmıyor ve öğleden sonra kullanım yoğunluğu artıyor. Eşinizin evden çalışma sürecinde akustik mahremiyet ve sessizlik ne derece kritik?
+                  Anladım. Eviniz gün içinde tamamen boş kalmıyor. Eşinizin evden çalışma sürecinde akustik mahremiyet ve sessizlik ne derece kritik?
                 </div>
 
                 <div class="suggestion-chips" id="suggestionChips">
                   <button class="chip-btn" data-reply="Eşim gün boyu online toplantılar yapıyor, tam ses izolasyonu çok kritik.">
                     Online toplantılar var, ses izolasyonu kritik
                   </button>
-                  <button class="chip-btn" data-reply="Genellikle bilgisayarda yazım ve okuma yapıyor, sadece yoğun odaklanma saatlerinde sessizlik istiyor.">
-                    Yazım/okuma ağırlıklı, odaklanma saatleri önemli
+                  <button class="chip-btn" data-reply="Yazım/okuma ağırlıklı, sadece yoğun odaklanma saatlerinde sessizlik istiyor.">
+                    Yazım/okuma ağırlıklı
                   </button>
-                  <button class="chip-btn" data-reply="Gündüz çocukların geldiği 16:00 sonrasında ses çakışması yaşanıyor.">
-                    Öğleden sonra 16:00 sonrası ses çakışması oluyor
+                  <button class="chip-btn" data-reply="Öğleden sonra 16:00 sonrası ses çakışması oluyor.">
+                    16:00 sonrası ses çakışması oluyor
                   </button>
                 </div>
               </div>
             </div>
-          </div>
-
-          <!-- Chat Input -->
-          <div class="chat-input-container">
-            <form class="chat-form" id="chatForm">
-              <div class="input-wrapper">
-                <textarea id="userInput" placeholder="Yanıtınızı buraya yazın veya bir öneri seçin..." rows="2"></textarea>
-                <div class="input-actions">
-                  <button type="button" class="icon-btn" id="voiceBtn" title="Sesli Yanıt Ver (Demo)">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path>
-                      <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                      <line x1="12" y1="19" x2="12" y2="22"></line>
-                    </svg>
-                  </button>
-                  <button type="submit" class="send-btn" id="sendBtn" title="Gönder">
-                    <span>Gönder</span>
-                  </button>
-                </div>
-              </div>
-            </form>
           </div>
         </div>
 
@@ -160,14 +147,14 @@
             <div class="stage-prompt-banner">
               <div class="message-avatar brif">B</div>
               <div class="prompt-text-group">
-                <div class="prompt-sender">BRIF.AI Mimari Danışman</div>
+                <div class="prompt-sender">BRIF.AI Mimari Asistan</div>
                 <div class="prompt-desc">
-                  Şimdi 3 karşılaştırmalı tur hâlinde mekânsal ilişki örnekleri sunuyorum. Dekorasyon tarzı değil, sizin yaşam biçiminize uygun mekânsal nitelikleri anlamak istiyoruz.
+                  Şimdi 3 karşılaştırmalı tur hâlinde mekânsal ilişki örnekleri sunuyorum. Hangi mekânsal niteliklerin size uygun olduğunu anlamak istiyoruz.
                 </div>
               </div>
             </div>
 
-            <!-- Round Navigation Bar -->
+            <!-- Round Stepper Bar -->
             <div class="round-stepper">
               <button class="round-tab active" data-round="1" id="roundTab1">
                 <span class="round-num">1</span>
@@ -183,27 +170,22 @@
               </button>
             </div>
 
-            <!-- ROUND CONTENT CONTAINERS -->
             <!-- ROUND 1 -->
             <div class="pref-round-container active" id="prefRound1">
               <div class="pref-cards-comparison">
-                
-                <!-- Card 1A -->
                 <div class="pref-card-large" data-card-id="work_separate" data-round="1">
                   <div class="pref-image-wrapper">
                     <img src="assets/preferences/work_separate.svg" alt="Tamamen ayrı çalışma odası" loading="lazy">
                   </div>
                   <div class="pref-card-body">
                     <h3 class="pref-card-title">1A. Tamamen Ayrı Çalışma Odası</h3>
-                    <p class="pref-card-desc">Ana yaşam alanından duvar ve kapı ile tam izole edilmiş, akustik öncelikli kapalı çalışma mekânı.</p>
-                    
+                    <p class="pref-card-desc">Ana yaşam alanından duvar ve kapı ile tam izole edilmiş kapalı çalışma mekânı.</p>
                     <div class="pref-card-actions">
                       <button class="pref-btn-primary" data-action="like">Bu yaklaşıma daha yakınım</button>
                       <button class="pref-btn-secondary" data-action="neutral">Kararsızım</button>
                     </div>
                     <button class="pref-link-dislike" data-action="dislike">Bu yaklaşım bana uygun değil</button>
 
-                    <!-- Feature Attribute Chips (Expanded after selection) -->
                     <div class="attribute-chip-section hidden">
                       <div class="chip-question-title">Bu örnekte size uygun gelen özellikler neler?</div>
                       <div class="attribute-chips-grid">
@@ -216,15 +198,13 @@
                   </div>
                 </div>
 
-                <!-- Card 1B -->
                 <div class="pref-card-large" data-card-id="work_connected" data-round="1">
                   <div class="pref-image-wrapper">
                     <img src="assets/preferences/work_connected.svg" alt="Ortak yaşama bağlı çalışma alanı" loading="lazy">
                   </div>
                   <div class="pref-card-body">
                     <h3 class="pref-card-title">1B. Ortak Yaşama Bağlı Çalışma Alanı</h3>
-                    <p class="pref-card-desc">Yaşam alanına görsel olarak açık veya alçak bölücü ile bağlı, aile etkileşimine izin veren çalışma alanı.</p>
-                    
+                    <p class="pref-card-desc">Yaşam alanına görsel olarak açık veya alçak bölücü ile bağlı çalışma alanı.</p>
                     <div class="pref-card-actions">
                       <button class="pref-btn-primary" data-action="like">Bu yaklaşıma daha yakınım</button>
                       <button class="pref-btn-secondary" data-action="neutral">Kararsızım</button>
@@ -242,29 +222,19 @@
                     </div>
                   </div>
                 </div>
-
-              </div>
-
-              <!-- Round Footer Note -->
-              <div class="round-commentary-box">
-                <span class="box-icon">💡</span>
-                <span>Bu seçim tek başına plan kararı değildir; tercih ettiğiniz mekânsal nitelikleri anlamak için kullanılacaktır.</span>
               </div>
             </div>
 
             <!-- ROUND 2 -->
             <div class="pref-round-container hidden" id="prefRound2">
               <div class="pref-cards-comparison">
-                
-                <!-- Card 2A -->
                 <div class="pref-card-large" data-card-id="work_fixed" data-round="2">
                   <div class="pref-image-wrapper">
                     <img src="assets/preferences/work_separate.svg" alt="Sabit ayrışma" loading="lazy">
                   </div>
                   <div class="pref-card-body">
                     <h3 class="pref-card-title">2A. Sabit Ayrışma</h3>
-                    <p class="pref-card-desc">Oda sınırları ve duvarları sabit, net tanımlanmış ve değişmeyen mekân organizasyonu.</p>
-                    
+                    <p class="pref-card-desc">Oda sınırları ve duvarları sabit, net tanımlanmış mekân organizasyonu.</p>
                     <div class="pref-card-actions">
                       <button class="pref-btn-primary" data-action="like">Bu yaklaşıma daha yakınım</button>
                       <button class="pref-btn-secondary" data-action="neutral">Kararsızım</button>
@@ -281,15 +251,13 @@
                   </div>
                 </div>
 
-                <!-- Card 2B -->
                 <div class="pref-card-large" data-card-id="work_flexible" data-round="2">
                   <div class="pref-image-wrapper">
                     <img src="assets/preferences/work_flexible.svg" alt="Kayar panelle dönüşebilen esnek alan" loading="lazy">
                   </div>
                   <div class="pref-card-body">
                     <h3 class="pref-card-title">2B. Kayar Panelle Dönüşebilen Esnek Alan</h3>
-                    <p class="pref-card-desc">Gerektiğinde katlanır/kayar panellerle tamamen kapanan veya açılıp salonla birleşen çok amaçlı alan.</p>
-                    
+                    <p class="pref-card-desc">Gerektiğinde kayar panellerle kapanan veya açılıp salonla birleşen çok amaçlı alan.</p>
                     <div class="pref-card-actions">
                       <button class="pref-btn-primary" data-action="like">Bu yaklaşıma daha yakınım</button>
                       <button class="pref-btn-secondary" data-action="neutral">Kararsızım</button>
@@ -301,25 +269,16 @@
                       <div class="attribute-chips-grid">
                         <button class="attr-chip" data-attr="Esneklik">Esneklik</button>
                         <button class="attr-chip" data-attr="Gerektiğinde kapanabilmesi">Gerektiğinde kapanabilmesi</button>
-                        <button class="attr-chip" data-attr="Ferahlık">Ferahlık</button>
                       </div>
                     </div>
                   </div>
                 </div>
-
-              </div>
-
-              <div class="round-commentary-box">
-                <span class="box-icon">💡</span>
-                <span>Bu seçim tek başına plan kararı değildir; tercih ettiğiniz mekânsal nitelikleri anlamak için kullanılacaktır.</span>
               </div>
             </div>
 
             <!-- ROUND 3 -->
             <div class="pref-round-container hidden" id="prefRound3">
               <div class="pref-cards-comparison">
-                
-                <!-- Card 3A -->
                 <div class="pref-card-large" data-card-id="kitchen_open" data-round="3">
                   <div class="pref-image-wrapper">
                     <img src="assets/preferences/kitchen_open.svg" alt="Açık mutfak ve yaşam ilişkisi" loading="lazy">
@@ -327,7 +286,6 @@
                   <div class="pref-card-body">
                     <h3 class="pref-card-title">3A. Açık Mutfak ve Yaşam İlişkisi</h3>
                     <p class="pref-card-desc">Mutfak adası ve yemek alanının salonla kesintisiz bütünleştiği sosyal açık plan kurgusu.</p>
-                    
                     <div class="pref-card-actions">
                       <button class="pref-btn-primary" data-action="like">Bu yaklaşıma daha yakınım</button>
                       <button class="pref-btn-secondary" data-action="neutral">Kararsızım</button>
@@ -339,21 +297,18 @@
                       <div class="attribute-chips-grid">
                         <button class="attr-chip" data-attr="Görsel bağlantı">Görsel bağlantı</button>
                         <button class="attr-chip" data-attr="Ortak yaşama yakınlık">Ortak yaşama yakınlık</button>
-                        <button class="attr-chip" data-attr="Ferahlık">Ferahlık</button>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                <!-- Card 3B -->
                 <div class="pref-card-large" data-card-id="kitchen_controlled" data-round="3">
                   <div class="pref-image-wrapper">
                     <img src="assets/preferences/kitchen_controlled.svg" alt="Daha kontrollü ve mahrem mutfak ilişkisi" loading="lazy">
                   </div>
                   <div class="pref-card-body">
                     <h3 class="pref-card-title">3B. Kontrollü &amp; Mahrem Mutfak İlişkisi</h3>
-                    <p class="pref-card-desc">Cam sürgülü kapı veya cep tavan paneli ile koku ve ses geçişi kontrol edilen bağımsız mutfak.</p>
-                    
+                    <p class="pref-card-desc">Cam sürgülü kapı ile koku ve ses geçişi kontrol edilen bağımsız mutfak.</p>
                     <div class="pref-card-actions">
                       <button class="pref-btn-primary" data-action="like">Bu yaklaşıma daha yakınım</button>
                       <button class="pref-btn-secondary" data-action="neutral">Kararsızım</button>
@@ -369,42 +324,27 @@
                     </div>
                   </div>
                 </div>
-
-              </div>
-
-              <div class="round-commentary-box">
-                <span class="box-icon">💡</span>
-                <span>Bu seçim tek başına plan kararı değildir; tercih ettiğiniz mekânsal nitelikleri anlamak için kullanılacaktır.</span>
               </div>
             </div>
 
-            <!-- Stage 2 Navigation Bottom -->
             <div class="stage-footer-actions">
               <button type="button" class="primary-action-btn" id="btnNextToProgram">
                 <span>Mekân Programına Geç</span>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="5" y1="12" x2="19" y2="12"></line>
-                  <polyline points="12 5 19 12 12 19"></polyline>
-                </svg>
               </button>
             </div>
 
           </div>
         </div>
 
-        <!-- STAGE 3: MEKÂN PROGRAMI & İLİŞKİ ŞEMASI -->
+        <!-- STAGE 3: MEKÂN PROGRAMI -->
         <div class="stage-view hidden" id="stageView3">
           <div class="program-scroll-area">
             
-            <!-- Sample Prototype Assumption Banner -->
             <div class="prototype-assumption-banner">
               <span class="banner-badge">📌 Örnek Prototip Varsayımı</span>
-              <p class="banner-text">
-                İki katlı müstakil konut, yaklaşık <strong>190–220 m² brüt kapalı alan</strong>. Arsa, bütçe, yönlenme ve yönetmelik verileri henüz girilmemiştir. Bütün değerler <strong>ön değerlendirme</strong> niteliğindedir.
-              </p>
+              <p class="banner-text">İki katlı müstakil konut, yaklaşık <strong>190–220 m² brüt kapalı alan</strong>.</p>
             </div>
 
-            <!-- Area Summary Bar -->
             <div class="area-summary-bar">
               <div class="summary-item">
                 <span class="summary-label">Tahmini Toplam Net Alan</span>
@@ -413,7 +353,7 @@
               </div>
               <div class="summary-divider"></div>
               <div class="summary-item">
-                <span class="summary-label">Dolaşım, Servis &amp; Duvar Payı (~22%)</span>
+                <span class="summary-label">Dolaşım &amp; Servis Payı (~22%)</span>
                 <span class="summary-value">32 – 42 m²</span>
                 <span class="summary-sub">Örnek prototip hesabı</span>
               </div>
@@ -425,348 +365,104 @@
               </div>
             </div>
 
-            <!-- Floor View Selector -->
             <div class="floor-tab-bar">
-              <button class="floor-tab active" data-floor="ground" id="floorTabGround">
-                <span>Zemin Kat (9 Mekân)</span>
-              </button>
-              <button class="floor-tab" data-floor="upper" id="floorTabUpper">
-                <span>Üst Kat (8 Mekân)</span>
-              </button>
+              <button class="floor-tab active" data-floor="ground" id="floorTabGround">Zemin Kat (9 Mekân)</button>
+              <button class="floor-tab" data-floor="upper" id="floorTabUpper">Üst Kat (8 Mekân)</button>
             </div>
 
-            <!-- SPACE PROGRAM CARDS GRID -->
-            <!-- ZEMİN KAT SPACES -->
             <div class="space-cards-container active" id="spacesGround">
-              <div class="space-cards-grid">
-                
-                <div class="space-card" data-space-id="entry">
-                  <div class="space-card-header">
-                    <h4 class="space-title">Giriş ve Vestiyer</h4>
-                    <span class="status-badge mandatory">Zorunlu</span>
-                  </div>
-                  <div class="space-meta">Zemin Kat • 7 - 9 m² Net</div>
-                  <p class="space-purpose"><strong>Amaç:</strong> Dış mekân geçişi, ayakkabı/palto depolama ve mahremiyet tamponu.</p>
-                  <div class="space-rationale">
-                    <span class="source-badge user-said">Doğrudan kullanıcı beyanı</span>
-                    <span>Dört kişilik aile girişi ve okul çantası depolama.</span>
-                  </div>
-                  <div class="space-connections"><strong>Bağlı Mekânlar:</strong> Yaşam Alanı, Ortak WC, Merdiven</div>
-                </div>
-
-                <div class="space-card" data-space-id="living">
-                  <div class="space-card-header">
-                    <h4 class="space-title">Yaşam Alanı (Salon)</h4>
-                    <span class="status-badge mandatory">Zorunlu</span>
-                  </div>
-                  <div class="space-meta">Zemin Kat • 30 - 34 m² Net</div>
-                  <p class="space-purpose"><strong>Amaç:</strong> Aile toplanma, dinlenme ve peyzaj teras entegrasyonu.</p>
-                  <div class="space-rationale">
-                    <span class="source-badge user-said">Doğrudan kullanıcı beyanı</span>
-                    <span>Öğleden sonra 16:00 sonrası ortak aile kullanımı.</span>
-                  </div>
-                  <div class="space-connections"><strong>Bağlı Mekânlar:</strong> Mutfak, Teras, Çalışma Alanı</div>
-                </div>
-
-                <div class="space-card" data-space-id="kitchen">
-                  <div class="space-card-header">
-                    <h4 class="space-title">Mutfak ve Yemek</h4>
-                    <span class="status-badge mandatory">Zorunlu</span>
-                  </div>
-                  <div class="space-meta">Zemin Kat • 16 - 20 m² Net</div>
-                  <p class="space-purpose"><strong>Amaç:</strong> Yemek hazırlık, günlük aile yemeği ve bahçe servisi.</p>
-                  <div class="space-rationale">
-                    <span class="source-badge pref-chip">Kullanıcının görsel tercihi</span>
-                    <span>Koku/ses geçişine göre açılıp kapanabilen yarı-kontrollü sınır.</span>
-                  </div>
-                  <div class="space-connections"><strong>Bağlı Mekânlar:</strong> Yaşam Alanı, Depolama/Kiler, Teras</div>
-                </div>
-
-                <div class="space-card highlight-card" data-space-id="study">
-                  <div class="space-card-header">
-                    <h4 class="space-title">Çalışma Alanı</h4>
-                    <span class="status-badge mandatory">Zorunlu</span>
-                  </div>
-                  <div class="space-meta">Zemin Kat • 11 - 13 m² Net</div>
-                  <p class="space-purpose"><strong>Amaç:</strong> Evden tam zamanlı çalışma, online toplantı ve odaklanma.</p>
-                  <div class="space-rationale">
-                    <span class="source-badge user-said">Doğrudan kullanıcı beyanı</span>
-                    <span>"Eşim evden çalışıyor, online toplantılar var."</span>
-                  </div>
-                  <div class="space-connections"><strong>Bağlı Mekânlar:</strong> Yaşam Alanı, Dolaşım Holü</div>
-                </div>
-
-                <div class="space-card" data-space-id="guest">
-                  <div class="space-card-header">
-                    <h4 class="space-title">Misafir / Esnek Oda</h4>
-                    <span class="status-badge likely">Muhtemel</span>
-                  </div>
-                  <div class="space-meta">Zemin Kat • 11 - 13 m² Net</div>
-                  <p class="space-purpose"><strong>Amaç:</strong> Yatılı misafir konaklama veya hobi alanı.</p>
-                  <div class="space-rationale">
-                    <span class="source-badge sys-interp">Sistem yorumu</span>
-                    <span>Zemin kat erişilebilir misafir odası esnekliği.</span>
-                  </div>
-                  <div class="space-connections"><strong>Bağlı Mekânlar:</strong> Giriş, Ortak WC</div>
-                </div>
-
-                <div class="space-card" data-space-id="wc">
-                  <div class="space-card-header">
-                    <h4 class="space-title">Ortak WC</h4>
-                    <span class="status-badge mandatory">Zorunlu</span>
-                  </div>
-                  <div class="space-meta">Zemin Kat • 3 - 4 m² Net</div>
-                  <p class="space-purpose"><strong>Amaç:</strong> Gündüz ve misafir kullanımı için el yıkama &amp; WC.</p>
-                  <div class="space-rationale">
-                    <span class="source-badge proto-assump">Prototip varsayımı</span>
-                    <span>Zemin kat ana servis çekirdeği.</span>
-                  </div>
-                  <div class="space-connections"><strong>Bağlı Mekânlar:</strong> Giriş, Misafir Odası</div>
-                </div>
-
-                <div class="space-card" data-space-id="storage">
-                  <div class="space-card-header">
-                    <h4 class="space-title">Depolama / Kiler</h4>
-                    <span class="status-badge likely">Muhtemel</span>
-                  </div>
-                  <div class="space-meta">Zemin Kat • 4 - 5 m² Net</div>
-                  <p class="space-purpose"><strong>Amaç:</strong> Mutfak kileri ve ev içi genel depolama.</p>
-                  <div class="space-rationale">
-                    <span class="source-badge sys-interp">Sistem yorumu</span>
-                    <span>Mutfak yakını gıda ve stok depolama.</span>
-                  </div>
-                  <div class="space-connections"><strong>Bağlı Mekânlar:</strong> Mutfak</div>
-                </div>
-
-                <div class="space-card" data-space-id="stair">
-                  <div class="space-card-header">
-                    <h4 class="space-title">Merdiven ve Dolaşım</h4>
-                    <span class="status-badge mandatory">Zorunlu</span>
-                  </div>
-                  <div class="space-meta">Zemin Kat • 10 - 12 m² Net</div>
-                  <p class="space-purpose"><strong>Amaç:</strong> Düşey bağlantı düğümü ve katlar arası geçiş.</p>
-                  <div class="space-rationale">
-                    <span class="source-badge proto-assump">Prototip varsayımı</span>
-                    <span>İki katlı konut düşey sirkülasyon gereksinimi.</span>
-                  </div>
-                  <div class="space-connections"><strong>Bağlı Mekânlar:</strong> Üst Kat Holü, Giriş, Salon</div>
-                </div>
-
-                <div class="space-card" data-space-id="terrace">
-                  <div class="space-card-header">
-                    <h4 class="space-title">Teras / Açık Alan</h4>
-                    <span class="status-badge likely">Muhtemel</span>
-                  </div>
-                  <div class="space-meta">Zemin Kat • 16 - 20 m² (Açık)</div>
-                  <p class="space-purpose"><strong>Amaç:</strong> Bahçe entegrasyonu, dış mekân yemek ve oturma.</p>
-                  <div class="space-rationale">
-                    <span class="source-badge user-said">Doğrudan kullanıcı beyanı</span>
-                    <span>Salondan doğrudan dış mekâna erişim arzusu.</span>
-                  </div>
-                  <div class="space-connections"><strong>Bağlı Mekânlar:</strong> Yaşam Alanı, Mutfak</div>
-                </div>
-
-              </div>
+              <div class="space-cards-grid" id="spaceGridGround"></div>
             </div>
 
-            <!-- ÜST KAT SPACES -->
             <div class="space-cards-container hidden" id="spacesUpper">
-              <div class="space-cards-grid">
-                
-                <div class="space-card" data-space-id="master">
-                  <div class="space-card-header">
-                    <h4 class="space-title">Ebeveyn Yatak Odası</h4>
-                    <span class="status-badge mandatory">Zorunlu</span>
-                  </div>
-                  <div class="space-meta">Üst Kat • 16 - 18 m² Net</div>
-                  <p class="space-purpose"><strong>Amaç:</strong> Özel dinlenme, ebeveyn mahremiyeti ve gardırop alanı.</p>
-                  <div class="space-rationale">
-                    <span class="source-badge user-said">Doğrudan kullanıcı beyanı</span>
-                    <span>Ebeveyn mahremiyet kuşağı.</span>
-                  </div>
-                  <div class="space-connections"><strong>Bağlı Mekânlar:</strong> Ebeveyn Banyosu, Balkon</div>
-                </div>
-
-                <div class="space-card" data-space-id="mbath">
-                  <div class="space-card-header">
-                    <h4 class="space-title">Ebeveyn Banyosu</h4>
-                    <span class="status-badge mandatory">Zorunlu</span>
-                  </div>
-                  <div class="space-meta">Üst Kat • 4 - 5 m² Net</div>
-                  <p class="space-purpose"><strong>Amaç:</strong> Ebeveyn odasına özel banyo &amp; WC.</p>
-                  <div class="space-rationale">
-                    <span class="source-badge sys-interp">Sistem yorumu</span>
-                    <span>Ebeveyn süit konforu.</span>
-                  </div>
-                  <div class="space-connections"><strong>Bağlı Mekânlar:</strong> Ebeveyn Odası</div>
-                </div>
-
-                <div class="space-card" data-space-id="child1">
-                  <div class="space-card-header">
-                    <h4 class="space-title">Çocuk Odası 1</h4>
-                    <span class="status-badge mandatory">Zorunlu</span>
-                  </div>
-                  <div class="space-meta">Üst Kat • 11 - 13 m² Net</div>
-                  <p class="space-purpose"><strong>Amaç:</strong> Birinci çocuk için uyku, ders çalışma ve kişisel alan.</p>
-                  <div class="space-rationale">
-                    <span class="source-badge user-said">Doğrudan kullanıcı beyanı</span>
-                    <span>"Çocuklar okuldan dört gibi geliyor."</span>
-                  </div>
-                  <div class="space-connections"><strong>Bağlı Mekânlar:</strong> Merdiven Holü, Ortak Banyo</div>
-                </div>
-
-                <div class="space-card" data-space-id="child2">
-                  <div class="space-card-header">
-                    <h4 class="space-title">Çocuk Odası 2</h4>
-                    <span class="status-badge mandatory">Zorunlu</span>
-                  </div>
-                  <div class="space-meta">Üst Kat • 11 - 13 m² Net</div>
-                  <p class="space-purpose"><strong>Amaç:</strong> İkinci çocuk için müstakil çalışma ve uyku odası.</p>
-                  <div class="space-rationale">
-                    <span class="source-badge user-said">Doğrudan kullanıcı beyanı</span>
-                    <span>İki çocuk için ayrı oda talebi.</span>
-                  </div>
-                  <div class="space-connections"><strong>Bağlı Mekânlar:</strong> Merdiven Holü, Ortak Banyo</div>
-                </div>
-
-                <div class="space-card" data-space-id="bath">
-                  <div class="space-card-header">
-                    <h4 class="space-title">Ortak Banyo</h4>
-                    <span class="status-badge mandatory">Zorunlu</span>
-                  </div>
-                  <div class="space-meta">Üst Kat • 5 - 6 m² Net</div>
-                  <p class="space-purpose"><strong>Amaç:</strong> Çocuklar için küvetli/duşlu ana banyo.</p>
-                  <div class="space-rationale">
-                    <span class="source-badge proto-assump">Prototip varsayımı</span>
-                    <span>Üst kat ortak ıslak hacim çekirdeği.</span>
-                  </div>
-                  <div class="space-connections"><strong>Bağlı Mekânlar:</strong> Çocuk Odaları, Merdiven Holü</div>
-                </div>
-
-                <div class="space-card" data-space-id="laundry">
-                  <div class="space-card-header">
-                    <h4 class="space-title">Çamaşır / Yardımcı Alan</h4>
-                    <span class="status-badge likely">Muhtemel</span>
-                  </div>
-                  <div class="space-meta">Üst Kat • 3 - 4 m² Net</div>
-                  <p class="space-purpose"><strong>Amaç:</strong> Çamaşır yıkanma, kurutma ve ütüleme.</p>
-                  <div class="space-rationale">
-                    <span class="source-badge sys-interp">Sistem yorumu</span>
-                    <span>Çamaşır yükünün üretildiği üst katta yerleşim.</span>
-                  </div>
-                  <div class="space-connections"><strong>Bağlı Mekânlar:</strong> Merdiven Holü</div>
-                </div>
-
-                <div class="space-card" data-space-id="stair_upper">
-                  <div class="space-card-header">
-                    <h4 class="space-title">Merdiven Holü</h4>
-                    <span class="status-badge mandatory">Zorunlu</span>
-                  </div>
-                  <div class="space-meta">Üst Kat • 8 - 10 m² Net</div>
-                  <p class="space-purpose"><strong>Amaç:</strong> Kat sirkülasyonu ve oda dağılımı.</p>
-                  <div class="space-rationale">
-                    <span class="source-badge proto-assump">Prototip varsayımı</span>
-                    <span>Düşey bağlantı varış holü.</span>
-                  </div>
-                  <div class="space-connections"><strong>Bağlı Mekânlar:</strong> Tüm Üst Kat Odaları</div>
-                </div>
-
-                <div class="space-card" data-space-id="balcony">
-                  <div class="space-card-header">
-                    <h4 class="space-title">Balkon / Açık Alan</h4>
-                    <span class="status-badge confirm">Teyit Gerekli</span>
-                  </div>
-                  <div class="space-meta">Üst Kat • 8 - 10 m² (Açık)</div>
-                  <p class="space-purpose"><strong>Amaç:</strong> Ebeveyn odasına bağlı açık hava dinlenme.</p>
-                  <div class="space-rationale">
-                    <span class="source-badge sys-interp">Sistem yorumu</span>
-                    <span>Üst kat hava alma ihtiyacı.</span>
-                  </div>
-                  <div class="space-connections"><strong>Bağlı Mekânlar:</strong> Ebeveyn Odası</div>
-                </div>
-
-              </div>
-            </div>
-
-            <!-- SPATIAL RELATIONSHIP DIAGRAM SECTION -->
-            <div class="relationship-diagram-section">
-              <h3 class="section-title">Kat Bazlı Mekânsal İlişki Şeması</h3>
-              <p class="section-desc">Mekânlar arasındaki doğrudan, kontrollü, görsel ve akustik bağları incelemek için düğümlere tıklayın.</p>
-              
-              <div class="diagram-nodes-grid">
-                <button class="rel-node-btn" data-rel="rel_work_living">
-                  <span class="rel-type direct">Kontrollü / Akustik</span>
-                  <span class="rel-label">Çalışma ↔ Salon</span>
-                </button>
-
-                <button class="rel-node-btn" data-rel="rel_kitchen_living">
-                  <span class="rel-type visual">Görsel / Açık</span>
-                  <span class="rel-label">Mutfak ↔ Salon</span>
-                </button>
-
-                <button class="rel-node-btn" data-rel="rel_stair_vertical">
-                  <span class="rel-type vertical">Düşey Bağlantı</span>
-                  <span class="rel-label">Merdiven (Zemin ↕ Üst)</span>
-                </button>
-
-                <button class="rel-node-btn" data-rel="rel_kids_master">
-                  <span class="rel-type privacy">Mahremiyet Ayrımı</span>
-                  <span class="rel-label">Ebeveyn ↔ Çocuk Odaları</span>
-                </button>
-              </div>
+              <div class="space-cards-grid" id="spaceGridUpper"></div>
             </div>
 
           </div>
         </div>
 
-        <!-- STAGE 4: TASLAK PLAN (SCHEMATIC FLOOR PLANS & REASONING) -->
+        <!-- STAGE 4: TASLAK PLAN (DYNAMIC INTERACTIVE PLAN EDITOR) -->
         <div class="stage-view hidden" id="stageView4">
           <div class="plan-scroll-area">
             
-            <!-- Compact Plan Assumptions Card -->
             <div class="plan-assumptions-compact-card">
               <div class="compact-card-left">
                 <span class="card-icon">📐</span>
                 <div class="card-texts">
                   <strong class="card-title">Bu taslak hangi varsayımlarla oluşturuldu?</strong>
-                  <span class="card-summary">İki katlı konut • ~190–220 m² brüt • Kuzey yönü • Varsayımsal giriş yönü • Arsa ölçüleri henüz bilinmiyor</span>
+                  <span class="card-summary">İki katlı konut • ~190–220 m² brüt • Kuzey yönü • Arsa verisi girilmedi</span>
                 </div>
               </div>
               <button class="edit-assumptions-btn" id="openAssumptionsBtn">Varsayımları Düzenle</button>
             </div>
 
-            <!-- Alternative Selector Bar -->
+            <!-- Alternative & Floor Controls -->
             <div class="alternative-selector-bar">
               <button class="alt-tab-btn active" id="btnAltA" data-alt="a">
                 <span class="alt-code">Alternatif A</span>
                 <span class="alt-name">Kontrollü Ayrışma</span>
-                <span class="alt-tag">İzole Çalışma Odası</span>
               </button>
 
               <button class="alt-tab-btn" id="btnAltB" data-alt="b">
                 <span class="alt-code">Alternatif B</span>
                 <span class="alt-name">Esnek Bağlantı</span>
-                <span class="alt-tag">Kayar Panelli Dönüşüm</span>
               </button>
             </div>
 
-            <!-- Floor Selector for Large Plan View -->
-            <div class="plan-floor-tabs">
-              <button class="plan-floor-btn active" id="planFloorGroundBtn" data-floor="ground">Zemin Kat Planı</button>
-              <button class="plan-floor-btn" id="planFloorUpperBtn" data-floor="upper">Üst Kat Planı</button>
+            <div class="plan-controls-toolbar">
+              <div class="plan-floor-tabs">
+                <button class="plan-floor-btn active" id="planFloorGroundBtn" data-floor="ground">Zemin Kat Planı</button>
+                <button class="plan-floor-btn" id="planFloorUpperBtn" data-floor="upper">Üst Kat Planı</button>
+              </div>
+
+              <!-- Undo / Redo & Lock Toolbar (Requirements 7 & 9) -->
+              <div class="undo-redo-toolbar">
+                <button class="tool-btn" id="undoBtn" title="Geri Al (Ctrl+Z)">↩ Geri Al</button>
+                <button class="tool-btn" id="redoBtn" title="İleri Al (Ctrl+Y)">↪ İleri Al</button>
+                <button class="tool-btn" id="lockToggleBtn" title="Seçili Mekânı Kilitle">🔒 Mekânı Kilitle</button>
+                <button class="tool-btn" id="swapBtn" title="İki Mekânın Yerini Değiştir">🔄 Yer Değiştir (Takas)</button>
+              </div>
             </div>
 
-            <!-- INLINE SVG CONTAINER FOR LARGE PLAN VIEW -->
-            <div class="plan-svg-container" id="planSvgContainer">
-              <!-- SVG will be injected inline via JS fetch -->
-              <div class="loading-spinner">Plan yükleniyor...</div>
+            <!-- DYNAMIC INTERACTIVE PLAN EDITOR CONTAINER -->
+            <div class="plan-svg-container" id="planEditorContainer">
+              <!-- Rendered dynamically by PlanEditor class -->
             </div>
 
-            <!-- ALTERNATIVE COMPARISON SECTION BELOW PLAN -->
+            <!-- DEMO SCENARIO SHORTCUT BUTTONS -->
+            <div class="demo-scenarios-bar">
+              <span class="scenario-label">⚡ Hızlı Demo Senaryoları:</span>
+              <button class="scenario-btn" id="demoScenario2m">🛏️ 2 Metre Yatak Odası Riski</button>
+              <button class="scenario-btn" id="demoScenarioBypass">⚠️ Depo Adıyla Kullanım Talebi</button>
+              <button class="scenario-btn" id="demoScenarioResize">📐 Çalışma Odasını Küçült (11 m²)</button>
+            </div>
+
+            <!-- ACTION PROPOSAL CARD (Prior to permanent commit - Requirement 2 & 16) -->
+            <div class="action-proposal-card hidden" id="actionProposalCard">
+              <div class="proposal-header">
+                <span class="proposal-badge">📋 Yapılandırılmış İşlem Önizlemesi</span>
+                <h4 class="proposal-title" id="proposalTitle">İstenen Değişiklik: Çalışma Alanını Küçült</h4>
+              </div>
+
+              <div class="proposal-grid">
+                <div class="prop-item"><strong>Hedef:</strong> <span id="propTarget">14 m² → 10–11 m²</span></div>
+                <div class="prop-item"><strong>Korunacaklar:</strong> <span id="propPreserve">Mutfak alanı, Toplam brüt alan</span></div>
+                <div class="prop-item"><strong>Etkilenecekler:</strong> <span id="propEffects">Çocuk odaları metrajı, Dolaşım payı</span></div>
+                <div class="prop-item"><strong>Teknik Kontrol:</strong> <span id="propRules" class="badge-verify">Ön kontrolden geçti</span></div>
+              </div>
+
+              <div class="proposal-actions">
+                <button class="prop-btn primary" id="btnPropApply">Uygula</button>
+                <button class="prop-btn secondary" id="btnPropPreview">Önizle</button>
+                <button class="prop-btn alt" id="btnPropAlt">Alternatif Göster</button>
+                <button class="prop-btn cancel" id="btnPropCancel">Vazgeç</button>
+              </div>
+            </div>
+
+            <!-- ALTERNATIVE COMPARISON SECTION -->
             <div class="alternative-comparison-section">
-              <h3 class="comp-title">Alternatif Karşılaştırma &amp; Kavramsal Eğilimler</h3>
+              <h3 class="comp-title">Alternatif Karşılaştırma &amp; Nitel Göstergeler</h3>
               
-              <!-- Qualitative Indicators Grid (No radar/percentages!) -->
               <div class="qualitative-indicators-box">
                 <div class="comp-disclaimer">
                   ⚠️ Ön kavramsal karşılaştırma — hesaplanmış performans puanı değildir.
@@ -810,43 +506,33 @@
                   </div>
                 </div>
               </div>
-
-              <!-- User Plan Inclination Choice -->
-              <div class="user-inclination-box">
-                <h4 class="inclination-title">Bu taslak alternatifler hakkındaki ilk eğiliminiz:</h4>
-                
-                <div class="inclination-buttons">
-                  <button class="inc-btn" data-inc="a">A’ya daha yakınım</button>
-                  <button class="inc-btn" data-inc="b">B’ye daha yakınım</button>
-                  <button class="inc-btn" data-inc="combo">İkisinin birleşimi</button>
-                  <button class="inc-btn" data-inc="undecided">Henüz karar veremiyorum</button>
-                </div>
-
-                <div class="inclination-status" id="inclinationStatus">
-                  Kullanıcı eğilimi — nihai tasarım kararı değildir.
-                </div>
-              </div>
-
             </div>
 
           </div>
         </div>
 
-        <!-- ARCHITECT PREVIEW VIEW (FULL TECHNICAL BRIEF) -->
+        <!-- ARCHITECT PREVIEW VIEW (FULL TECHNICAL REPORT & DECISION HISTORY) -->
         <div class="stage-view hidden" id="architectStageView">
           <div class="architect-scroll-area">
             <div class="arch-banner">
-              <h2>Mimar Teknik Brief &amp; Güven Analizi</h2>
-              <p>Tüm kullanıcı beyanları, görsel tercihler ve sistem varsayımlarının sentezlenmiş mimari özeti.</p>
+              <h2>Mimar Teknik Brief &amp; Karar Revizyon Raporu</h2>
+              <p>Sentezlenmiş mimari brief, yasal ön kontroller ve karar geçmişi.</p>
             </div>
 
-            <div class="arch-sections-grid">
-              
+            <!-- Karar ve Revizyon Geçmişi (Requirement 9) -->
+            <div class="arch-card full-width">
+              <h3>📜 Karar ve Revizyon Geçmişi</h3>
+              <div id="architectDecisionHistory">
+                <!-- Rendered dynamically by ChangeHistory class -->
+              </div>
+            </div>
+
+            <div class="arch-sections-grid" style="margin-top:20px;">
               <div class="arch-card">
                 <h3>1. Doğrulanmış Kullanıcı Verileri</h3>
                 <ul>
-                  <li><span class="source-badge user-said">Doğrudan kullanıcı beyanı</span> Eşim evden çalışıyor, online toplantılar yapıyor.</li>
-                  <li><span class="source-badge user-said">Doğrudan kullanıcı beyanı</span> Çocuklar okuldan saat 16:00'da dönüyor.</li>
+                  <li><span class="source-badge user-said">Doğrudan kullanıcı beyanı</span> Eşim evden çalışıyor, online toplantılar var.</li>
+                  <li><span class="source-badge user-said">Doğrudan kullanıcı beyanı</span> Çocuklar 16:00'da dönüyor.</li>
                 </ul>
               </div>
 
@@ -854,60 +540,36 @@
                 <h3>2. Görsel Tercih Nitelikleri</h3>
                 <ul>
                   <li><span class="source-badge pref-chip">Kullanıcının görsel tercihi</span> Sessizlik &amp; Gerektiğinde kapanabilirlik.</li>
-                  <li><span class="source-badge pref-chip">Kullanıcının görsel tercihi</span> Açık mutfak ve sosyal temas eğilimi.</li>
                 </ul>
               </div>
 
               <div class="arch-card">
-                <h3>3. Sistem Yorumları</h3>
-                <ul>
-                  <li><span class="source-badge sys-interp">Sistem yorumu</span> Öğleden sonra ses çakışmasını önlemek için akustik çalışma alanı kritik.</li>
-                  <li><span class="source-badge sys-interp">Sistem yorumu</span> Çamaşır odası üst katta yatak odalarına yakın konumlandırılmalı.</li>
-                </ul>
-              </div>
-
-              <div class="arch-card">
-                <h3>4. Mekân Programı Özeti</h3>
-                <p>2 Katlı, ~148–168 m² net, ~190–220 m² brüt müstakil konut kurgusu.</p>
-              </div>
-
-              <div class="arch-card">
-                <h3>5. Alternatif A ve B Farkları</h3>
-                <p>Alternatif A tam izole kapalı çalışma odası sunarken; Alternatif B kayar panelli esnek çalışma alanı sunmaktadır.</p>
-              </div>
-
-              <div class="arch-card">
-                <h3>6. Teyit Gereken Kararlar</h3>
+                <h3>3. Teyit Gereken Konular</h3>
                 <ul>
                   <li><span class="badge-verify">Teyit Gerekli</span> Tam akustik ayrışma mı yoksa esnek bağlantı mı öncelikli?</li>
-                  <li><span class="badge-verify">Teyit Gerekli</span> Arsa yönlenmesi ve manzara aksı henüz girilmedi.</li>
                 </ul>
               </div>
-
             </div>
           </div>
         </div>
 
       </section>
 
-      <!-- RIGHT CONTEXTUAL PANEL (~28% at 1440px, Drawer at <1024px) -->
+      <!-- RIGHT CONTEXTUAL PANEL & SINGLE CONTEXTUAL ASSISTANT -->
       <aside class="contextual-right-panel" id="contextualPanel">
         
-        <!-- Mobile Drawer Toggle Bar -->
         <div class="drawer-handle-bar" id="drawerHandleBar">
           <span class="drawer-handle-pill"></span>
-          <span class="drawer-handle-title">Bağlamsal Panel</span>
+          <span class="drawer-handle-title">Bağlamsal Asistan &amp; Panel</span>
         </div>
 
         <div class="panel-header">
           <h2 class="panel-title" id="panelTitle">Sizi nasıl anladım?</h2>
-          <p class="panel-subtitle" id="panelSubtitle">Sohbetten elde edilen mekânsal bulgular</p>
+          <span class="context-badge" id="assistantContextBadge">Yaşamınızı Anlama — Sohbet Diyaloğu</span>
         </div>
 
-        <!-- DYNAMIC PANEL CONTENT BY STAGE -->
         <div class="panel-body" id="panelBody">
           
-          <!-- Stage 1 Panel Content -->
           <div class="panel-stage-content active" id="panelStage1">
             <div class="insight-cards-stack">
               <div class="insight-card">
@@ -918,25 +580,13 @@
                 <h4 class="insight-card-title">Evden Tam Zamanlı Çalışma Ritmi</h4>
                 <p class="insight-card-desc">"Eşim evden çalışıyor, online toplantılar var."</p>
               </div>
-
-              <div class="insight-card">
-                <div class="insight-card-header">
-                  <span class="source-badge sys-interp">Sistem yorumu</span>
-                  <span class="conf-badge mid">Güven: Orta</span>
-                </div>
-                <h4 class="insight-card-title">Öğleden Sonra Kullanım Yoğunluğu</h4>
-                <p class="insight-card-desc">Saat 16:00 sonrası çocukların gelişi ile yaşanacak ses çakışması kontrol edilmeli.</p>
-              </div>
             </div>
           </div>
 
-          <!-- Stage 2 Panel Content -->
           <div class="panel-stage-content hidden" id="panelStage2">
             <div class="insight-cards-stack">
               <div class="insight-card">
-                <div class="insight-card-header">
-                  <span class="source-badge pref-chip">Kullanıcının görsel tercihi</span>
-                </div>
+                <span class="source-badge pref-chip">Kullanıcının görsel tercihi</span>
                 <h4 class="insight-card-title">Seçilen Mekânsal Nitelikler</h4>
                 <div class="selected-chips-summary" id="selectedChipsSummary">
                   <span class="summary-chip">Sessizlik</span>
@@ -946,21 +596,18 @@
             </div>
           </div>
 
-          <!-- Stage 3 Panel Content -->
           <div class="panel-stage-content hidden" id="panelStage3">
             <div class="insight-cards-stack" id="stage3PanelCards">
               <div class="insight-card">
                 <h4 class="insight-card-title">Program Karar Dayanakları</h4>
-                <p class="insight-card-desc">Detaylarını görmek için sol taraftaki mekân veya ilişki düğümlerine tıklayın.</p>
+                <p class="insight-card-desc">Detaylarını görmek için sol taraftaki mekân düğümlerine tıklayın.</p>
               </div>
             </div>
           </div>
 
-          <!-- Stage 4 Panel Content (Default Plan Reasoning) -->
           <div class="panel-stage-content hidden" id="panelStage4">
             <div class="insight-cards-stack" id="stage4PanelCards">
               
-              <!-- Active Room Reasoning Card -->
               <div class="insight-card highlight-card" id="roomReasoningCard">
                 <div class="insight-card-header">
                   <span class="source-badge user-said" id="roomSourceType">Doğrudan kullanıcı beyanı</span>
@@ -972,28 +619,6 @@
                   <p><strong>Kullanıcı verisi:</strong> <span id="roomUserStatement">"Eşim evden çalışıyor."</span></p>
                   <p><strong>Görsel tercih:</strong> <span id="roomVisualAttr">"Sessizlik" ve "gerektiğinde kapanabilmesi".</span></p>
                   <p><strong>Mimari yorum:</strong> <span id="roomArchInterp">Çalışma alanı ortak yaşama erişilebilir fakat akustik olarak izole edilebilir olmalıdır.</span></p>
-                  <p><strong>Alternatif karşılığı:</strong> <span id="roomAltDiff">Alt A'da kapalı oda, Alt B'de kayar panelli esnek alandır.</span></p>
-                  <p><strong>Teyit konusu:</strong> <span id="roomVerifyTopic">Tam ayrışma ile esnek bağlantı arasındaki öncelik teyit edilmelidir.</span></p>
-                </div>
-              </div>
-
-              <!-- Collapsible Accordion for Past Conversation Rationale -->
-              <div class="past-rationale-accordion">
-                <button class="accordion-toggle-btn" id="togglePastRationaleBtn">
-                  <span>Bütün dayanakları göster</span>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                  </svg>
-                </button>
-                <div class="accordion-content hidden" id="pastRationaleContent">
-                  <div class="insight-card">
-                    <span class="source-badge user-said">Doğrudan kullanıcı beyanı</span>
-                    <p class="insight-card-desc">Çocuklar 16:00'da okuldan dönüyor.</p>
-                  </div>
-                  <div class="insight-card">
-                    <span class="source-badge proto-assump">Prototip varsayımı</span>
-                    <p class="insight-card-desc">İki katlı konut kurgusu.</p>
-                  </div>
                 </div>
               </div>
 
@@ -1002,12 +627,27 @@
 
         </div>
 
+        <!-- SINGLE CONTEXTUAL BRIF.AI ASSISTANT CHAT FOOTER (Across all stages) -->
+        <div class="contextual-assistant-footer" id="contextualAssistantFooter">
+          
+          <div class="chat-header-room-info hidden" id="chatHeaderRoomInfo">
+            📌 <strong>Çalışma Odası</strong> hakkında konuşuyorsunuz.
+          </div>
+
+          <form class="assistant-chat-form" id="assistantChatForm">
+            <div class="input-wrapper">
+              <textarea id="assistantUserInput" placeholder="BRIF.AI Asistana yazın veya komut verin..." rows="2"></textarea>
+              <button type="submit" class="send-btn">Gönder</button>
+            </div>
+          </form>
+        </div>
+
       </aside>
 
     </main>
   </div>
 
-  <!-- PLAN ASSUMPTIONS EDIT MODAL / PANEL -->
+  <!-- PLAN ASSUMPTIONS MODAL -->
   <div class="modal-backdrop hidden" id="assumptionsModal">
     <div class="modal-card">
       <div class="modal-header">
@@ -1025,33 +665,11 @@
           </div>
 
           <div class="form-group">
-            <label>Brüt Alan Büyüklüğü:</label>
-            <select id="assumpSize">
-              <option value="medium" selected>Orta (190 – 220 m² Brüt)</option>
-              <option value="small">Küçük (140 – 170 m² Brüt)</option>
-              <option value="large">Geniş (240 – 280 m² Brüt)</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label>Giriş Yönü:</label>
-            <select id="assumpOrient">
-              <option value="north" selected>Kuzey Giriş (Mevcut)</option>
-              <option value="south">Güney Giriş</option>
-              <option value="east">Doğu Giriş</option>
-            </select>
-          </div>
-
-          <div class="form-group">
             <label>Çalışma Alanı Önceliği:</label>
             <select id="assumpStudy">
-              <option value="isolated" selected>Tam Akustik İzolasyon Öncelikli (Alt A Öne Çıkar)</option>
-              <option value="flexible">Esnek Dönüşüm Öncelikli (Alt B Öne Çıkar)</option>
+              <option value="isolated" selected>Tam Akustik İzolasyon Öncelikli (Alt A)</option>
+              <option value="flexible">Esnek Dönüşüm Öncelikli (Alt B)</option>
             </select>
-          </div>
-
-          <div class="modal-warning-box">
-            ℹ️ Bu seçimler gerçek zamanlı plan geometrisini yeniden üretmez; prototipte hangi alternatifin öne çıkarıldığını ve açıklama metinlerini günceller.
           </div>
 
           <div class="modal-actions">
@@ -1062,6 +680,12 @@
     </div>
   </div>
 
+  <!-- MODULAR SCRIPTS (Requirement 19) -->
+  <script src="js/rule_evaluator.js"></script>
+  <script src="js/change_history.js"></script>
+  <script src="js/demo_intent_parser.js"></script>
+  <script src="js/plan_editor.js"></script>
+  <script src="js/contextual_assistant.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

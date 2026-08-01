@@ -1,117 +1,77 @@
 /**
- * BRIF.AI — Multi-Stage Architectural UX Prototype v3 Interaction Script
+ * BRIF.AI — Main Orchestration Script (v4 Prototype)
  *
- * Handles:
- * 1. Process Stepper Stage Navigation & Contextual Right Panel switching
- * 2. Stage 1 Chat Conversation & User Statement collection
- * 3. Stage 2 Visual Preferences (3 Comparative Rounds & Attribute Chips)
- * 4. Stage 3 Space Program (2 Floor Tabs & Spatial Relationship Graph)
- * 5. Stage 4 Draft Schematic Floor Plans (Inline SVG injection, floor views, room click reasoning)
- * 6. Qualitative Indicators, Plan Assumptions Simulation & User Inclination
- * 7. Architect View Toggle & Mobile Drawer Handling
+ * Connects ContextualAssistant, PlanEditor, RuleEvaluator, ChangeHistory,
+ * and DemoIntentParser for full v4 interaction experience.
  */
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
 
-  // --------------------------------------------------------------------------
-  // Data Repositories & State
-  // --------------------------------------------------------------------------
-  let currentStage = 1;
-  let currentAlt = 'a'; // 'a' or 'b'
-  let currentFloor = 'ground'; // 'ground' or 'upper'
-  let isArchitectView = false;
-  let selectedAttributes = new Set();
-  let userInclination = null;
+  // Instantiate Core Engines
+  const changeHistory = new ChangeHistory();
+  const ruleEvaluator = new RuleEvaluator();
+  const assistant = new ContextualAssistant();
 
-  // Cached Inline SVGs to prevent duplicate fetch calls
-  const svgCache = {
-    a: null,
-    b: null
-  };
+  let planEditor = null;
+  let rawPlanAlternativesData = null;
 
-  // Room Reasoning Knowledge Base (Requirements 5 & 8)
-  const roomReasoningMap = {
-    study: {
-      title: 'Çalışma Odası — Neden Burada?',
-      userStatement: 'Eşim evden çalışıyor, online toplantılar yapıyor.',
-      visualAttr: 'Sessizlik ve gerektiğinde kapanabilmesi.',
-      archInterp: 'Çalışma alanı ortak yaşama yakın ancak akustik olarak izole edilebilir olmalıdır.',
-      altDiff: 'Alternatif A: Tam izole kapalı oda. Alternatif B: Kayar panelli esnek dönüşüm.',
-      verifyTopic: 'Tam ayrışma ile esnek bağlantı arasındaki öncelik henüz kesinleşmedi.',
-      sourceType: 'Doğrudan kullanıcı beyanı',
-      sourceClass: 'user-said',
-      confidence: 'Güven: Orta'
-    },
-    living: {
-      title: 'Yaşam Alanı (Salon) — Neden Burada?',
-      userStatement: 'Öğleden sonra 16:00 sonrası çocuklar okuldan gelince yoğun kullanılıyor.',
-      visualAttr: 'Ferahlık, gün ışığı ve peyzaj teras teması.',
-      archInterp: 'Güney cephesinde terasla bütünleşen ana aile toplanma alanı.',
-      altDiff: 'Alternatif A: Çalışma alanından bağımsız. Alternatif B: Çalışma alanına kayar panelle açılan akış.',
-      verifyTopic: 'Mutfak ile açık/kapı ilişkisi netleştirilecek.',
-      sourceType: 'Doğrudan kullanıcı beyanı',
-      sourceClass: 'user-said',
-      confidence: 'Güven: Yüksek'
-    },
-    kitchen: {
-      title: 'Mutfak ve Yemek — Neden Burada?',
-      userStatement: 'Günlük aile yemekleri ve hızlı bahçe servisi ihtiyacı.',
-      visualAttr: 'Görsel bağlantı & koku/ses kontrolü.',
-      archInterp: 'Zemin kat servis kanadında, teras ve salona doğrudan erişim.',
-      altDiff: 'Alternatif A: Yarı-kontrollü bağımsız kurgu. Alternatif B: Açık ada mutfak kurgusu.',
-      verifyTopic: 'Ada mutfak çevresi sirkülasyon genişliği.',
-      sourceType: 'Kullanıcının görsel tercihi',
-      sourceClass: 'pref-chip',
-      confidence: 'Güven: Yüksek'
-    },
-    master: {
-      title: 'Ebeveyn Yatak Odası — Neden Burada?',
-      userStatement: 'Gece kuşağında sessizlik ve özel dinlenme alanı.',
-      visualAttr: 'Mahremiyet ve özel banyo konforu.',
-      archInterp: 'Üst katta çocuk odalarından merdiven holü ile ayrışan özel süit.',
-      altDiff: 'Her iki alternatifte üst kat korunaklı cephede konumlanmıştır.',
-      verifyTopic: 'Giyinme bölümünün banyo ile ilişkisi.',
-      sourceType: 'Doğrudan kullanıcı beyanı',
-      sourceClass: 'user-said',
-      confidence: 'Güven: Yüksek'
-    },
-    kids: {
-      title: 'Çocuk Odaları — Neden Burada?',
-      userStatement: 'Çocuklar 16:00 sonrası odalarını çalışma ve oyun için kullanıyor.',
-      visualAttr: 'Gün ışığı ve ortak banyo erişimi.',
-      archInterp: 'Üst kat doğu/güney-doğu cephesinde ikiz çocuk alanı.',
-      altDiff: 'Her iki alternatifte ortak banyo ve merdiven holüne hizalı.',
-      verifyTopic: 'Gelecekte çalışma masası büyüme ihtiyacı.',
-      sourceType: 'Doğrudan kullanıcı beyanı',
-      sourceClass: 'user-said',
-      confidence: 'Güven: Yüksek'
-    },
-    entry: {
-      title: 'Giriş ve Vestiyer — Neden Burada?',
-      userStatement: 'Dört kişilik aile ayakkabı/mont ve okul çantası depolama.',
-      visualAttr: 'Mahremiyet süzgeci ve düzen.',
-      archInterp: 'Rüzgarlık ve vestiyer tamponu sağlayan ana giriş düğümü.',
-      altDiff: 'Zemin kat kuzey/kuzey-doğu aksında konumlandırılmıştır.',
-      verifyTopic: 'Ayakkabılık depolama hacmi yeterliliği.',
-      sourceType: 'Prototip varsayımı',
-      sourceClass: 'proto-assump',
-      confidence: 'Güven: Yüksek'
-    },
-    terrace: {
-      title: 'Peyzaj Terası — Neden Burada?',
-      userStatement: 'Salondan bahçeye doğrudan geçiş ve dış mekân kullanımı.',
-      visualAttr: 'Ferahlık ve gün ışığı.',
-      archInterp: 'Salona doğrudan bağlı açık dış mekân yaşama platformu.',
-      altDiff: 'Açık alandır, kapalı brüt toplama eklenmez.',
-      verifyTopic: 'Teras üstü gölgelendirme elemanı tercihi.',
-      sourceType: 'Kullanıcının görsel tercihi',
-      sourceClass: 'pref-chip',
-      confidence: 'Güven: Orta'
+  // Load Structured Plan Data JSON
+  try {
+    const res = await fetch('data/plan_alternatives.demo.json');
+    if (res.ok) {
+      rawPlanAlternativesData = await res.json();
     }
-  };
+  } catch (err) {
+    console.error('Plan alternatives JSON load error:', err);
+  }
+
+  // Initialize Plan Editor
+  planEditor = new PlanEditor('planEditorContainer', {
+    onSpaceSelect: (space) => {
+      assistant.setContext({ spaceId: space.id, spaceName: space.name });
+    },
+    onPlanChange: (event) => {
+      const space = planEditor.getSpaceById(event.spaceId);
+      if (!space) return;
+
+      // Evaluate Rules
+      const evalResults = ruleEvaluator.evaluateSpaceOperation(space, event.type, {
+        out_of_bounds: false,
+        is_open_living: space.id === 'study' && space.x < 300
+      });
+
+      // Show Action Proposal Card (Requirement 2 & 16)
+      showActionProposalCard({
+        title: `İstenen Değişiklik: ${space.name} (${event.type.toUpperCase()})`,
+        target: `${space.name} (${space.area} m² Net)`,
+        preserve: 'Mutfak & Toplam Kapalı Alan',
+        effects: 'Komşu mekân sirkülasyonu',
+        rulesText: evalResults[0].statusText,
+        space: space,
+        actionType: event.type
+      });
+
+      // Record in Change History
+      changeHistory.recordChange({
+        action_type: event.type,
+        target_space_id: space.id,
+        target_space_name: space.name,
+        floor: planEditor.currentFloor,
+        alternative: planEditor.currentAlt,
+        user_message: `Plan editöründen ${space.name} ${event.type} işlemi yapıldı.`,
+        warnings: evalResults.filter(r => r.severity !== 'PASS')
+      });
+
+      updateArchitectDecisionReport();
+    }
+  });
+
+  if (rawPlanAlternativesData) {
+    planEditor.loadData(rawPlanAlternativesData);
+  }
 
   // --------------------------------------------------------------------------
-  // DOM References
+  // Stepper & Stage Navigation
   // --------------------------------------------------------------------------
   const stepNodes = document.querySelectorAll('.step-node');
   const stageViews = document.querySelectorAll('.stage-view');
@@ -121,7 +81,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const architectStageView = document.getElementById('architectStageView');
 
   const panelTitle = document.getElementById('panelTitle');
-  const panelSubtitle = document.getElementById('panelSubtitle');
   const panelStage1 = document.getElementById('panelStage1');
   const panelStage2 = document.getElementById('panelStage2');
   const panelStage3 = document.getElementById('panelStage3');
@@ -130,59 +89,21 @@ document.addEventListener('DOMContentLoaded', () => {
   const drawerHandleBar = document.getElementById('drawerHandleBar');
   const contextualPanel = document.getElementById('contextualPanel');
 
-  // Stage 1 Chat
-  const chatMessages = document.getElementById('chatMessages');
-  const suggestionChips = document.getElementById('suggestionChips');
-  const chatForm = document.getElementById('chatForm');
-  const userInput = document.getElementById('userInput');
-  const voiceBtn = document.getElementById('voiceBtn');
-
-  // Stage 2 Visual Preferences
-  const roundTabs = document.querySelectorAll('.round-tab');
-  const prefRoundContainers = document.querySelectorAll('.pref-round-container');
-  const selectedChipsSummary = document.getElementById('selectedChipsSummary');
-  const btnNextToProgram = document.getElementById('btnNextToProgram');
-
-  // Stage 3 Space Program
-  const floorTabGround = document.getElementById('floorTabGround');
-  const floorTabUpper = document.getElementById('floorTabUpper');
-  const spacesGround = document.getElementById('spacesGround');
-  const spacesUpper = document.getElementById('spacesUpper');
-  const stage3PanelCards = document.getElementById('stage3PanelCards');
-
-  // Stage 4 Plan & Alternatives
-  const btnAltA = document.getElementById('btnAltA');
-  const btnAltB = document.getElementById('btnAltB');
-  const planFloorGroundBtn = document.getElementById('planFloorGroundBtn');
-  const planFloorUpperBtn = document.getElementById('planFloorUpperBtn');
-  const planSvgContainer = document.getElementById('planSvgContainer');
-  const openAssumptionsBtn = document.getElementById('openAssumptionsBtn');
-  const assumptionsModal = document.getElementById('assumptionsModal');
-  const closeAssumptionsBtn = document.getElementById('closeAssumptionsBtn');
-  const assumptionsForm = document.getElementById('assumptionsForm');
-
-  // Accordion for Past Rationale
-  const togglePastRationaleBtn = document.getElementById('togglePastRationaleBtn');
-  const pastRationaleContent = document.getElementById('pastRationaleContent');
-
-  // --------------------------------------------------------------------------
-  // 1. Process Stepper Navigation & Stage Switching (Requirement 1 & 8)
-  // --------------------------------------------------------------------------
   stepNodes.forEach(node => {
     node.addEventListener('click', () => {
-      const targetStage = parseInt(node.dataset.stage, 10);
-      switchStage(targetStage);
+      const stageNum = parseInt(node.dataset.stage, 10);
+      switchStage(stageNum);
     });
   });
 
   function switchStage(stageNum) {
-    if (isArchitectView) {
+    if (assistant.currentContext.isArchitectView) {
       toggleArchitectView(false);
     }
 
-    currentStage = stageNum;
+    assistant.setContext({ stage: stageNum });
 
-    // Update Stepper Bar UI
+    // Stepper UI
     stepNodes.forEach(node => {
       const num = parseInt(node.dataset.stage, 10);
       node.classList.remove('active');
@@ -190,107 +111,100 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (num === stageNum) {
         node.classList.add('active');
-        if (badge) {
-          badge.className = 'step-badge badge-active';
-          badge.textContent = 'Aktif';
-        }
+        if (badge) { badge.className = 'step-badge badge-active'; badge.textContent = 'Aktif'; }
       } else if (num < stageNum) {
         node.classList.add('completed');
-        if (badge) {
-          badge.className = 'step-badge badge-completed';
-          badge.textContent = 'Tamamlandı';
-        }
-      } else {
-        if (badge) {
-          badge.className = 'step-badge badge-pending';
-          badge.textContent = num === 2 ? '3 Tur' : (num === 3 ? '2 Katlı' : 'Şematik');
-        }
+        if (badge) { badge.className = 'step-badge badge-completed'; badge.textContent = 'Tamamlandı'; }
       }
     });
 
-    // Update Main Stage Views
-    stageViews.forEach(view => {
-      view.classList.add('hidden');
-      view.classList.remove('active');
-    });
-
+    stageViews.forEach(v => { v.classList.add('hidden'); v.classList.remove('active'); });
     const activeView = document.getElementById(`stageView${stageNum}`);
-    if (activeView) {
-      activeView.classList.remove('hidden');
-      activeView.classList.add('active');
-    }
+    if (activeView) { activeView.classList.remove('hidden'); activeView.classList.add('active'); }
 
-    // Update Contextual Right Panel Content & Titles (Requirements 1 & 8)
-    updateRightPanelForStage(stageNum);
+    // Right Panel
+    [panelStage1, panelStage2, panelStage3, panelStage4].forEach(p => p.classList.add('hidden'));
+    if (stageNum === 1) { panelTitle.textContent = 'Sizi nasıl anladım?'; panelStage1.classList.remove('hidden'); }
+    else if (stageNum === 2) { panelTitle.textContent = 'Görsellerden ne anladım?'; panelStage2.classList.remove('hidden'); }
+    else if (stageNum === 3) { panelTitle.textContent = 'Program kararlarının dayanakları'; panelStage3.classList.remove('hidden'); populateSpaceGrids(); }
+    else if (stageNum === 4) { panelTitle.textContent = 'Planı neden böyle kurduk?'; panelStage4.classList.remove('hidden'); planEditor.render(); }
+  }
 
-    // If Stage 4, load plan SVG inline
-    if (stageNum === 4) {
-      loadPlanSvg(currentAlt, currentFloor);
+  function toggleArchitectView(showArch) {
+    assistant.setContext({ isArchitectView: showArch });
+
+    if (showArch) {
+      stageViews.forEach(v => v.classList.add('hidden'));
+      architectStageView.classList.remove('hidden');
+      toggleBtnText.textContent = 'Müşteri Görünümüne Dön';
+      panelTitle.textContent = 'Doğrulanmış brief ve güven durumu';
+      updateArchitectDecisionReport();
+    } else {
+      architectStageView.classList.add('hidden');
+      toggleBtnText.textContent = 'Mimar Önizlemesine Geç';
+      switchStage(assistant.currentContext.stage);
     }
   }
 
-  function updateRightPanelForStage(stageNum) {
-    // Hide all panel stage containers
-    [panelStage1, panelStage2, panelStage3, panelStage4].forEach(el => el.classList.add('hidden'));
-
-    if (stageNum === 1) {
-      panelTitle.textContent = 'Sizi nasıl anladım?';
-      panelSubtitle.textContent = 'Sohbetten elde edilen günlük yaşam bulguları';
-      panelStage1.classList.remove('hidden');
-    } else if (stageNum === 2) {
-      panelTitle.textContent = 'Görsellerden ne anladım?';
-      panelSubtitle.textContent = 'Seçilen mekânsal nitelikler ve tercihler';
-      panelStage2.classList.remove('hidden');
-    } else if (stageNum === 3) {
-      panelTitle.textContent = 'Program kararlarının dayanakları';
-      panelSubtitle.textContent = 'Mekân ve ilişki düğümü detayları';
-      panelStage3.classList.remove('hidden');
-    } else if (stageNum === 4) {
-      panelTitle.textContent = 'Planı neden böyle kurduk?';
-      panelSubtitle.textContent = 'Seçili mekânın mimari dayanakları';
-      panelStage4.classList.remove('hidden');
-    }
-  }
-
-  // --------------------------------------------------------------------------
-  // 2. Stage 1 Chat Conversation Logic
-  // --------------------------------------------------------------------------
-  if (suggestionChips) {
-    suggestionChips.addEventListener('click', (e) => {
-      const chip = e.target.closest('.chip-btn');
-      if (!chip) return;
-      const replyText = chip.dataset.reply || chip.textContent.trim();
-      handleUserSendMessage(replyText);
+  if (toggleViewBtn) {
+    toggleViewBtn.addEventListener('click', () => {
+      toggleArchitectView(!assistant.currentContext.isArchitectView);
     });
   }
 
-  if (chatForm) {
-    chatForm.addEventListener('submit', (e) => {
+  // --------------------------------------------------------------------------
+  // Single Contextual Assistant Chat Handling (Requirements 1 & 17)
+  // --------------------------------------------------------------------------
+  const assistantChatForm = document.getElementById('assistantChatForm');
+  const assistantUserInput = document.getElementById('assistantUserInput');
+
+  if (assistantChatForm) {
+    assistantChatForm.addEventListener('submit', (e) => {
       e.preventDefault();
-      const text = userInput.value.trim();
+      const text = assistantUserInput.value.trim();
       if (!text) return;
-      handleUserSendMessage(text);
-      userInput.value = '';
+
+      // Handle assistant message
+      const res = assistant.processUserMessage(text);
+      assistantUserInput.value = '';
+
+      // If user typed in Stage 1 chat
+      const chatMessages = document.getElementById('chatMessages');
+      if (chatMessages && assistant.currentContext.stage === 1) {
+        appendChatMessage(chatMessages, 'user', 'Siz', 'MK', text);
+        setTimeout(() => {
+          appendChatMessage(chatMessages, 'brif', 'BRIF.AI Mimari Asistan', 'B', res.aiResponseText);
+        }, 500);
+      }
+
+      // If in Stage 4 (Plan), check for special scenarios
+      if (res.actionPayload.special_case === 'two_meter_bedroom') {
+        triggerBedroom2mScenario();
+      } else if (res.actionPayload.special_case === 'misleading_bypass') {
+        triggerMisleadingBypassScenario();
+      } else if (res.actionPayload.intent === 'resize_space') {
+        showActionProposalCard({
+          title: 'İstenen Değişiklik: Çalışma Alanını Küçült',
+          target: '14 m² → 10–11 m²',
+          preserve: 'Mutfak alanı, Toplam kapalı alan',
+          effects: 'Çocuk odaları metrajı, Dolaşım payı',
+          rulesText: 'Ön kontrolden geçti'
+        });
+      }
+
+      // Record in Change History
+      changeHistory.recordChange({
+        action_type: res.actionPayload.intent,
+        user_message: text,
+        target_space_name: assistant.currentContext.spaceName || 'Çalışma Odası',
+        warnings: res.evaluationResults.filter(r => r.severity !== 'PASS')
+      });
+
+      updateArchitectDecisionReport();
     });
   }
 
-  if (voiceBtn) {
-    voiceBtn.addEventListener('click', () => {
-      alert('🎤 Sesli yanıt simülasyonu: "Eşim evden çalışıyor, toplantılar için tam ses izolasyonu çok kritik." mesajı yazıldı.');
-      userInput.value = 'Eşim evden çalışıyor, toplantılar için tam ses izolasyonu çok kritik.';
-    });
-  }
-
-  function handleUserSendMessage(messageText) {
-    if (suggestionChips) suggestionChips.style.display = 'none';
-    appendChatMessage('user', 'Siz', 'MK', messageText);
-
-    setTimeout(() => {
-      appendChatMessage('brif', 'BRIF.AI Mimari Danışman', 'B', `Anladım: "${messageText}". Bu beyanı ve ihtiyaçlarınızı not aldım. İkinci aşamada görsel tercihler üzerinden mekan kalitelerini netleştireceğiz.`);
-    }, 600);
-  }
-
-  function appendChatMessage(type, sender, avatar, text) {
+  function appendChatMessage(container, type, sender, avatar, text) {
     const msgDiv = document.createElement('div');
     msgDiv.className = `message ${type === 'user' ? 'user-message' : 'ai-message'}`;
     msgDiv.innerHTML = `
@@ -300,390 +214,233 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="message-text">${escapeHtml(text)}</div>
       </div>
     `;
-    chatMessages.appendChild(msgDiv);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+    container.appendChild(msgDiv);
+    container.scrollTop = container.scrollHeight;
   }
 
   // --------------------------------------------------------------------------
-  // 3. Stage 2 Visual Preferences (3 Comparative Rounds & Attribute Chips - Requirement 2 & 9)
+  // Stage 3 Space Grid Population
   // --------------------------------------------------------------------------
-  roundTabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      const rNum = parseInt(tab.dataset.round, 10);
-      switchPrefRound(rNum);
-    });
-  });
+  function populateSpaceGrids() {
+    if (!planEditor) return;
+    const groundGrid = document.getElementById('spaceGridGround');
+    const upperGrid = document.getElementById('spaceGridUpper');
+    if (!groundGrid || !upperGrid) return;
 
-  function switchPrefRound(rNum) {
-    roundTabs.forEach(tab => tab.classList.remove('active'));
-    prefRoundContainers.forEach(cont => cont.classList.add('hidden'));
+    const groundSpaces = rawPlanAlternativesData.alternatives[planEditor.currentAlt].floors.ground;
+    const upperSpaces = rawPlanAlternativesData.alternatives[planEditor.currentAlt].floors.upper;
 
-    document.getElementById(`roundTab${rNum}`).classList.add('active');
-    document.getElementById(`prefRound${rNum}`).classList.remove('hidden');
+    groundGrid.innerHTML = groundSpaces.map(s => renderSpaceCardHtml(s)).join('');
+    upperGrid.innerHTML = upperSpaces.map(s => renderSpaceCardHtml(s)).join('');
   }
 
-  // Primary Buttons & Secondary Links on Cards
-  document.querySelectorAll('.pref-card-large').forEach(card => {
-    const chipSection = card.querySelector('.attribute-chip-section');
-    const primaryBtns = card.querySelectorAll('.pref-card-actions button');
-    const dislikeLink = card.querySelector('.pref-link-dislike');
-
-    primaryBtns.forEach(btn => {
-      btn.addEventListener('click', () => {
-        const action = btn.dataset.action;
-        card.classList.remove('selected-like', 'selected-dislike');
-
-        if (action === 'like') {
-          card.classList.add('selected-like');
-        } else if (action === 'neutral') {
-          // Requirement 9: "Kararsızım" selected -> system creates "Teyit gerekli"
-        }
-
-        if (chipSection) chipSection.classList.remove('hidden');
-      });
-    });
-
-    if (dislikeLink) {
-      dislikeLink.addEventListener('click', () => {
-        card.classList.remove('selected-like');
-        card.classList.add('selected-dislike');
-      });
-    }
-
-    // Attribute Chips Click Listeners
-    const chips = card.querySelectorAll('.attr-chip');
-    chips.forEach(chip => {
-      chip.addEventListener('click', () => {
-        chip.classList.toggle('selected');
-        const attrVal = chip.dataset.attr;
-
-        if (chip.classList.contains('selected')) {
-          selectedAttributes.add(attrVal);
-        } else {
-          selectedAttributes.delete(attrVal);
-        }
-
-        updateSelectedChipsSummary();
-      });
-    });
-  });
-
-  function updateSelectedChipsSummary() {
-    if (!selectedChipsSummary) return;
-    selectedChipsSummary.innerHTML = '';
-
-    if (selectedAttributes.size === 0) {
-      selectedChipsSummary.innerHTML = '<span class="summary-chip">Sessizlik</span><span class="summary-chip">Gerektiğinde kapanabilmesi</span>';
-      return;
-    }
-
-    selectedAttributes.forEach(attr => {
-      const span = document.createElement('span');
-      span.className = 'summary-chip';
-      span.textContent = attr;
-      selectedChipsSummary.appendChild(span);
-    });
-  }
-
-  if (btnNextToProgram) {
-    btnNextToProgram.addEventListener('click', () => {
-      switchStage(3);
-    });
+  function renderSpaceCardHtml(s) {
+    return `
+      <div class="space-card" data-space-id="${s.id}">
+        <div class="space-card-header">
+          <h4 class="space-title">${escapeHtml(s.name)}</h4>
+          <span class="status-badge mandatory">Zorunlu</span>
+        </div>
+        <div class="space-meta">${s.floor === 'ground' ? 'Zemin Kat' : 'Üst Kat'} • ${s.area} m² Net</div>
+        <div class="space-rationale">
+          <span class="source-badge ${s.source_type.includes('kullanıcı') ? 'user-said' : 'sys-interp'}">${escapeHtml(s.source_type)}</span>
+        </div>
+      </div>
+    `;
   }
 
   // --------------------------------------------------------------------------
-  // 4. Stage 3 Space Program & Spatial Relationship Graph (Requirements 4 & 5)
+  // Stage 4 Plan Controls Toolbar (Undo/Redo/Lock/Swap)
   // --------------------------------------------------------------------------
-  floorTabGround.addEventListener('click', () => {
-    floorTabGround.classList.add('active');
-    floorTabUpper.classList.remove('active');
-    spacesGround.classList.remove('hidden');
-    spacesGround.classList.add('active');
-    spacesUpper.classList.add('hidden');
-    spacesUpper.classList.remove('active');
-  });
+  const btnAltA = document.getElementById('btnAltA');
+  const btnAltB = document.getElementById('btnAltB');
+  const planFloorGroundBtn = document.getElementById('planFloorGroundBtn');
+  const planFloorUpperBtn = document.getElementById('planFloorUpperBtn');
 
-  floorTabUpper.addEventListener('click', () => {
-    floorTabUpper.classList.add('active');
-    floorTabGround.classList.remove('active');
-    spacesUpper.classList.remove('hidden');
-    spacesUpper.classList.add('active');
-    spacesGround.classList.add('hidden');
-    spacesGround.classList.remove('active');
-  });
+  if (btnAltA && btnAltB) {
+    btnAltA.addEventListener('click', () => {
+      btnAltA.classList.add('active'); btnAltB.classList.remove('active');
+      planEditor.setAlternative('a');
+      assistant.setContext({ alternative: 'a' });
+    });
 
-  // Space Card Clicks in Stage 3 -> Right Panel Update
-  document.querySelectorAll('.space-card').forEach(card => {
-    card.addEventListener('click', () => {
-      const spaceId = card.dataset.spaceId;
-      const spaceTitle = card.querySelector('.space-title').textContent;
-      const spaceMeta = card.querySelector('.space-meta').textContent;
+    btnAltB.addEventListener('click', () => {
+      btnAltB.classList.add('active'); btnAltA.classList.remove('active');
+      planEditor.setAlternative('b');
+      assistant.setContext({ alternative: 'b' });
+    });
+  }
 
-      if (stage3PanelCards) {
-        stage3PanelCards.innerHTML = `
-          <div class="insight-card highlight-card">
-            <div class="insight-card-header">
-              <span class="source-badge user-said">Doğrudan kullanıcı beyanı</span>
-              <span class="conf-badge high">Güven: Yüksek</span>
-            </div>
-            <h4 class="insight-card-title">${escapeHtml(spaceTitle)}</h4>
-            <p class="insight-card-desc"><strong>Metraj:</strong> ${escapeHtml(spaceMeta)}</p>
-            <p class="insight-card-desc"><strong>Mimari Nitelik:</strong> Aile ritmi ve erişilebilirlik gereksinimine uygun ön değerlendirme.</p>
-          </div>
-        `;
+  if (planFloorGroundBtn && planFloorUpperBtn) {
+    planFloorGroundBtn.addEventListener('click', () => {
+      planFloorGroundBtn.classList.add('active'); planFloorUpperBtn.classList.remove('active');
+      planEditor.setFloor('ground');
+      assistant.setContext({ floor: 'ground' });
+    });
+
+    planFloorUpperBtn.addEventListener('click', () => {
+      planFloorUpperBtn.classList.add('active'); planFloorGroundBtn.classList.remove('active');
+      planEditor.setFloor('upper');
+      assistant.setContext({ floor: 'upper' });
+    });
+  }
+
+  const undoBtn = document.getElementById('undoBtn');
+  const redoBtn = document.getElementById('redoBtn');
+  const lockToggleBtn = document.getElementById('lockToggleBtn');
+  const swapBtn = document.getElementById('swapBtn');
+
+  if (undoBtn) {
+    undoBtn.addEventListener('click', () => {
+      const undone = changeHistory.undo();
+      if (undone) {
+        alert(`↩ Geri Alındı: ${undone.target_space_name} ${undone.action_type}`);
+        updateArchitectDecisionReport();
       }
     });
-  });
+  }
 
-  // Spatial Relationship Diagram Node Clicks
-  document.querySelectorAll('.rel-node-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const relKey = btn.dataset.rel;
-      let relText = '';
-
-      if (relKey === 'rel_work_living') {
-        relText = 'Çalışma ↔ Salon: Online toplantı sessizliği için akustik ayrışma öncelikli; kayar panel seçeneğinde esnek bağlantı olası.';
-      } else if (relKey === 'rel_kitchen_living') {
-        relText = 'Mutfak ↔ Salon: Açık ada mutfak sosyal teması artırırken sürgülü cam kapı koku/ses kontrolü sağlar.';
-      } else if (relKey === 'rel_stair_vertical') {
-        relText = 'Merdiven (Zemin ↕ Üst): Zemin kat gündüz yaşama alanı ile üst kat gece mahremiyet alanı arasındaki düşey geçiş düğümü.';
-      } else {
-        relText = 'Ebeveyn ↔ Çocuk Odaları: Üst katta merdiven holü ile sağlanan akustik ve mahremiyet mesafesi.';
-      }
-
-      if (stage3PanelCards) {
-        stage3PanelCards.innerHTML = `
-          <div class="insight-card highlight-card">
-            <div class="insight-card-header">
-              <span class="source-badge sys-interp">Sistem yorumu</span>
-              <span class="conf-badge high">Güven: Yüksek</span>
-            </div>
-            <h4 class="insight-card-title">İlişki Kararı Analizi</h4>
-            <p class="insight-card-desc">${relText}</p>
-          </div>
-        `;
+  if (redoBtn) {
+    redoBtn.addEventListener('click', () => {
+      const redone = changeHistory.redo();
+      if (redone) {
+        alert(`↪ İleri Alındı: ${redone.target_space_name} ${redone.action_type}`);
+        updateArchitectDecisionReport();
       }
     });
-  });
-
-  // --------------------------------------------------------------------------
-  // 5. Stage 4 Plan SVGs Fetch, Inline Injection & Room Interactions (Requirements 1, 2, 6, 7)
-  // --------------------------------------------------------------------------
-  btnAltA.addEventListener('click', () => {
-    btnAltA.classList.add('active');
-    btnAltB.classList.remove('active');
-    currentAlt = 'a';
-    loadPlanSvg('a', currentFloor);
-  });
-
-  btnAltB.addEventListener('click', () => {
-    btnAltB.classList.add('active');
-    btnAltA.classList.remove('active');
-    currentAlt = 'b';
-    loadPlanSvg('b', currentFloor);
-  });
-
-  planFloorGroundBtn.addEventListener('click', () => {
-    planFloorGroundBtn.classList.add('active');
-    planFloorUpperBtn.classList.remove('active');
-    currentFloor = 'ground';
-    switchSvgFloorView('ground');
-  });
-
-  planFloorUpperBtn.addEventListener('click', () => {
-    planFloorUpperBtn.classList.add('active');
-    planFloorGroundBtn.classList.remove('active');
-    currentFloor = 'upper';
-    switchSvgFloorView('upper');
-  });
-
-  async function loadPlanSvg(alt, floor) {
-    if (!planSvgContainer) return;
-
-    try {
-      if (!svgCache[alt]) {
-        const url = alt === 'a' ? 'assets/plans/alternative_a.svg' : 'assets/plans/alternative_b.svg';
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-        svgCache[alt] = await res.text();
-      }
-
-      // Inject Inline SVG (Requirement 1)
-      planSvgContainer.innerHTML = svgCache[alt];
-
-      // Switch Floor View inside SVG (<g data-floor-view="ground/upper">)
-      switchSvgFloorView(floor);
-
-      // Attach Interactions to [data-room] elements (Requirement 1)
-      attachRoomSvgListeners();
-
-    } catch (err) {
-      console.error('Plan SVG Yükleme Hatası:', err);
-      planSvgContainer.innerHTML = `<div class="error-box">Plan yüklenemedi: ${escapeHtml(err.message)}</div>`;
-    }
   }
 
-  function switchSvgFloorView(floor) {
-    const svgEl = planSvgContainer.querySelector('svg');
-    if (!svgEl) return;
-
-    const groundGroup = svgEl.querySelector('[data-floor-view="ground"]');
-    const upperGroup = svgEl.querySelector('[data-floor-view="upper"]');
-
-    if (groundGroup && upperGroup) {
-      if (floor === 'ground') {
-        groundGroup.style.display = 'block';
-        upperGroup.style.display = 'none';
-      } else {
-        groundGroup.style.display = 'none';
-        upperGroup.style.display = 'block';
+  if (lockToggleBtn) {
+    lockToggleBtn.addEventListener('click', () => {
+      if (planEditor && planEditor.selectedSpaceId) {
+        const isLocked = planEditor.toggleLock(planEditor.selectedSpaceId);
+        alert(isLocked ? '🔒 Mekân kilitlendi. Değişiklikler engellendi.' : '🔓 Mekân kilidi kaldırıldı.');
       }
-    }
+    });
   }
 
-  function attachRoomSvgListeners() {
-    const svgEl = planSvgContainer.querySelector('svg');
-    if (!svgEl) return;
-
-    const interactiveRooms = svgEl.querySelectorAll('[data-room]');
-
-    interactiveRooms.forEach(roomEl => {
-      // Accessibility attributes
-      if (!roomEl.getAttribute('tabindex')) roomEl.setAttribute('tabindex', '0');
-      if (!roomEl.getAttribute('role')) roomEl.setAttribute('role', 'button');
-
-      const roomKey = roomEl.dataset.room;
-
-      // Event listener for click
-      roomEl.addEventListener('click', (e) => {
-        e.stopPropagation();
-        selectRoom(roomEl, roomKey);
-      });
-
-      // Keyboard navigation: Enter or Space key (Requirement 1)
-      roomEl.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          selectRoom(roomEl, roomKey);
-        }
+  if (swapBtn) {
+    swapBtn.addEventListener('click', () => {
+      showActionProposalCard({
+        title: 'İstenen Değişiklik: Mutfak ↔ Çalışma Odası Takası',
+        target: 'Mutfak ile Çalışma Odasının yerlerini karşılıklı değiştir',
+        preserve: 'Net alan büyüklükleri',
+        effects: 'Teras ilişkisi zayıflar, ıslak hacim mesafesi uzar',
+        rulesText: 'Konfor açısından riskli'
       });
     });
   }
 
-  function selectRoom(roomEl, roomKey) {
-    // Remove previous selection styling
-    const svgEl = planSvgContainer.querySelector('svg');
-    if (svgEl) {
-      svgEl.querySelectorAll('.room-shape').forEach(el => el.classList.remove('selected'));
-    }
+  // Demo Scenario Buttons
+  const demoScenario2m = document.getElementById('demoScenario2m');
+  const demoScenarioBypass = document.getElementById('demoScenarioBypass');
+  const demoScenarioResize = document.getElementById('demoScenarioResize');
 
-    roomEl.classList.add('selected');
+  if (demoScenario2m) {
+    demoScenario2m.addEventListener('click', () => {
+      triggerBedroom2mScenario();
+    });
+  }
 
-    // Update Right Panel with Room Reasoning (Requirements 5 & 8)
-    const reasoning = roomReasoningMap[roomKey] || roomReasoningMap['study'];
+  if (demoScenarioBypass) {
+    demoScenarioBypass.addEventListener('click', () => {
+      triggerMisleadingBypassScenario();
+    });
+  }
 
-    document.getElementById('roomReasoningTitle').textContent = reasoning.title;
-    document.getElementById('roomUserStatement').textContent = reasoning.userStatement;
-    document.getElementById('roomVisualAttr').textContent = reasoning.visualAttr;
-    document.getElementById('roomArchInterp').textContent = reasoning.archInterp;
-    document.getElementById('roomAltDiff').textContent = reasoning.altDiff;
-    document.getElementById('roomVerifyTopic').textContent = reasoning.verifyTopic;
+  if (demoScenarioResize) {
+    demoScenarioResize.addEventListener('click', () => {
+      showActionProposalCard({
+        title: 'İstenen Değişiklik: Çalışma Alanını Küçült (11 m²)',
+        target: '14 m² → 11 m²',
+        preserve: 'Mutfak alanı, Toplam kapalı alan',
+        effects: 'Çocuk odaları metrajı, Dolaşım payı',
+        rulesText: 'Ön kontrolden geçti'
+      });
+    });
+  }
 
-    const sourceBadge = document.getElementById('roomSourceType');
-    if (sourceBadge) {
-      sourceBadge.textContent = reasoning.sourceType;
-      sourceBadge.className = `source-badge ${reasoning.sourceClass}`;
-    }
+  function triggerBedroom2mScenario() {
+    const res = ruleEvaluator.evaluateSpaceOperation({ use_type: 'bedroom', id: 'master' }, 'resize', { narrow_edge: 1.9 });
+    const warning = res[0];
 
-    const confBadge = document.getElementById('roomConfidence');
-    if (confBadge) {
-      confBadge.textContent = reasoning.confidence;
-    }
+    alert(`⚠️ UYARI (${warning.category}):\n\n${warning.user_message}\n\nÖnerilen Alternatifler:\n- ${warning.alternatives.join('\n- ')}`);
+
+    changeHistory.recordChange({
+      action_type: 'resize_risk_trigger',
+      target_space_id: 'master',
+      target_space_name: 'Ebeveyn Odası',
+      user_message: 'Yatak odasını 2 metre genişliğe düşür.',
+      warnings: res
+    });
+
+    updateArchitectDecisionReport();
+  }
+
+  function triggerMisleadingBypassScenario() {
+    const res = ruleEvaluator.evaluateSpaceOperation({ use_type: 'study', id: 'study' }, 'rename', { is_misleading_rename: true });
+    const warning = res[0];
+
+    alert(`🛡️ BİLGİ / RED (${warning.category}):\n\n${warning.user_message}`);
+
+    changeHistory.recordChange({
+      action_type: 'misleading_bypass_attempt',
+      target_space_id: 'study',
+      target_space_name: 'Çalışma Odası',
+      user_message: 'Buraya depo yazalım, siz sonradan yatak odası kullanın.',
+      warnings: res
+    });
+
+    updateArchitectDecisionReport();
   }
 
   // --------------------------------------------------------------------------
-  // 6. Plan Assumptions Simulation Modal (Requirement 10)
+  // Action Proposal Card Handling (Requirement 2 & 16)
   // --------------------------------------------------------------------------
-  if (openAssumptionsBtn && assumptionsModal) {
-    openAssumptionsBtn.addEventListener('click', () => {
-      assumptionsModal.classList.remove('hidden');
+  const actionProposalCard = document.getElementById('actionProposalCard');
+  const proposalTitle = document.getElementById('proposalTitle');
+  const propTarget = document.getElementById('propTarget');
+  const propPreserve = document.getElementById('propPreserve');
+  const propEffects = document.getElementById('propEffects');
+  const propRules = document.getElementById('propRules');
+
+  const btnPropApply = document.getElementById('btnPropApply');
+  const btnPropCancel = document.getElementById('btnPropCancel');
+
+  function showActionProposalCard(data) {
+    if (!actionProposalCard) return;
+
+    proposalTitle.textContent = data.title;
+    propTarget.textContent = data.target;
+    propPreserve.textContent = data.preserve;
+    propEffects.textContent = data.effects;
+    propRules.textContent = data.rulesText;
+
+    actionProposalCard.classList.remove('hidden');
+  }
+
+  if (btnPropApply) {
+    btnPropApply.addEventListener('click', () => {
+      alert('✅ İşlem şematik plana uygulandı.');
+      actionProposalCard.classList.add('hidden');
     });
   }
 
-  if (closeAssumptionsBtn && assumptionsModal) {
-    closeAssumptionsBtn.addEventListener('click', () => {
-      assumptionsModal.classList.add('hidden');
+  if (btnPropCancel) {
+    btnPropCancel.addEventListener('click', () => {
+      actionProposalCard.classList.add('hidden');
     });
   }
 
-  if (assumptionsForm) {
-    assumptionsForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const studyPriority = document.getElementById('assumpStudy').value;
-
-      if (studyPriority === 'flexible') {
-        // Highlight Alt B
-        btnAltB.click();
-        alert('⚙️ Varsayım Güncellendi: Esnek dönüşüm önceliğine göre Alternatif B (Esnek Bağlantı) öne çıkarıldı.');
-      } else {
-        // Highlight Alt A
-        btnAltA.click();
-        alert('⚙️ Varsayım Güncellendi: Akustik izolasyon önceliğine göre Alternatif A (Kontrollü Ayrışma) öne çıkarıldı.');
-      }
-
-      assumptionsModal.classList.add('hidden');
-    });
-  }
-
-  // User Inclination Buttons
-  document.querySelectorAll('.inc-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.inc-btn').forEach(b => b.classList.remove('selected'));
-      btn.classList.add('selected');
-      userInclination = btn.dataset.inc;
-
-      const incStatus = document.getElementById('inclinationStatus');
-      if (incStatus) {
-        incStatus.textContent = `Kullanıcı eğilimi kaydedildi (${btn.textContent}) — nihai tasarım kararı değildir.`;
-      }
-    });
-  });
-
-  // Accordion for Past Rationale
-  if (togglePastRationaleBtn && pastRationaleContent) {
-    togglePastRationaleBtn.addEventListener('click', () => {
-      pastRationaleContent.classList.toggle('hidden');
-    });
-  }
-
-  // --------------------------------------------------------------------------
-  // 7. Architect View Toggle Mode
-  // --------------------------------------------------------------------------
-  if (toggleViewBtn) {
-    toggleViewBtn.addEventListener('click', () => {
-      toggleArchitectView(!isArchitectView);
-    });
-  }
-
-  function toggleArchitectView(showArch) {
-    isArchitectView = showArch;
-
-    if (showArch) {
-      stageViews.forEach(v => v.classList.add('hidden'));
-      architectStageView.classList.remove('hidden');
-      toggleBtnText.textContent = 'Müşteri Görünümüne Dön';
-
-      panelTitle.textContent = 'Doğrulanmış brief ve güven durumu';
-      panelSubtitle.textContent = 'Mimarlar için sentezlenmiş veriler';
-    } else {
-      architectStageView.classList.add('hidden');
-      toggleBtnText.textContent = 'Mimar Önizlemesine Geç';
-      switchStage(currentStage);
+  function updateArchitectDecisionReport() {
+    const container = document.getElementById('architectDecisionHistory');
+    if (container) {
+      container.innerHTML = changeHistory.renderArchitectReport();
     }
   }
 
   // --------------------------------------------------------------------------
-  // 8. Mobile Drawer Handle Toggle (<1024px)
+  // Mobile Drawer Toggle (<1024px)
   // --------------------------------------------------------------------------
   if (drawerHandleBar && contextualPanel) {
     drawerHandleBar.addEventListener('click', () => {
@@ -691,19 +448,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // --------------------------------------------------------------------------
-  // Helpers
-  // --------------------------------------------------------------------------
   function escapeHtml(str) {
-    return str.replace(/[&<>"']/g, match => {
-      const escapeMap = {
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#039;'
-      };
-      return escapeMap[match];
+    if (!str) return '';
+    return String(str).replace(/[&<>"']/g, match => {
+      const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+      return map[match];
     });
   }
 

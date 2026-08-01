@@ -1,0 +1,118 @@
+{
+  "rules_meta": {
+    "system_name": "BRIF.AI Architectural & Ergonomics Rule Evaluator Demo Engine",
+    "disclaimer": "Demo ön kontrolü — resmî mevzuat ve yerel idare verisi henüz bağlı değildir.",
+    "version": "v4-demo"
+  },
+  "rules": [
+    {
+      "rule_id": "R_BEDROOM_NARROW_EDGE_2M",
+      "category": "Ergonomi ve iç mimari kullanılabilirlik",
+      "applies_to": ["bedroom", "master", "child1", "child2"],
+      "parameter": "narrow_edge_width",
+      "operator": "<=",
+      "example_threshold": 2.0,
+      "severity": "CRITICAL_RISK",
+      "user_message": "Bu genişlik (<= 2.0 m), seçili yatak odası kullanımı için demo ön kontrolündeki alt sınırın altında kalıyor. Ayrıca yatak, dolap ve geçiş alanı birlikte sağlanamıyor.",
+      "architect_message": "Kullanıcı/plan revizyonu yatak odası dar kenarını 2.0m altına düşürdü. Çift kişilik/tek kişilik yatak (200cm) sirkülasyon ve gardırop kapak açılımını engeller.",
+      "alternatives": [
+        "Odayı genişlet",
+        "Yatak yönünü değiştir",
+        "Komşu mekândan sınırlı alan aktar",
+        "Programdaki başka bir mekânı küçült",
+        "Bu hacmin gerçek kullanım amacını yeniden değerlendir",
+        "Mimara teyit için bırak"
+      ],
+      "source_type": "Ergonomi Standartları Simülasyonu",
+      "jurisdiction": "DEMO_GENERAL",
+      "effective_date": "2026-01-01",
+      "source_status": "DEMO_UNVERIFIED"
+    },
+    {
+      "rule_id": "R_MISLEADING_NAME_BYPASS",
+      "category": "Mevzuat / yasal ön kontrol",
+      "applies_to": ["all_spaces"],
+      "parameter": "rename_attempt_bypass",
+      "operator": "==",
+      "example_threshold": "depo_to_bedroom",
+      "severity": "REJECTED_METHOD",
+      "user_message": "Bu alanı depo adıyla gösterip sürekli yatak odası olarak kullanmayı önermiyorum. Bunun yerine hacmi yasal ve güvenli kullanıma yaklaştıran seçenekleri inceleyebilir veya ihtiyacınızı mimara açık bir özel kullanım notuyla aktarabiliriz.",
+      "architect_message": "Kullanıcı özel kullanım talebi — resmî kullanım ve uygunluk teyidi gerekli. Yasal süzgeç/yangın kaçışı bypass talebi reddedildi.",
+      "alternatives": [
+        "Odayı yasal yatak odası standartlarına getirmek için genişlet",
+        "Mimara açık özel kullanım notu olarak ilet"
+      ],
+      "source_type": "Mimari Etik & Güvenlik İlkesi",
+      "jurisdiction": "DEMO_GENERAL",
+      "effective_date": "2026-01-01",
+      "source_status": "DEMO_UNVERIFIED"
+    },
+    {
+      "rule_id": "R_WORK_ACOUSTIC_PREFERENCE",
+      "category": "Kullanıcı tercihleriyle çelişki",
+      "applies_to": ["study"],
+      "parameter": "acoustic_isolation_distance",
+      "operator": "<",
+      "example_threshold": 3.0,
+      "severity": "USER_CONFLICT",
+      "user_message": "Çalışma odası yaşam alanına çok yaklaştığında online toplantılarda ses çakışması riski oluşabilir. Seçtiğiniz 'Sessizlik' tercihiyle çelişki doğabilir.",
+      "architect_message": "Kullanıcı 'Sessizlik' ve 'Tam ses izolasyonu' istedi; ancak çalışma odası konumu salona bitişik hale getirildi.",
+      "alternatives": [
+        "Kapalı duvar sınırını koru",
+        "Kayar akustik cam panel ekle"
+      ],
+      "source_type": "Kullanıcı Tercih Matrisi",
+      "jurisdiction": "DEMO_GENERAL",
+      "effective_date": "2026-01-01",
+      "source_status": "DEMO_UNVERIFIED"
+    },
+    {
+      "rule_id": "R_BUILDING_BOUNDARY_OVERLAP",
+      "category": "Proje geometrisi ve mekânsal ilişkiler",
+      "applies_to": ["all_spaces"],
+      "parameter": "out_of_bounds",
+      "operator": "==",
+      "example_threshold": true,
+      "severity": "GEOMETRY_ERROR",
+      "user_message": "Mekân dış bina sınırlarının dışına çıkartılamaz. Şematik konut kabuğu korunmalıdır.",
+      "architect_message": "Sürükleme işlemi dış gabari sınırlarını (outer boundary) aştı. Grid kısıtı uygulandı.",
+      "alternatives": ["Bina içi boş alana taşı"],
+      "source_type": "Geometri Çekirdeği",
+      "jurisdiction": "DEMO_GENERAL",
+      "effective_date": "2026-01-01",
+      "source_status": "DEMO_UNVERIFIED"
+    },
+    {
+      "rule_id": "R_ROOM_OVERLAP",
+      "category": "Proje geometrisi ve mekânsal ilişkiler",
+      "applies_to": ["all_spaces"],
+      "parameter": "space_intersection",
+      "operator": "==",
+      "example_threshold": true,
+      "severity": "GEOMETRY_ERROR",
+      "user_message": "Mekânlar birbiriyle üst üste bindirilemez. Her mekânın bağımsız net alanı korunmalıdır.",
+      "architect_message": "İki poligon arasında çakışma (overlap) saptandı.",
+      "alternatives": ["Boş bir alana konumlandır", "Yerlerini değiştir (Takas et)"],
+      "source_type": "Geometri Çekirdeği",
+      "jurisdiction": "DEMO_GENERAL",
+      "effective_date": "2026-01-01",
+      "source_status": "DEMO_UNVERIFIED"
+    },
+    {
+      "rule_id": "R_LOCKED_SPACE_MODIFICATION",
+      "category": "Proje geometrisi ve mekânsal ilişkiler",
+      "applies_to": ["all_spaces"],
+      "parameter": "is_locked",
+      "operator": "==",
+      "example_threshold": true,
+      "severity": "LOCKED_PREVENT",
+      "user_message": "Seçili mekân kilitli olduğu için doğrudan değiştirilemez. Değişikliği diğer serbest mekânlar üzerinden deneyeceğim.",
+      "architect_message": "Kilitli düğüm (locked node) üzerinde doğrudan değişiklik engellendi.",
+      "alternatives": ["Mekânın kilidini kaldır", "Komşu serbest mekânı küçült"],
+      "source_type": "Kullanıcı Kilit Kısıtı",
+      "jurisdiction": "DEMO_GENERAL",
+      "effective_date": "2026-01-01",
+      "source_status": "DEMO_UNVERIFIED"
+    }
+  ]
+}

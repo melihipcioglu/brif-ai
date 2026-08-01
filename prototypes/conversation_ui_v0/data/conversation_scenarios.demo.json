@@ -1,0 +1,59 @@
+{
+  "scenarios_meta": {
+    "title": "BRIF.AI Assistant Conversation & Intent Scenarios",
+    "description": "Pre-configured sample dialogue triggers and intent mappings for prototype simulation."
+  },
+  "intents": {
+    "resize_space": {
+      "keywords": ["küçült", "büyüt", "m²", "alan", "metrekare", "olmasın", "yeterli", "10-11"],
+      "variations": [
+        "İstediğiniz alan boyutlandırma talebini hazırladım. Çalışma alanını 14 m²'den 11 m²'ye indirmeyi öneriyorum.",
+        "Bu alan değişikliği planı etkileyecektir. Şematik önizlemeyi onaylamadan önce etki kartını inceleyebilirsiniz.",
+        "Daha önce toplam alanı artırmak istemediğinizi belirtmiştiniz. Küçülen alandan çıkan metrajı çocuk odalarına aktarmayı denedim."
+      ]
+    },
+    "two_meter_bedroom": {
+      "keywords": ["iki metre", "2 metre", "2m", "daralt"],
+      "variations": [
+        "Bu genişlik (<= 2.0 m), seçili yatak odası kullanımı için demo ön kontrolündeki alt sınırın altında kalıyor. Ayrıca yatak, dolap ve geçiş alanı birlikte sağlanamıyor."
+      ]
+    },
+    "misleading_bypass": {
+      "keywords": ["depo yazalım", "depo gösterelim", "sonradan yatak odası", "kullanım adını değiştir"],
+      "variations": [
+        "Bu alanı depo adıyla gösterip sürekli yatak odası olarak kullanmayı önermiyorum. Bunun yerine hacmi yasal ve güvenli kullanıma yaklaştıran seçenekleri inceleyebilir veya ihtiyacınızı mimara açık bir özel kullanım notuyla aktarabiliriz."
+      ]
+    },
+    "move_space": {
+      "keywords": ["yaklaştır", "taşı", "kaydır", "konum"],
+      "variations": [
+        "Mekân konumlandırma simülasyonunu hazırladım. Sürükleme veya konum değiştirme etkisini inceleyebilirsiniz.",
+        "Seçili mekânı taşıdığımızda komşu mekân ilişkileri güncellenecektir."
+      ]
+    },
+    "swap_spaces": {
+      "keywords": ["yerini değiştir", "takas", "karşılıklı"],
+      "variations": [
+        "İki mekânın yerlerini değiştirdiğimizdeki etki analizi hazırlandı."
+      ]
+    },
+    "lock_space": {
+      "keywords": ["kilitle", "sabit tut", "değiştirme"],
+      "variations": [
+        "Seçili mekân kilitlendi. Artık sürükleme veya sohbet komutuyla değiştirilemez.",
+        "Çalışma odası kilitli olduğu için bu değişikliği mutfak ve dolaşım alanı üzerinden çözmeye çalışacağım."
+      ]
+    },
+    "change_preference": {
+      "keywords": ["bunu değil", "istemiyorum", "geri al", "beğendim"],
+      "variations": [
+        "Görsel tercih etiketleriniz güncellendi ve ilgili sistem yorumu yeniden düzenlendi."
+      ]
+    },
+    "ambiguous_request": {
+      "variations": [
+        "Bu prototipte bu isteği otomatik işleyemiyorum. Değiştirmek istediğiniz mekânı seçip büyütme, taşıma veya ilişki değiştirme işlemlerinden birini seçebilirsiniz."
+      ]
+    }
+  }
+}
