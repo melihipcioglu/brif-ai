@@ -1,5 +1,5 @@
 /**
- * BRIF.AI — Universal Architectural Entity Hierarchy (v6.1.2 Platform Architecture)
+ * BRIF.AI — Universal Architectural Entity Hierarchy (v6.1.3 Platform Architecture)
  *
  * Universal data model supporting:
  * Project -> Building / Block / Tower -> Level / Floor -> Zone / Department -> Space -> Architectural Element
@@ -292,7 +292,7 @@ class EntityHierarchy {
 
     const caps = [];
     if (activeContext.projectId === 'proj_house_2story') {
-      caps.push('residential_master_suite', 'multi_level_overlay', 'solar_orientation_review');
+      caps.push('residential_master_suite', 'multi_level_overlay', 'solar_orientation_review', 'residential_plan_alternatives');
     } else if (activeContext.projectId === 'proj_tower_50floor') {
       caps.push('office_meeting_analysis', 'office_core_circulation', 'multi_level_overlay');
     } else if (activeContext.projectId === 'proj_campus_multiblock') {

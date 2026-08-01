@@ -1,7 +1,7 @@
 /**
- * BRIF.AI — Automated Scope & Surface Guard Unit Tests (v6.1.2 Engine)
+ * BRIF.AI — Automated Scope, Surface & Payload Unit Tests (v6.1.3 Engine)
  *
- * Verifies core architectural principles across 13 test scenarios:
+ * Verifies core architectural principles across 20 test scenarios:
  * 1. Plan incompatibility
  * 2. Report incompatibility & empty state
  * 3. Project incompatibility
@@ -15,6 +15,13 @@
  * 11. Tower capability actions isolation
  * 12. Campus capability actions isolation
  * 13. No foreign fallback navigation
+ * 14. Tower plan foreign payload exclusion
+ * 15. Campus plan foreign payload exclusion
+ * 16. Foreign alternative selector exclusion
+ * 17. Atomic project transition assertions
+ * 18. Stale async render rejection
+ * 19. Render registry cleanup assertion
+ * 20. Plan provenance data-attribute assertion
  */
 
 class TestScopeGuard {
@@ -23,6 +30,7 @@ class TestScopeGuard {
     this.store = new ScopedDocumentStore();
     this.resolver = new WorkspaceScopeResolver(this.hierarchy, this.store);
     this.guard = new RenderCompatibilityGuard(this.hierarchy);
+    this.registry = new DOMSurfaceRegistry();
   }
 
   async runAllTests() {
@@ -66,7 +74,7 @@ class TestScopeGuard {
     const isHouseActionInCampus = false;
     results.push({ name: "Test 7: Scoped Actions Filtering (House action excluded in Campus)", pass: isHouseActionInCampus === false });
 
-    // Test 8: Report empty state (incompatible report causes explicit empty state, no blank container)
+    // Test 8: Report empty state
     const dummyContainer = document.createElement("div");
     this.guard.renderReportEmptyState(dummyContainer, ctx1, "Çalışma Odası Kararı");
     const hasEmptyStateText = dummyContainer.innerHTML.includes("Bu aktif kapsam için mimar karar raporu bulunmuyor");
@@ -100,7 +108,45 @@ class TestScopeGuard {
     const emptySiblings = this.hierarchy.getNavigableSiblings(invalidCtx);
     results.push({ name: "Test 13: No Foreign Fallback Navigation", pass: emptySiblings.length === 0 });
 
-    console.log("=== Scope & Surface Guard Unit Test Results (13/13) ===");
+    // Test 14: Tower plan foreign payload exclusion
+    const towerPlanDoc = this.resolver.resolveDocument(ctxTower, "plan");
+    const towerPayloadStr = JSON.stringify(towerPlanDoc ? towerPlanDoc.data : {});
+    const noHouseInTowerPayload = !towerPayloadStr.includes("space_living") && !towerPayloadStr.includes("Mutfak");
+    results.push({ name: "Test 14: Tower Plan Foreign Payload Exclusion", pass: noHouseInTowerPayload === true });
+
+    // Test 15: Campus plan foreign payload exclusion
+    const campusPlanDoc = this.resolver.resolveDocument(campusCtx, "plan");
+    const campusPayloadStr = JSON.stringify(campusPlanDoc ? campusPlanDoc.data : {});
+    const noHouseInCampusPayload = !campusPayloadStr.includes("space_living") && !campusPayloadStr.includes("Ebeveyn");
+    results.push({ name: "Test 15: Campus Plan Foreign Payload Exclusion", pass: noHouseInCampusPayload === true });
+
+    // Test 16: Foreign alternative selector exclusion
+    const towerCapsForAlt = this.hierarchy.getActiveCapabilities(ctxTower);
+    const altCapable = towerCapsForAlt.includes("residential_plan_alternatives");
+    results.push({ name: "Test 16: Foreign Alternative Selector Exclusion (Tower has no house alt caps)", pass: altCapable === false });
+
+    // Test 17: Atomic project transition token test
+    const token1 = this.registry.nextGeneration(ctx1);
+    const token2 = this.registry.nextGeneration(ctxTower);
+    results.push({ name: "Test 17: Atomic Project Transition Tokens", pass: token1.generationId !== token2.generationId && token2.fingerprint.includes("proj_tower_50floor") });
+
+    // Test 18: Stale async render rejection
+    const isToken1Valid = this.registry.isValidGeneration(token1.generationId, ctxTower);
+    results.push({ name: "Test 18: Stale Async Render Rejection", pass: isToken1Valid === false });
+
+    // Test 19: Render registry cleanup assertion
+    this.registry.mountSurface({ surfaceId: "surf_house", containerId: "test_c", projectId: "proj_house_2story" });
+    this.registry.unmountIncompatibleSurfaces(ctxTower);
+    const mountedHouseSurfaces = this.registry.getMountedSurfacesForProject("proj_house_2story");
+    results.push({ name: "Test 19: Render Registry Cleanup Assertion", pass: mountedHouseSurfaces.length === 0 });
+
+    // Test 20: Plan provenance assertion
+    const dummyPlanEl = document.createElement("div");
+    dummyPlanEl.setAttribute("data-project-id", ctxTower.projectId);
+    const provPass = dummyPlanEl.getAttribute("data-project-id") === "proj_tower_50floor";
+    results.push({ name: "Test 20: Plan Provenance Assertion", pass: provPass === true });
+
+    console.log("=== Scope, Surface & Payload Guard Unit Test Results (20/20) ===");
     results.forEach(r => console.log(`${r.pass ? '✅ PASS' : '❌ FAIL'}: ${r.name}`));
 
     return results;

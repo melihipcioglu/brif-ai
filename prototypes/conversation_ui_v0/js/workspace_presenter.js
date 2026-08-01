@@ -1,8 +1,9 @@
 /**
- * BRIF.AI — Workspace Presenter & Surface Engine (v6.1.2 Refined Platform Engine)
+ * BRIF.AI — Workspace Presenter & Surface Engine (v6.1.3 Platform Architecture)
  *
- * Scope-driven presenter resolving candidate documents and workspace surfaces via EntityHierarchy siblings,
- * enforcing render compatibility and capability checks.
+ * Scope-driven presenter resolving candidate documents and workspace surfaces via DOMSurfaceRegistry,
+ * generation tokens, and capability checks.
+ * Guarantees: "No stale or foreign workspace payload may survive an active-scope transition."
  */
 
 class WorkspacePresenter {
@@ -12,6 +13,7 @@ class WorkspacePresenter {
     this.store = options.store || new ScopedDocumentStore();
     this.resolver = options.resolver || new WorkspaceScopeResolver(this.hierarchy, this.store);
     this.guard = options.guard || new RenderCompatibilityGuard(this.hierarchy);
+    this.registry = options.registry || (window.appDOMRegistry || new DOMSurfaceRegistry());
 
     this.currentMode = 'plan';
   }
@@ -25,23 +27,54 @@ class WorkspacePresenter {
     if (!this.container) return;
 
     const ctx = data.activeContext || (window.appStateMachine ? window.appStateMachine.getContext() : null);
+    if (!ctx) return;
 
-    // UI Context Consistency Assertion (Requirement 8)
+    // 1. Next Generation Token & Fingerprint (Requirement 4)
+    const token = this.registry.nextGeneration(ctx);
+
+    // 2. Atomic Cleanup of Incompatible Surfaces (Requirement 3 & 5)
+    this.registry.unmountIncompatibleSurfaces(ctx);
+
+    // 3. UI Context Consistency Assertions (Requirement 8)
     this.assertUIContextConsistency(ctx);
 
-    // Render Dynamic Navigation Tabs strictly derived from Sibling Entities (Requirements 4 & 5)
+    // 4. Render Dynamic Navigation Tabs (Requirements 4 & 5)
     this.renderDynamicNavigationTabs(ctx);
 
-    // Render Scoped Workspace Documents via Pipeline (Requirement 2)
-    if (ctx && (this.currentMode === 'plan' || this.currentMode === 'stage3_program')) {
+    // 5. Render Alternative Selectors Bar strictly scoped by Capability (Requirements 1 & 9)
+    this.renderAlternativeSelectors(ctx);
+
+    // 6. Workspace Document Pipeline (Requirement 2)
+    if (this.currentMode === 'plan' || this.currentMode === 'stage3_program') {
       const docType = this.currentMode === 'stage3_program' ? 'space_program' : 'plan';
       const doc = this.resolver.resolveDocument(ctx, docType);
 
-      if (!doc || !this.guard.isDocumentCompatible(doc, ctx)) {
-        console.warn(`[BRIF Görünüm Uyum Kontrolü] Uyumsuz veya eksik belge türü: ${docType}`);
-        this.guard.renderEmptyState(this.container, ctx);
+      // Verify token freshness before committing to DOM (Requirement 4)
+      if (!this.registry.isValidGeneration(token.generationId, ctx)) {
+        console.warn(`[BRIF Generation Reject] Stale render generation ${token.generationId} rejected.`);
         return;
       }
+
+      if (!doc || !this.guard.isDocumentCompatible(doc, ctx)) {
+        console.warn(`[BRIF Görünüm Uyum Kontrolü] Uyumsuz veya eksik belge türü: ${docType}`);
+        this.guard.renderPlanEmptyState(this.container, ctx);
+        return;
+      }
+
+      // Add Payload Provenance Attributes in Dev Mode (Requirement 8)
+      this.container.setAttribute('data-document-id', doc.documentId);
+      this.container.setAttribute('data-project-id', doc.projectId || ctx.projectId);
+      this.container.setAttribute('data-scope-fingerprint', token.fingerprint);
+      this.container.setAttribute('data-render-generation', token.generationId);
+
+      this.registry.mountSurface({
+        surfaceId: `surf_${doc.documentId}`,
+        documentId: doc.documentId,
+        documentType: docType,
+        projectId: doc.projectId || ctx.projectId,
+        scopeFingerprint: token.fingerprint,
+        containerId: this.container.id
+      });
     }
 
     if (this.currentMode === 'stage1_dashboard') {
@@ -56,7 +89,7 @@ class WorkspacePresenter {
       this.renderOrientationMode(data);
     }
 
-    // Render Capability-Based Scoped Actions Bar (Requirements 6 & 7)
+    // 7. Render Capability-Based Scoped Actions Bar (Requirements 6 & 7)
     this.renderScopedActions(ctx);
   }
 
@@ -67,6 +100,33 @@ class WorkspacePresenter {
     if (badgeEl) {
       badgeEl.textContent = this.hierarchy.getScopeTitle(ctx);
     }
+  }
+
+  // Scoped Alternative Selector Renderer (Requirements 1 & 9)
+  renderAlternativeSelectors(activeContext) {
+    const altBar = document.querySelector('.alternative-selector-bar');
+    if (!altBar || !activeContext) return;
+
+    const activeCaps = this.hierarchy.getActiveCapabilities(activeContext);
+
+    // Alternative cards are ONLY mounted if residential_plan_alternatives capability is present!
+    if (!activeCaps.includes('residential_plan_alternatives')) {
+      altBar.style.display = 'none';
+      altBar.innerHTML = '';
+      return;
+    }
+
+    altBar.style.display = 'grid';
+    altBar.innerHTML = `
+      <button class="alt-tab-btn active" id="btnAltA" data-alt="a">
+        <span class="alt-code">Alternatif A</span>
+        <span class="alt-name">Kontrollü Ayrışma</span>
+      </button>
+      <button class="alt-tab-btn" id="btnAltB" data-alt="b">
+        <span class="alt-code">Alternatif B</span>
+        <span class="alt-name">Esnek Bağlantı</span>
+      </button>
+    `;
   }
 
   // Dynamic Navigation Tabs derived strictly from Navigable Siblings (Requirements 4 & 5)
@@ -108,7 +168,6 @@ class WorkspacePresenter {
       return;
     }
 
-    // Filter actions by capability matching (Requirement 6)
     const validActions = docPackage.scopedActions.filter(act => {
       return this.guard.isCapabilityCompatible(act, activeCapabilities);
     });

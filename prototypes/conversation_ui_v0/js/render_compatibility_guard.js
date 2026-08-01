@@ -1,10 +1,10 @@
 /**
- * BRIF.AI — Surface & Scope Compatibility Guard (v6.1.2 Platform Architecture)
+ * BRIF.AI — Surface & Scope Compatibility Guard (v6.1.3 Platform Architecture)
  *
  * Core architectural principle:
- * "Every visible workspace surface must be resolved from the active scope and its capabilities."
+ * "No stale or foreign workspace payload may survive an active-scope transition."
  *
- * Ensures no rejected render path ends in an unexplained blank container.
+ * Ensures no rejected render path ends in an unexplained blank container or foreign fallback.
  */
 
 class RenderCompatibilityGuard {
@@ -21,7 +21,7 @@ class RenderCompatibilityGuard {
 
     if (doc.status !== 'available') return false;
 
-    // Scope check: Project ID
+    // Strict Project ID match — NEVER fallback across projects!
     const docProj = doc.scope ? doc.scope.projectId : doc.projectId;
     if (docProj && docProj !== activeContext.projectId) return false;
 
@@ -57,10 +57,34 @@ class RenderCompatibilityGuard {
     return reqCaps.every(cap => activeCapabilities.includes(cap));
   }
 
-  // Context-Derived Explicit Empty State Renderer (Requirements 3 & 9)
+  // Context-Derived Explicit Plan Empty State Renderer (Requirements 2, 7 & 9)
+  renderPlanEmptyState(container, activeContext) {
+    if (!container) return;
+    container.innerHTML = ''; // Clear container — NO STALE SVG PAYLOAD SURVIVES!
+
+    const title = this.hierarchy.getScopeTitle(activeContext);
+
+    container.innerHTML = `
+      <div class="empty-state-workspace-card plan-empty" id="planEmptyStateContainer">
+        <div class="empty-state-icon">📐</div>
+        <h3 class="empty-state-title">Bu kapsam için şematik plan bulunmuyor</h3>
+        <p class="empty-state-desc">
+          Şu anda <strong>${escapeHtml(title)}</strong> kapsamındasınız. Bu kapsamla uyumlu plan belgesi tanımlanmamış. Başka projeye ait plan kullanılmayacaktır.
+        </p>
+
+        <div class="empty-state-actions">
+          <button class="empty-act-btn" id="btnEmptyShowUpper">Üst Kapsamı Göster</button>
+          <button class="empty-act-btn" id="btnEmptySelectLevel">Başka Kat Seç</button>
+          <button class="empty-act-btn highlight" id="btnResumeContext">↩ Önceki Bağlama Dön</button>
+        </div>
+      </div>
+    `;
+  }
+
+  // Context-Derived Explicit Empty State Renderer (General)
   renderEmptyState(container, activeContext, scopeTitle) {
     if (!container) return;
-    container.innerHTML = ''; // Clear stale content immediately
+    container.innerHTML = '';
 
     const title = scopeTitle || this.hierarchy.getScopeTitle(activeContext);
 
@@ -69,7 +93,7 @@ class RenderCompatibilityGuard {
         <div class="empty-state-icon">📂</div>
         <h3 class="empty-state-title">Bu kapsam için çalışma alanı verisi bulunmuyor</h3>
         <p class="empty-state-desc">
-          Şu anda <strong>${escapeHtml(title)}</strong> kapsamındasınız. Bu kapsamla uyumlu şematik plan veya belge verisi tanımlanmamış. Başka projeye ait plan kullanılmayacaktır.
+          Şu anda <strong>${escapeHtml(title)}</strong> kapsamındasınız. Bu kapsamla uyumlu şematik plan veya belge verisi tanımlanmamış. Başka projeye ait veriler kullanılmayacaktır.
         </p>
 
         <div class="empty-state-actions">

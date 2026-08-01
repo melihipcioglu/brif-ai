@@ -1,17 +1,20 @@
 /**
- * BRIF.AI — Main Orchestration Script (v6.1.2 Scope-Driven Platform Architecture)
+ * BRIF.AI — Main Orchestration Script (v6.1.3 Scope-Safe Workspace Architecture)
  *
- * Integrates EntityHierarchy, ScopedDocumentStore, WorkspaceScopeResolver,
- * RenderCompatibilityGuard, ContextStateMachine, ContextValidator,
- * ConversationOrchestrator, WorkspacePresenter, and ContextualAssistant.
+ * Integrates DOMSurfaceRegistry, EntityHierarchy, ScopedDocumentStore,
+ * WorkspaceScopeResolver, RenderCompatibilityGuard, ContextStateMachine,
+ * ContextValidator, ConversationOrchestrator, WorkspacePresenter, and ContextualAssistant.
  */
 
 document.addEventListener('DOMContentLoaded', async () => {
 
-  // Universal Asset Hierarchy & Document Store
+  // Universal Asset Hierarchy, Document Store & DOM Surface Registry
   const hierarchy = new EntityHierarchy();
   const store = new ScopedDocumentStore();
   await store.initialize();
+
+  const registry = new DOMSurfaceRegistry();
+  window.appDOMRegistry = registry;
 
   const resolver = new WorkspaceScopeResolver(hierarchy, store);
   const guard = new RenderCompatibilityGuard(hierarchy);
@@ -24,7 +27,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const assistant = new ContextualAssistant({ hierarchy, stateMachine });
   const presenter = new WorkspacePresenter('planEditorContainer', {
-    hierarchy, store, resolver, guard
+    hierarchy, store, resolver, guard, registry
   });
 
   const orchestrator = new ConversationOrchestrator({
@@ -73,9 +76,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Initialize Stage 1 Workspace Dashboard
   const stage1Container = document.getElementById('stage1WorkspaceContainer');
   if (stage1Container) {
-    const stage1Presenter = new WorkspacePresenter('stage1WorkspaceContainer', { hierarchy, store, resolver, guard });
+    const stage1Presenter = new WorkspacePresenter('stage1WorkspaceContainer', { hierarchy, store, resolver, guard, registry });
     stage1Presenter.setMode('stage1_dashboard', { hasUserMessages: false });
   }
+
+  // Subscribe state transitions to atomically clear stale space program cards (Requirement 3)
+  stateMachine.subscribe(() => {
+    populateSpaceGrids();
+  });
 
   // Synthetic Project Selector Dropdown
   const syntheticProjectSelect = document.getElementById('syntheticProjectSelect');
@@ -83,11 +91,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     syntheticProjectSelect.addEventListener('change', (e) => {
       const projId = e.target.value;
       orchestrator.selectProject(projId);
+      populateSpaceGrids();
       updateArchitectDecisionReport();
     });
   }
 
-  // Chat Scope Filter Dropdown (Requirement 8)
+  // Chat Scope Filter Dropdown
   const chatScopeFilterSelect = document.getElementById('chatScopeFilterSelect');
   if (chatScopeFilterSelect) {
     chatScopeFilterSelect.addEventListener('change', (e) => {
@@ -176,7 +185,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (activeView) { activeView.classList.remove('hidden'); activeView.classList.add('active'); }
 
     if (stageNum === 1 && stage1Container) {
-      const stage1Presenter = new WorkspacePresenter('stage1WorkspaceContainer', { hierarchy, store, resolver, guard });
+      const stage1Presenter = new WorkspacePresenter('stage1WorkspaceContainer', { hierarchy, store, resolver, guard, registry });
       stage1Presenter.setMode('stage1_dashboard', { hasUserMessages: true });
     }
     if (stageNum === 3) populateSpaceGrids();
@@ -254,7 +263,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
-    // Empty State & Resume Actions (Requirements 3 & 9)
+    // Empty State & Resume Actions
     if (e.target.id === 'btnResumeContext') {
       orchestrator.resumeSuspendedContext();
       return;
@@ -328,15 +337,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     const ctx = stateMachine.getContext();
     const doc = resolver.resolveDocument(ctx, 'space_program');
 
-    if (doc && doc.data) {
-      groundGrid.innerHTML = doc.data.groundSpaces.map(s => renderSpaceCardHtml(s)).join('');
-      upperGrid.innerHTML = doc.data.upperSpaces.map(s => renderSpaceCardHtml(s)).join('');
-    } else if (rawPlanAlternativesData && planEditor) {
-      const groundSpaces = rawPlanAlternativesData.alternatives[planEditor.currentAlt].floors.ground;
-      const upperSpaces = rawPlanAlternativesData.alternatives[planEditor.currentAlt].floors.upper;
-
-      groundGrid.innerHTML = groundSpaces.map(s => renderSpaceCardHtml(s)).join('');
-      upperGrid.innerHTML = upperSpaces.map(s => renderSpaceCardHtml(s)).join('');
+    if (doc && doc.data && guard.isDocumentCompatible(doc, ctx)) {
+      groundGrid.innerHTML = doc.data.groundSpaces ? doc.data.groundSpaces.map(s => renderSpaceCardHtml(s)).join('') : '';
+      upperGrid.innerHTML = doc.data.upperSpaces ? doc.data.upperSpaces.map(s => renderSpaceCardHtml(s)).join('') : '';
+    } else {
+      groundGrid.innerHTML = '';
+      upperGrid.innerHTML = '';
     }
   }
 

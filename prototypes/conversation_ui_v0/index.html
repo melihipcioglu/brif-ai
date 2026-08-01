@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BRIF.AI — Aktif Kapsam Çalışma Alanı Yüzeyleri v6.1.2</title>
+  <title>BRIF.AI — Scope-Safe Workspace Payloads v6.1.3</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
@@ -16,7 +16,7 @@
     <header class="app-header">
       <div class="header-brand">
         <span class="brand-logo">BRIF<span class="brand-dot">.</span>AI</span>
-        <span class="brand-subtitle">Çalışma Alanı Yüzeyi Kapsam Koruması v6.1.2</span>
+        <span class="brand-subtitle">Kapsam Uyumlu Çalışma Alanı Verisi v6.1.3</span>
       </div>
 
       <!-- Synthetic Multi-Project Selector -->
@@ -27,7 +27,7 @@
           <option value="proj_tower_50floor">Test B — 50 Katlı Finans Kulesi</option>
           <option value="proj_campus_multiblock">Test C — Çok Bloklu Teknoloji Kampüsü</option>
         </select>
-        <span class="project-badge">v6.1.2 Kapsam Denetimi</span>
+        <span class="project-badge">v6.1.3 Kapsam Koruması</span>
       </div>
 
       <div class="header-actions">
@@ -85,7 +85,7 @@
       <span>•</span>
       <span>Demo mimari değerlendirmesi — resmî mevzuat ve yerel idare verisi bağlı değildir.</span>
       <span>•</span>
-      <span>Çalışma alanında gösterilecek her yüzey, aktif kapsam ve yeteneklerinden türetilir.</span>
+      <span>Şematik çalışma alanları gerçek mimari proje, uygulama veya ruhsat çizimi değildir.</span>
     </div>
 
     <!-- MAIN CONVERSATION-FIRST WORKSPACE LAYOUT -->
@@ -191,14 +191,7 @@
             </div>
 
             <div class="alternative-selector-bar">
-              <button class="alt-tab-btn active" id="btnAltA" data-alt="a">
-                <span class="alt-code">Alternatif A</span>
-                <span class="alt-name">Kontrollü Ayrışma</span>
-              </button>
-              <button class="alt-tab-btn" id="btnAltB" data-alt="b">
-                <span class="alt-code">Alternatif B</span>
-                <span class="alt-name">Esnek Bağlantı</span>
-              </button>
+              <!-- Dynamically rendered by WorkspacePresenter.renderAlternativeSelectors -->
             </div>
 
             <div class="plan-controls-toolbar">
@@ -234,7 +227,7 @@
         <div class="stage-view hidden" id="architectStageView">
           <div class="architect-scroll-area">
             <div class="arch-banner">
-              <h2>Kapsam Uyumlu Mimar Karar Raporu (v6.1.2)</h2>
+              <h2>Kapsam Uyumlu Mimar Karar Raporu (v6.1.3)</h2>
               <p>Mimar raporu yalnız aktif projenin bileşik karar kapsamına uygunsa render edilir.</p>
             </div>
 
@@ -248,54 +241,49 @@
       </section>
 
       <!-- RIGHT CONVERSATION-FIRST SOHBET PANEL (~32% width) -->
-      <aside class="contextual-right-panel" id="contextualPanel">
+      <aside class="chat-panel">
         
-        <div class="drawer-handle-bar" id="drawerHandleBar">
-          <span class="drawer-handle-pill"></span>
-          <span class="drawer-handle-title">Sohbet &amp; Mimari Asistan</span>
-        </div>
-
-        <div class="panel-header">
-          <div class="chat-header-top-row">
-            <h2 class="panel-title" id="panelTitle">BRIF.AI Mimari Asistan</h2>
-            
-            <!-- Scoped Chat Message Filter Dropdown (Requirement 8) -->
-            <select id="chatScopeFilterSelect" class="chat-filter-dropdown" title="Konuşma Filtresi">
-              <option value="active_scope" selected>Aktif Kapsam</option>
-              <option value="active_decision">Aktif Karar</option>
-              <option value="active_level">Aktif Kat</option>
-              <option value="active_project">Aktif Proje</option>
-              <option value="all">Tüm Geçmiş</option>
-            </select>
-          </div>
-          <span class="context-badge" id="assistantContextBadge">Genel Mimari Bağlam</span>
-        </div>
-
-        <div class="panel-body rich-chat-body" id="panelBody">
-          <div class="chat-messages" id="chatMessages">
-            <div class="message ai-message">
-              <div class="message-avatar brif">B</div>
-              <div class="message-content">
-                <div class="message-sender">BRIF.AI Mimari Asistan</div>
-                <div class="message-text">
-                  Hoş geldiniz! Mimari karar ve planlama sürecinde yanınızdayım. İstediğiniz mimari değişikliği anlatabilirsiniz.
-                </div>
+        <!-- SOHBET PANEL HEADER WITH SCOPE BADGE & SCOPE FILTER -->
+        <div class="chat-header">
+          <div class="chat-header-main">
+            <div class="chat-header-title">
+              <span class="bot-avatar">🤖</span>
+              <div class="header-text-group">
+                <h3>BRIF.AI Asistan</h3>
+                <span class="online-status">● Çevrim İçi</span>
               </div>
             </div>
+
+            <div class="chat-scope-badge" id="assistantContextBadge">
+              Genel Proje Bağlamı
+            </div>
+          </div>
+
+          <!-- Scope Filter Selector -->
+          <div class="chat-scope-filter">
+            <label for="chatScopeFilterSelect">Sohbet Filtresi:</label>
+            <select id="chatScopeFilterSelect" class="filter-dropdown">
+              <option value="active_level" selected>Aktif Kat Sohbeti</option>
+              <option value="active_decision">Aktif Karar Sohbeti</option>
+              <option value="all">Tüm Proje Sohbeti</option>
+            </select>
           </div>
         </div>
 
-        <div class="contextual-assistant-footer" id="contextualAssistantFooter">
-          <div class="chat-header-room-info hidden" id="chatHeaderRoomInfo">
-            📌 <strong>Varlık</strong> hakkında konuşuyorsunuz.
-          </div>
+        <!-- CHAT MESSAGES STREAM CONTAINER -->
+        <div class="chat-messages-container" id="chatMessagesContainer">
+          <!-- Dynamically populated by ConversationOrchestrator -->
+        </div>
 
-          <form class="assistant-chat-form" id="assistantChatForm">
-            <div class="input-wrapper">
-              <textarea id="assistantUserInput" placeholder="Bana mimari veya planlama hakkında bir istek yazın..." rows="2"></textarea>
-              <button type="submit" class="send-btn">Gönder</button>
-            </div>
+        <!-- CHAT INPUT FORM -->
+        <div class="chat-input-area">
+          <form id="assistantChatForm" class="chat-form">
+            <input type="text" id="assistantUserInput" placeholder="İsteğinizi yazın (ör. Ebeveyn banyosu kuzeyde olsun)..." autocomplete="off">
+            <button type="submit" class="send-btn" id="sendBtn">
+              <span>Gönder</span>
+            </button>
           </form>
+          <div class="chat-footer-hint">Talebiniz mimari kontrol ve kapsam süzgecinden geçirilecektir.</div>
         </div>
 
       </aside>
@@ -337,7 +325,8 @@
     </div>
   </div>
 
-  <!-- MODULAR SCRIPTS (v6.1.2 Platform Architecture) -->
+  <!-- MODULAR SCRIPTS (v6.1.3 Scope-Safe Workspace Architecture) -->
+  <script src="js/dom_surface_registry.js"></script>
   <script src="js/entity_hierarchy.js"></script>
   <script src="js/scoped_document_store.js"></script>
   <script src="js/workspace_scope_resolver.js"></script>
