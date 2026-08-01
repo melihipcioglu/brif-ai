@@ -1,72 +1,56 @@
 /**
- * BRIF.AI — Contextual Assistant Core Engine (v5.2 Refined)
+ * BRIF.AI — Contextual Assistant Core Engine (v6.0 Refined)
  *
- * Single persistent assistant managing session context state, dynamic context badges,
- * and stage-aware greetings.
+ * Uses EntityHierarchy and ContextStateMachine for dynamic, room-name-independent
+ * scope resolution and context badge rendering.
  */
 
 class ContextualAssistant {
   constructor(options = {}) {
-    this.historyMemory = []; // Keeps last 16 messages
+    this.historyMemory = [];
 
-    // Single Unified Session Context State (Requirement 1 & 2)
-    this.currentContext = {
-      stage: 1,
-      prefRound: 1,
-      alternative: 'a',
-      floor: 'ground',
-      spaceId: 'study',
-      spaceName: 'Çalışma Odası',
-      activeScenario: null,
-      isArchitectView: false,
-      workflowStep: 1
-    };
+    this.hierarchy = options.hierarchy || new EntityHierarchy();
+    this.stateMachine = options.stateMachine || new ContextStateMachine(this.hierarchy);
 
     this.intentParser = new DemoIntentParser();
     this.ruleEvaluator = new RuleEvaluator();
+
+    // Subscribe to state machine updates
+    this.stateMachine.subscribe((ctx) => {
+      this.updateContextBadge(ctx);
+    });
   }
 
-  setContext(newCtx) {
-    this.currentContext = { ...this.currentContext, ...newCtx };
-    this.updateContextBadge();
-  }
-
-  updateContextBadge() {
+  updateContextBadge(ctx) {
     const badgeEl = document.getElementById('assistantContextBadge');
     const headerInfo = document.getElementById('chatHeaderRoomInfo');
     if (!badgeEl) return;
 
-    const ctx = this.currentContext;
-    let badgeText = '';
+    ctx = ctx || this.stateMachine.getContext();
 
-    if (ctx.isArchitectView) {
-      const spaceStr = ctx.spaceName ? ` — ${ctx.spaceName} Kararı` : '';
-      badgeText = `Mimar Önizlemesi${spaceStr}`;
-    } else if (ctx.activeScenario === 'master_bath_relocation') {
-      badgeText = 'Ebeveyn Banyosu hakkında konuşuyorsunuz';
-    } else if (ctx.activeScenario === 'floor_overlay') {
-      badgeText = 'Kat İlişkisi Anlatımı';
-    } else if (ctx.activeScenario === 'orientation') {
-      badgeText = `Cephe Yönlenmesi — ${ctx.spaceName || 'Ebeveyn Süiti'}`;
-    } else if (ctx.stage === 1) {
-      badgeText = 'Yaşamınızı Anlama — Hane Yapısı';
-    } else if (ctx.stage === 2) {
-      badgeText = `Görsel Tercihler — Tur ${ctx.prefRound}`;
-    } else if (ctx.stage === 3) {
-      badgeText = `Mekân Programı — ${ctx.spaceName || 'Tüm Mekânlar'}`;
-    } else if (ctx.stage === 4) {
-      const altText = ctx.alternative === 'a' ? 'Alternatif A' : 'Alternatif B';
-      const floorText = ctx.floor === 'ground' ? 'Zemin Kat' : 'Üst Kat';
-      badgeText = ctx.spaceName 
-        ? `${ctx.spaceName} hakkında konuşuyorsunuz` 
-        : `Taslak Plan — ${altText} / ${floorText}`;
+    // Derive label dynamically from asset hierarchy (Requirement 8)
+    let badgeText = "";
+
+    if (ctx.viewMode === "architect_report") {
+      badgeText = `Mimar Önizlemesi — ${this.hierarchy.getScopeTitle(ctx)}`;
+    } else if (ctx.suspendedContext) {
+      badgeText = `Askıda Bağlam (${ctx.suspendedContext.scopeTitle || 'Önceki Kat'})`;
+    } else if (ctx.activeScenario === "master_bath_relocation") {
+      badgeText = `${this.hierarchy.getScopeTitle(ctx)} hakkında konuşuyorsunuz`;
+    } else if (ctx.activeScenario === "floor_overlay") {
+      badgeText = "Kat İlişkisi Anlatımı (Düşey Tesisat Aksı)";
+    } else if (ctx.activeScenario === "orientation") {
+      badgeText = `Cephe Yönlenmesi — ${this.hierarchy.getScopeTitle(ctx)}`;
+    } else {
+      badgeText = this.hierarchy.getScopeTitle(ctx);
     }
 
     badgeEl.textContent = badgeText;
 
     if (headerInfo) {
-      if (ctx.spaceName && (ctx.stage === 4 || ctx.stage === 3)) {
-        headerInfo.innerHTML = `📌 <strong>${escapeHtml(ctx.spaceName)}</strong> hakkında konuşuyorsunuz.`;
+      const entity = this.hierarchy.findEntity(ctx.entityId);
+      if (entity && entity.type === "space") {
+        headerInfo.innerHTML = `📌 <strong>${escapeHtml(entity.name)}</strong> hakkında konuşuyorsunuz.`;
         headerInfo.classList.remove('hidden');
       } else {
         headerInfo.classList.add('hidden');
@@ -75,40 +59,15 @@ class ContextualAssistant {
   }
 
   processUserMessage(messageText) {
-    this.historyMemory.push({ role: 'user', text: messageText });
-    if (this.historyMemory.length > 16) {
-      this.historyMemory = this.historyMemory.slice(-16);
-    }
+    const ctx = this.stateMachine.getContext();
+    const actionPayload = this.intentParser.parseMessage(messageText, ctx);
+    
+    let aiResponseText = `Talebinizi not aldım: "${messageText}". Bu durumu ${this.hierarchy.getScopeTitle(ctx)} kararlarına ve mimar özetine yansıtacağız.`;
 
-    const actionPayload = this.intentParser.parseMessage(messageText, this.currentContext);
-    const dummySpace = { id: actionPayload.target.space_id, use_type: 'work' };
-    const evaluationResults = this.ruleEvaluator.evaluateSpaceOperation(dummySpace, actionPayload.operation.type, {
-      narrow_edge: actionPayload.operation.narrow_edge,
-      is_misleading_rename: actionPayload.special_case === 'misleading_bypass'
-    });
-
-    let aiResponseText = '';
-    const intent = actionPayload.intent;
-
-    if (actionPayload.special_case === 'two_meter_bedroom') {
-      aiResponseText = evaluationResults[0].user_message;
-    } else if (actionPayload.special_case === 'misleading_bypass') {
-      aiResponseText = evaluationResults[0].user_message;
-    } else if (intent === 'resize_space') {
-      aiResponseText = `${this.currentContext.spaceName || 'Çalışma odası'} alanını küçültme talebinizi değerlendirdim. Ön kontrolden geçen iki opsiyonu çalışma alanında inceleyebilirsiniz.`;
-    } else if (intent === 'move_space') {
-      aiResponseText = `Seçili mekânı taşıma simülasyonunu hazırladım. Komşu alanlar üzerindeki sirkülasyon etkisini kartlar üzerinden görebilirsiniz.`;
-    } else {
-      aiResponseText = `Talebinizi not aldım: "${messageText}". Bu durumu şematik plan kararlarına ve mimar özetine yansıtacağız.`;
-    }
-
+    this.historyMemory.push({ role: 'user', text: messageText, contextSnapshot: { ...ctx, timestamp: new Date().toISOString() } });
     this.historyMemory.push({ role: 'assistant', text: aiResponseText });
 
-    return {
-      actionPayload,
-      evaluationResults,
-      aiResponseText
-    };
+    return { actionPayload, aiResponseText };
   }
 }
 

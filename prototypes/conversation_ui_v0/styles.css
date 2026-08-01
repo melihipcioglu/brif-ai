@@ -1,5 +1,5 @@
 /* ==========================================================================
-   BRIF.AI — Conversation-First Architectural Workspace v5.2 Stylesheet
+   BRIF.AI — Universal Architectural Context Platform v6.0 Stylesheet
    ========================================================================== */
 
 :root {
@@ -53,7 +53,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
   box-shadow: 0 0 40px rgba(0, 0, 0, 0.05);
 }
 
-/* Header & Stepper */
+/* Header & Synthetic Project Selector (Requirement 9) */
 .app-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 12px 24px; border-bottom: 1px solid var(--color-border); background-color: var(--color-surface);
@@ -64,10 +64,10 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 .brand-dot { color: var(--color-brand-accent); }
 .brand-subtitle { font-size: 12px; font-weight: 500; color: var(--color-text-tertiary); }
 
-.header-project { display: flex; align-items: center; gap: 8px; font-size: 13px; background-color: var(--color-surface-subtle); padding: 6px 14px; border-radius: var(--radius-full); }
-.project-tag { color: var(--color-text-tertiary); }
-.project-name { font-weight: 600; }
-.project-badge { font-size: 11px; background-color: #FEF3C7; color: #B45309; padding: 2px 8px; border-radius: var(--radius-sm); font-weight: 700; }
+.header-project-selector { display: flex; align-items: center; gap: 8px; font-size: 12.5px; background-color: var(--color-surface-subtle); padding: 5px 12px; border-radius: var(--radius-full); border: 1px solid var(--color-border); }
+.project-tag { color: var(--color-text-tertiary); font-weight: 600; }
+.project-dropdown { background: none; border: none; font-size: 12.5px; font-weight: 700; color: var(--color-brand-primary); outline: none; cursor: pointer; }
+.project-badge { font-size: 10.5px; background-color: #FEF3C7; color: #B45309; padding: 2px 8px; border-radius: var(--radius-sm); font-weight: 800; }
 
 .header-actions { display: flex; align-items: center; gap: 16px; }
 .mode-toggle-btn { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background-color: var(--color-brand-light); color: var(--color-brand-primary); border: 1px solid #A7F3D0; border-radius: var(--radius-md); font-size: 13px; font-weight: 600; cursor: pointer; }
@@ -104,19 +104,17 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 .drawer-handle-pill { width: 36px; height: 4px; border-radius: 2px; background-color: var(--color-border-hover); margin-bottom: 4px; }
 .drawer-handle-title { font-size: 12px; font-weight: 700; color: var(--color-text-secondary); }
 
+/* Suspended Context Banner (Requirement 3) */
+.suspended-context-banner { display: flex; align-items: center; justify-content: space-between; background-color: #FFFBEB; border: 1.5px solid #F59E0B; padding: 12px 18px; border-radius: var(--radius-md); margin-bottom: 14px; box-shadow: var(--shadow-sm); }
+.suspended-banner-content { display: flex; align-items: center; gap: 10px; }
+.suspended-icon { font-size: 18px; }
+.suspended-text-group strong { font-size: 12.5px; color: #92400E; }
+.suspended-text-group p { font-size: 11.5px; color: #B45309; }
+.resume-context-btn { background-color: #FFFFFF; border: 1px solid #D97706; color: #B45309; padding: 6px 12px; border-radius: var(--radius-md); font-size: 11.5px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+
 /* Stage Views */
 .stage-view { display: flex; flex-direction: column; height: 100%; }
 .stage-view.hidden { display: none !important; }
-
-/* Workflow Status Tracker Bar (Requirement 7) */
-.workflow-tracker-bar { display: flex; align-items: center; justify-content: space-between; background-color: var(--color-surface-subtle); border: 1px solid var(--color-border); padding: 8px 14px; border-radius: var(--radius-md); margin-bottom: 12px; font-size: 11px; }
-.w-tracker-step { display: flex; align-items: center; gap: 6px; color: var(--color-text-tertiary); font-weight: 600; }
-.w-tracker-step.active { color: var(--color-brand-primary); font-weight: 800; }
-.w-tracker-step.completed { color: #047857; font-weight: 700; }
-.w-step-num { width: 18px; height: 18px; border-radius: 50%; background-color: var(--color-border); color: var(--color-text-secondary); display: flex; align-items: center; justify-content: center; font-size: 10px; }
-.w-tracker-step.active .w-step-num { background-color: var(--color-brand-primary); color: #FFFFFF; }
-.w-tracker-step.completed .w-step-num { background-color: var(--color-brand-accent); color: #FFFFFF; }
-.w-tracker-arrow { color: var(--color-border-hover); font-size: 10px; }
 
 /* Stage 1 Live Dashboard */
 .stage1-workspace-container { padding: 24px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 18px; }
@@ -188,7 +186,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 .scenario-label { font-size: 11px; font-weight: 700; color: var(--color-brand-primary); }
 .scenario-btn { background-color: #FFFFFF; border: 1px solid var(--color-brand-accent); color: var(--color-brand-primary); padding: 4px 8px; border-radius: var(--radius-full); font-size: 10.5px; font-weight: 600; cursor: pointer; }
 
-/* Side-by-Side Options Presenter (Requirement 6) */
+/* Side-by-Side Options Presenter */
 .options-side-by-side-container { width: 100%; display: flex; flex-direction: column; gap: 12px; }
 .banner-tag { font-size: 10.5px; font-weight: 800; color: var(--color-brand-accent); text-transform: uppercase; }
 .options-banner h3 { font-size: 15px; font-weight: 800; color: var(--color-brand-primary); }
@@ -210,29 +208,6 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 
 .options-footer-bar { display: flex; justify-content: center; margin-top: 8px; }
 .opt-footer-btn { background: none; border: 1px solid var(--color-border); padding: 6px 12px; border-radius: var(--radius-md); font-size: 11.5px; color: var(--color-text-secondary); cursor: pointer; }
-
-/* Overlay Legend & Filter Toolbar (Requirement 9) */
-.overlay-mode-wrapper { display: flex; flex-direction: column; gap: 10px; width: 100%; }
-.overlay-header-bar h4 { font-size: 14px; font-weight: 800; color: var(--color-brand-primary); }
-.overlay-tag { font-size: 11px; font-weight: 800; color: var(--color-brand-accent); background-color: var(--color-brand-light); padding: 2px 8px; border-radius: var(--radius-sm); }
-
-.overlay-legend-bar { display: flex; align-items: center; gap: 12px; font-size: 11px; background-color: var(--color-surface-subtle); padding: 6px 12px; border-radius: var(--radius-md); border: 1px solid var(--color-border); }
-.legend-item { display: flex; align-items: center; gap: 4px; font-weight: 600; }
-.leg-box { width: 12px; height: 12px; border-radius: 2px; }
-.leg-box.zemin { background-color: #E2E8F0; border: 1px dashed #64748B; }
-.leg-box.ust { background-color: #FFFFFF; border: 2px solid #0F172A; }
-.leg-box.islak { background-color: #E0F2FE; border: 1px solid #0284C7; }
-.leg-box.merdiven { background-color: #FEF08A; border: 1px solid #CA8A04; }
-.leg-line.tesisat { width: 16px; height: 0; border-top: 2px dashed #0284C7; }
-
-.overlay-filter-toolbar { display: flex; gap: 6px; flex-wrap: wrap; }
-.overlay-filter-btn { background-color: #FFFFFF; border: 1px solid var(--color-border); padding: 4px 10px; border-radius: var(--radius-md); font-size: 11px; font-weight: 600; cursor: pointer; }
-.overlay-filter-btn.active { background-color: var(--color-brand-primary); color: #FFFFFF; border-color: var(--color-brand-primary); }
-
-/* Orientation Facade View (Requirement 10) */
-.orientation-workspace-wrapper { display: flex; flex-direction: column; gap: 10px; width: 100%; }
-.orient-tag { font-size: 11px; font-weight: 800; color: #2563EB; background-color: #EFF6FF; padding: 3px 8px; border-radius: var(--radius-sm); width: fit-content; }
-.disclaimer-chip { font-size: 11px; font-weight: 600; color: #B45309; background-color: #FEF3C7; padding: 6px 10px; border-radius: var(--radius-md); border: 1px solid #FDE68A; margin-top: 4px; }
 
 /* Rich Persistent Chat Panel (~32% Right Side) */
 .panel-header { padding: 14px 16px 10px; border-bottom: 1px solid var(--color-border); display: flex; flex-direction: column; gap: 4px; background-color: #FFFFFF; }
@@ -264,22 +239,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 .assistant-chat-form .input-wrapper { display: flex; gap: 8px; align-items: center; background-color: var(--color-surface-subtle); padding: 6px 10px; border-radius: var(--radius-md); border: 1px solid var(--color-border); }
 .assistant-chat-form textarea { flex: 1; border: none; background: none; resize: none; outline: none; font-size: 12px; }
 
-/* Fixed Modal Drawer Dialog */
-.modal-backdrop { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(15, 23, 42, 0.6); display: flex; align-items: center; justify-content: center; z-index: 300; }
-.modal-backdrop.hidden { display: none !important; }
-.modal-card { background-color: var(--color-surface); width: 90%; max-width: 480px; border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); overflow: hidden; }
-.modal-header { padding: 14px 18px; background-color: var(--color-surface-subtle); border-bottom: 1px solid var(--color-border); display: flex; align-items: center; justify-content: space-between; }
-.modal-header h3 { font-size: 13.5px; font-weight: 800; color: var(--color-brand-primary); }
-.close-modal-btn { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--color-text-tertiary); line-height: 1; }
-.modal-body { padding: 18px; }
-.form-group { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
-.form-group label { font-size: 11.5px; font-weight: 700; color: var(--color-text-secondary); }
-.form-group select { padding: 6px 10px; border-radius: var(--radius-md); border: 1px solid var(--color-border); }
-.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
-.cancel-modal-btn { background-color: var(--color-surface-subtle); border: 1px solid var(--color-border); color: var(--color-text-secondary); padding: 6px 14px; border-radius: var(--radius-md); font-size: 12px; font-weight: 600; cursor: pointer; }
-.save-assump-btn { background-color: var(--color-brand-primary); color: #FFFFFF; border: none; padding: 6px 16px; border-radius: var(--radius-md); font-size: 12px; font-weight: 700; cursor: pointer; }
-
-/* Dynamic Professional Architect Report (Requirements 11 & 12) */
+/* Dynamic Professional Architect Report */
 .arch-card { background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 16px; border-radius: var(--radius-lg); }
 .arch-card.full-width { grid-column: 1 / -1; }
 .arch-card h3 { font-size: 14px; font-weight: 800; margin-bottom: 12px; color: var(--color-brand-primary); }

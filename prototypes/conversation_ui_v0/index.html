@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BRIF.AI — Conversation-First Architectural Workspace v5.1</title>
+  <title>BRIF.AI — Universal Architectural Context Platform v6.0</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
@@ -12,17 +12,22 @@
 <body>
   <div class="app-container">
     
-    <!-- TOP HEADER BAR -->
+    <!-- TOP HEADER BAR WITH SYNTHETIC PROJECT SELECTOR (Requirement 9) -->
     <header class="app-header">
       <div class="header-brand">
         <span class="brand-logo">BRIF<span class="brand-dot">.</span>AI</span>
-        <span class="brand-subtitle">Sohbet Merkezli Mimari Çalışma Alanı v5.1</span>
+        <span class="brand-subtitle">Genel Mimari Bağlam Platformu v6.0</span>
       </div>
 
-      <div class="header-project">
-        <span class="project-tag">Proje:</span>
-        <span class="project-name">İki Katlı Müstakil Konut Prototipi</span>
-        <span class="project-badge">v5.1 Kararlı</span>
+      <!-- Synthetic Multi-Project Selector (Requirement 9) -->
+      <div class="header-project-selector">
+        <span class="project-tag">Proje Tipi:</span>
+        <select id="syntheticProjectSelect" class="project-dropdown">
+          <option value="proj_house_2story" selected>Test A — İki Katlı Müstakil Konut</option>
+          <option value="proj_tower_50floor">Test B — 50 Katlı Finans Kulesi</option>
+          <option value="proj_campus_multiblock">Test C — Çok Bloklu Teknoloji Kampüsü</option>
+        </select>
+        <span class="project-badge">v6.0 Genel Mimari</span>
       </div>
 
       <div class="header-actions">
@@ -69,18 +74,18 @@
         <button class="step-node" id="stepNode4" data-stage="4" aria-label="Aşama 4: Taslak Plan">
           <span class="step-number">4</span>
           <span class="step-label">Taslak Plan</span>
-          <span class="step-badge badge-pending">Sohbet Merkezli</span>
+          <span class="step-badge badge-pending">Genel Bağlamlı</span>
         </button>
       </div>
     </nav>
 
-    <!-- GLOBAL DISCLAIMER BAR (Requirement 14) -->
+    <!-- GLOBAL DISCLAIMER BAR -->
     <div class="global-disclaimer-bar">
       <span>ℹ️ UX prototipi — gerçek LLM bağlı değildir.</span>
       <span>•</span>
       <span>Demo mimari değerlendirmesi — resmî mevzuat ve yerel idare verisi bağlı değildir.</span>
       <span>•</span>
-      <span>Şematik plan — mimari proje veya ruhsat çizimi değildir.</span>
+      <span>Bağlam, oda adlarına değil varlık ilişkilerine ve aktif kapsama göre belirlenir.</span>
     </div>
 
     <!-- MAIN CONVERSATION-FIRST WORKSPACE LAYOUT -->
@@ -89,11 +94,9 @@
       <!-- LEFT MAIN WORKSPACE (~68% width) -->
       <section class="stage-workspace">
         
-        <!-- STAGE 1: YAŞAMINIZI ANLAMA (Requirement 6 Live Dashboard) -->
+        <!-- STAGE 1: YAŞAMINIZI ANLAMA -->
         <div class="stage-view active" id="stageView1">
-          <div class="stage1-workspace-container" id="stage1WorkspaceContainer">
-            <!-- Rendered dynamically by WorkspacePresenter -->
-          </div>
+          <div class="stage1-workspace-container" id="stage1WorkspaceContainer"></div>
         </div>
 
         <!-- STAGE 2: GÖRSEL TERCİHLER -->
@@ -147,12 +150,12 @@
           </div>
         </div>
 
-        <!-- STAGE 3: MEKÂN PROGRAMI (Requirement 5 Structured Card Grid) -->
+        <!-- STAGE 3: MEKÂN PROGRAMI -->
         <div class="stage-view hidden" id="stageView3">
           <div class="program-scroll-area">
             <div class="prototype-assumption-banner">
-              <span class="banner-badge">📌 Örnek Prototip Varsayımı</span>
-              <p class="banner-text">İki katlı müstakil konut, yaklaşık <strong>190–220 m² brüt kapalı alan</strong>.</p>
+              <span class="banner-badge">📌 Genel Mimari Varlık Yapısı</span>
+              <p class="banner-text">Mekânlar projenin kat, blok ve zon varlık hiyerarşisi üzerinden tanımlanmıştır.</p>
             </div>
 
             <div class="area-summary-bar">
@@ -164,8 +167,8 @@
             </div>
 
             <div class="floor-tab-bar">
-              <button class="floor-tab active" data-floor="ground" id="floorTabGround">Zemin Kat (9 Mekân)</button>
-              <button class="floor-tab" data-floor="upper" id="floorTabUpper">Üst Kat (8 Mekân)</button>
+              <button class="floor-tab active" data-floor="ground" id="floorTabGround">Zemin Kat</button>
+              <button class="floor-tab" data-floor="upper" id="floorTabUpper">Üst Kat</button>
             </div>
 
             <div class="space-cards-container active" id="spacesGround"><div class="space-cards-grid" id="spaceGridGround"></div></div>
@@ -173,7 +176,7 @@
           </div>
         </div>
 
-        <!-- STAGE 4: TASLAK PLAN (WORKSPACE PRESENTER) -->
+        <!-- STAGE 4: TASLAK PLAN -->
         <div class="stage-view hidden" id="stageView4">
           <div class="plan-scroll-area">
             
@@ -181,8 +184,8 @@
               <div class="compact-card-left">
                 <span class="card-icon">📐</span>
                 <div class="card-texts">
-                  <strong class="card-title">Bu taslak hangi varsayımlarla oluşturuldu?</strong>
-                  <span class="card-summary">İki katlı konut • ~190–220 m² brüt • Kuzey yönü</span>
+                  <strong class="card-title">Genel Bağlam &amp; Varlık Yapısı</strong>
+                  <span class="card-summary">Bağlam varlık ilişkilerine göre doğrulanır • Yanlış sızma engellenir</span>
                 </div>
               </div>
               <button class="edit-assumptions-btn" id="openAssumptionsBtn">Varsayımları Düzenle</button>
@@ -205,13 +208,11 @@
                 <button class="plan-floor-btn" id="planFloorUpperBtn" data-floor="upper">Üst Kat Planı</button>
               </div>
 
-              <!-- Collapsible Secondary Manual Tools (Requirement 20) -->
               <button class="advanced-tools-toggle-btn" id="toggleAdvancedToolsBtn">
                 <span>🛠️ Planı Elle Düzenle (Gelişmiş Araçlar)</span>
               </button>
             </div>
 
-            <!-- SECONDARY MANUAL CAD TOOLBAR (Hidden by default) -->
             <div class="undo-redo-toolbar hidden" id="advancedToolsPanel">
               <button class="tool-btn" id="undoBtn" title="Geri Al">↩ Geri Al</button>
               <button class="tool-btn" id="redoBtn" title="İleri Al">↪ İleri Al</button>
@@ -239,12 +240,12 @@
         <div class="stage-view hidden" id="architectStageView">
           <div class="architect-scroll-area">
             <div class="arch-banner">
-              <h2>Mimar Teknik Brief &amp; Karar Raporu</h2>
-              <p>Aktif oturum verisinden dinamik sentezlenen karar özeti.</p>
+              <h2>Mimar Teknik Brief ve Karar Özeti (v6.0)</h2>
+              <p>Bağlam doğrulayıcı ve varlık hiyerarşisi üzerinden sentezlenen karar özeti.</p>
             </div>
 
             <div class="arch-card full-width">
-              <h3>📜 Dinamik Mimar Karar Raporu (v5.1)</h3>
+              <h3>📜 Genelleştirilmiş Mimar Karar Raporu</h3>
               <div id="architectDecisionHistory"></div>
             </div>
           </div>
@@ -262,10 +263,9 @@
 
         <div class="panel-header">
           <h2 class="panel-title" id="panelTitle">BRIF.AI Mimari Asistan</h2>
-          <span class="context-badge" id="assistantContextBadge">Yaşamınızı Anlama — Sohbet Diyaloğu</span>
+          <span class="context-badge" id="assistantContextBadge">Genel Mimari Bağlam</span>
         </div>
 
-        <!-- RICH PERSISTENT CHAT CONTAINER -->
         <div class="panel-body rich-chat-body" id="panelBody">
           <div class="chat-messages" id="chatMessages">
             <div class="message ai-message">
@@ -273,17 +273,16 @@
               <div class="message-content">
                 <div class="message-sender">BRIF.AI Mimari Asistan</div>
                 <div class="message-text">
-                  Hoş geldiniz! Yeni evinizin mimari karar ve planlama sürecinde yanınızdayım. İstediğiniz değişikliği doğal dil ile anlatabilirsiniz.
+                  Hoş geldiniz! Mimari karar ve planlama sürecinde yanınızdayım. İstediğiniz mimari değişikliği anlatabilirsiniz.
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- ASSISTANT CHAT INPUT FOOTER -->
         <div class="contextual-assistant-footer" id="contextualAssistantFooter">
           <div class="chat-header-room-info hidden" id="chatHeaderRoomInfo">
-            📌 <strong>Çalışma Odası</strong> hakkında konuşuyorsunuz.
+            📌 <strong>Varlık</strong> hakkında konuşuyorsunuz.
           </div>
 
           <form class="assistant-chat-form" id="assistantChatForm">
@@ -299,7 +298,7 @@
     </main>
   </div>
 
-  <!-- FIXED MODAL DRAWER DIALOG (Requirement 9 Overflow Fix) -->
+  <!-- FIXED MODAL DRAWER DIALOG -->
   <div class="modal-backdrop hidden" id="assumptionsModal">
     <div class="modal-card">
       <div class="modal-header">
@@ -333,7 +332,10 @@
     </div>
   </div>
 
-  <!-- MODULAR SCRIPTS (Requirement 21) -->
+  <!-- MODULAR SCRIPTS (v6.0 Architecture) -->
+  <script src="js/entity_hierarchy.js"></script>
+  <script src="js/context_state_machine.js"></script>
+  <script src="js/context_validator.js"></script>
   <script src="js/rule_evaluator.js"></script>
   <script src="js/change_history.js"></script>
   <script src="js/demo_intent_parser.js"></script>

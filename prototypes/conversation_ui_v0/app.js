@@ -1,19 +1,26 @@
 /**
- * BRIF.AI — Main Orchestration Script (v5.2 Refined Engine)
+ * BRIF.AI — Main Orchestration Script (v6.0 Universal Platform Architecture)
  *
- * Connects ConversationOrchestrator, WorkspacePresenter, ContextualAssistant,
- * PlanEditor, RuleEvaluator, and ChangeHistory.
+ * Integrates EntityHierarchy, ContextStateMachine, ContextValidator,
+ * ConversationOrchestrator, WorkspacePresenter, ContextualAssistant, and PlanEditor.
  */
 
 document.addEventListener('DOMContentLoaded', async () => {
 
-  // Core Engines
+  // Universal Asset Hierarchy & State Engine
+  const hierarchy = new EntityHierarchy();
+  const stateMachine = new ContextStateMachine(hierarchy);
+  const validator = new ContextValidator(hierarchy, stateMachine);
+
   const changeHistory = new ChangeHistory();
   const ruleEvaluator = new RuleEvaluator();
-  const assistant = new ContextualAssistant();
+
+  const assistant = new ContextualAssistant({ hierarchy, stateMachine });
   const presenter = new WorkspacePresenter('planEditorContainer');
 
   const orchestrator = new ConversationOrchestrator({
+    hierarchy: hierarchy,
+    stateMachine: stateMachine,
     assistant: assistant,
     presenter: presenter,
     historyManager: changeHistory
@@ -35,7 +42,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Initialize Plan Editor
   planEditor = new PlanEditor('planEditorContainer', {
     onSpaceSelect: (space) => {
-      orchestrator.selectSpace(space.id, space.name);
+      orchestrator.selectEntity(space.id);
     },
     onPlanChange: (event) => {
       const space = planEditor.getSpaceById(event.spaceId);
@@ -57,16 +64,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     planEditor.loadData(rawPlanAlternativesData);
   }
 
-  // Initialize Stage 1 Workspace Dashboard (Requirement 13)
+  // Initialize Stage 1 Workspace Dashboard
   const stage1Container = document.getElementById('stage1WorkspaceContainer');
   if (stage1Container) {
     const stage1Presenter = new WorkspacePresenter('stage1WorkspaceContainer');
     stage1Presenter.setMode('stage1_dashboard', { hasUserMessages: false });
   }
 
-  // --------------------------------------------------------------------------
-  // Assumptions Modal Drawer Dialog (Requirement 9 Fix)
-  // --------------------------------------------------------------------------
+  // Synthetic Project Selector Dropdown (Requirement 9 Test Suite)
+  const syntheticProjectSelect = document.getElementById('syntheticProjectSelect');
+  if (syntheticProjectSelect) {
+    syntheticProjectSelect.addEventListener('change', (e) => {
+      const projId = e.target.value;
+      orchestrator.selectProject(projId);
+    });
+  }
+
+  // Assumptions Modal Drawer Dialog
   const assumptionsModal = document.getElementById('assumptionsModal');
   const openAssumptionsBtn = document.getElementById('openAssumptionsBtn');
   const closeAssumptionsBtn = document.getElementById('closeAssumptionsBtn');
@@ -109,9 +123,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // --------------------------------------------------------------------------
-  // Stage Stepper Navigation (Stage-Aware Greetings)
-  // --------------------------------------------------------------------------
+  // Stage Stepper Navigation
   const stepNodes = document.querySelectorAll('.step-node');
   const stageViews = document.querySelectorAll('.stage-view');
 
@@ -123,7 +135,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   function switchStage(stageNum) {
-    if (assistant.currentContext.isArchitectView) {
+    const isArch = !document.getElementById('architectStageView').classList.contains('hidden');
+    if (isArch) {
       toggleArchitectView(false);
     }
 
@@ -155,17 +168,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (stageNum === 4 && planEditor) planEditor.render();
   }
 
-  // --------------------------------------------------------------------------
   // Toggle Architect View
-  // --------------------------------------------------------------------------
   const toggleViewBtn = document.getElementById('toggleViewBtn');
   const toggleBtnText = document.getElementById('toggleBtnText');
   const architectStageView = document.getElementById('architectStageView');
 
   function toggleArchitectView(showArch) {
-    assistant.setContext({ isArchitectView: showArch });
-
     if (showArch) {
+      stateMachine.dispatch({ type: "ARCHITECT_VIEW_OPENED" });
       stageViews.forEach(v => v.classList.add('hidden'));
       architectStageView.classList.remove('hidden');
       toggleBtnText.textContent = 'Müşteri Görünümüne Dön';
@@ -173,19 +183,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else {
       architectStageView.classList.add('hidden');
       toggleBtnText.textContent = 'Mimar Önizlemesine Geç';
-      switchStage(assistant.currentContext.stage);
+      switchStage(stateMachine.getContext().activeStage || 4);
     }
   }
 
   if (toggleViewBtn) {
     toggleViewBtn.addEventListener('click', () => {
-      toggleArchitectView(!assistant.currentContext.isArchitectView);
+      const isArch = !architectStageView.classList.contains('hidden');
+      toggleArchitectView(!isArch);
     });
   }
 
-  // --------------------------------------------------------------------------
-  // Chat Submission & Event Delegation
-  // --------------------------------------------------------------------------
+  // Chat Form Submission
   const assistantChatForm = document.getElementById('assistantChatForm');
   const assistantUserInput = document.getElementById('assistantUserInput');
 
@@ -204,8 +213,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // Event Delegation for Quick Reply Chips & Workspace Option Buttons
+  // Event Delegation
   document.addEventListener('click', (e) => {
+    // Quick Reply Chips
     const chipBtn = e.target.closest('.chip-btn');
     if (chipBtn && chipBtn.dataset.reply) {
       const replyText = chipBtn.dataset.reply;
@@ -216,41 +226,48 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
+    // Resume Suspended Context Button (Requirement 3)
+    if (e.target.id === 'btnResumeContext') {
+      orchestrator.resumeSuspendedContext();
+      return;
+    }
+
+    // Workspace Option 1 Apply Button
     if (e.target.id === 'btnApplyOpt1') {
       orchestrator.applyMasterBathOption(1);
       updateArchitectDecisionReport();
       return;
     }
 
+    // Workspace Option 2 Apply Button
     if (e.target.id === 'btnApplyOpt2') {
       orchestrator.applyMasterBathOption(2);
       updateArchitectDecisionReport();
       return;
     }
 
+    // Defer Decision Button
     if (e.target.id === 'btnDeferDecision') {
       orchestrator.deferMasterBathDecision();
       updateArchitectDecisionReport();
       return;
     }
 
-    // Space Card "Sohbette Değiştir" Button Delegation (Requirement 14)
+    // Space Card "Sohbette Değiştir" Button Delegation
     const spaceBtn = e.target.closest('.space-card-btn');
     if (spaceBtn) {
       const spaceId = spaceBtn.dataset.spaceId;
-      const spaceName = spaceBtn.dataset.spaceName;
-      if (spaceId && spaceName) {
-        orchestrator.selectSpace(spaceId, spaceName);
+      if (spaceId) {
+        orchestrator.selectEntity(spaceId);
         const input = document.getElementById('assistantUserInput');
         if (input) {
-          input.value = `${spaceName} hakkında düzenleme yapalım`;
           input.focus();
         }
       }
     }
   });
 
-  // Demo Scenario Shortcut Buttons
+  // Demo Scenario Buttons
   const demoScenarioMasterBath = document.getElementById('demoScenarioMasterBath');
   const demoScenarioFloorOverlay = document.getElementById('demoScenarioFloorOverlay');
   const demoScenarioOrientation = document.getElementById('demoScenarioOrientation');
@@ -276,9 +293,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // --------------------------------------------------------------------------
-  // Space Program Cards Grid Population (Requirement 14 Fix)
-  // --------------------------------------------------------------------------
   function populateSpaceGrids() {
     if (!rawPlanAlternativesData || !planEditor) return;
     const groundGrid = document.getElementById('spaceGridGround');

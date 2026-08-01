@@ -1,12 +1,16 @@
 /**
- * BRIF.AI — Conversation Orchestrator & State Engine (v5.2 Refined)
+ * BRIF.AI — Conversation Orchestrator & State Engine (v6.0 Engine)
  *
- * Single Source of Truth Session State, stage-aware greetings,
- * and user/system/architect separation.
+ * Dispatches state machine events, attaches context snapshots to every message,
+ * and runs ContextValidator on every view or scope switch.
  */
 
 class ConversationOrchestrator {
   constructor(options = {}) {
+    this.hierarchy = options.hierarchy || new EntityHierarchy();
+    this.stateMachine = options.stateMachine || new ContextStateMachine(this.hierarchy);
+    this.validator = new ContextValidator(this.hierarchy, this.stateMachine);
+
     this.assistant = options.assistant;
     this.presenter = options.presenter;
     this.historyManager = options.historyManager;
@@ -14,98 +18,130 @@ class ConversationOrchestrator {
 
     this.chatContainerId = 'chatMessages';
 
-    // Unified Session Context State (Requirement 1 & 10)
-    this.sessionState = {
-      activeStage: 1,
-      activeAlternative: 'a',
-      activeFloor: 'ground',
-      selectedSpaceId: 'study',
-      selectedSpaceName: 'Çalışma Odası',
-      activeScenario: null, // 'master_bath_relocation', 'floor_overlay', 'orientation'
-      conversationStep: 'idle', // 'awaiting_reason', 'evaluating', 'presenting_options', 'applied', 'deferred'
-      userRequest: '',
-      clarifiedNeeds: [],
-      presentedOptions: [],
-      selectedOption: null,
-      decisionStatus: 'Karar bekleniyor'
-    };
+    // Subscribe to state changes
+    this.stateMachine.subscribe((ctx) => {
+      this.validateAndSyncUI(ctx);
+    });
   }
 
   setStage(stageNum) {
-    this.sessionState.activeStage = stageNum;
-    this.assistant.setContext({ stage: stageNum });
+    let levelId = "lvl_ground";
+    if (stageNum === 4) {
+      const ctx = this.stateMachine.getContext();
+      levelId = ctx.levelId || "lvl_ground";
+    }
 
-    // Stage-Aware Initial Assistant Greeting (Requirement 3)
+    this.stateMachine.dispatch({
+      type: "LEVEL_SELECTED",
+      payload: { levelId: levelId }
+    });
+
     if (stageNum === 3) {
       this.appendAssistantMessage(
-        "Mekân programını inceliyoruz. Çalışma odası şu anda 10–12 m² aralığında tanımlı. Alanı, konumu veya zorunluluk durumunu konuşarak değiştirebiliriz."
+        "Mekân programını inceliyoruz. Tanımlı alanları, katlarını ve kullanım önceliklerini konuşarak düzenleyebiliriz."
       );
     } else if (stageNum === 4) {
       this.appendAssistantMessage(
-        "Alternatif A’nın üst katını inceliyoruz. Ebeveyn banyosunun konumu ve erişimi hakkında konuşabilirsiniz."
+        "Taslak plan aşamasındayız. Seçili kat ve mekân kararları hakkında konuşabilirsiniz."
       );
     }
   }
 
-  selectSpace(spaceId, spaceName) {
-    this.sessionState.selectedSpaceId = spaceId;
-    this.sessionState.selectedSpaceName = spaceName;
-    this.assistant.setContext({ spaceId: spaceId, spaceName: spaceName });
+  selectProject(projId) {
+    if (projId === "proj_tower_50floor") {
+      this.stateMachine.dispatch({
+        type: "PROJECT_SELECTED",
+        payload: { projectId: "proj_tower_50floor", buildingId: "tower_a", levelId: "lvl_18", entityId: "space_meeting_18a" }
+      });
+      this.appendAssistantMessage("🏢 50 Katlı Finans Kulesi Projesi yüklendi. Aktif bağlam: A Kulesi / 18. Kat / 18A Yönetim Toplantı Odası.");
+    } else if (projId === "proj_campus_multiblock") {
+      this.stateMachine.dispatch({
+        type: "PROJECT_SELECTED",
+        payload: { projectId: "proj_campus_multiblock", buildingId: "block_a_r_d", levelId: "lvl_2_block_a", entityId: "space_robotics_lab" }
+      });
+      this.appendAssistantMessage("🏛️ Çok Bloklu Teknoloji Kampüsü yüklendi. Aktif bağlam: Blok A (AR-GE Binası) / 2. Kat.");
+    } else {
+      this.stateMachine.dispatch({
+        type: "PROJECT_SELECTED",
+        payload: { projectId: "proj_house_2story", buildingId: "bldg_main", levelId: "lvl_ground", entityId: "space_study" }
+      });
+      this.appendAssistantMessage("🏡 İki Katlı Müstakil Konut Projesi yüklendi.");
+    }
+  }
 
-    // "Sohbette Değiştir" Action Response (Requirement 14)
-    this.appendAssistantMessage(
-      `📌 **${escapeHtml(spaceName)}** seçildi. Bu mekânın alanını, katını veya kullanım önceliğini sohbet üzerinden değiştirebiliriz.`
-    );
+  selectLevel(levelId) {
+    this.stateMachine.dispatch({
+      type: "LEVEL_SELECTED",
+      payload: { levelId: levelId }
+    });
+  }
+
+  selectEntity(entityId) {
+    const entity = this.hierarchy.findEntity(entityId);
+    if (entity) {
+      this.stateMachine.dispatch({
+        type: "ENTITY_SELECTED",
+        payload: { entityId: entityId, entityType: entity.type }
+      });
+
+      this.appendAssistantMessage(
+        `📌 **${escapeHtml(entity.name)}** seçildi. Bu varlık hakkında düzenleme yapabiliriz.`
+      );
+    }
+  }
+
+  validateAndSyncUI(ctx) {
+    const validation = this.validator.validateActiveContext(ctx);
+
+    if (!validation.isValid && validation.suspendedData) {
+      // Suspend current scenario without showing it on wrong scope (Requirement 3)
+      if (ctx.scenarioId) {
+        this.stateMachine.dispatch({
+          type: "SCENARIO_SUSPENDED",
+          payload: { reason: validation.message }
+        });
+      }
+
+      // Render Suspended Context Banner in Workspace (Requirement 3)
+      if (this.presenter) {
+        this.presenter.renderSuspendedContextBanner(validation.message);
+      }
+    }
   }
 
   handleUserMessage(messageText) {
     if (!messageText) return;
 
-    const norm = this.intentParser.normalizeText(messageText);
+    const ctx = this.stateMachine.getContext();
 
-    // 1. If currently awaiting reason for Master Bath
-    if (this.sessionState.activeScenario === 'master_bath_relocation' && this.sessionState.conversationStep === 'awaiting_reason') {
-      const reasonType = this.intentParser.parseMasterBathReason(messageText);
-      this.processMasterBathReason(messageText, reasonType);
-      return;
-    }
-
-    // 2. Master Bath Initial Trigger
+    // Check for Master Bath initial trigger
     if (this.intentParser.isMasterBathInitial(messageText)) {
       this.triggerMasterBathScenario(messageText);
       return;
     }
 
-    // 3. Floor Overlay Trigger
-    if (norm.includes('ust uste') || norm.includes('alt kat ust kat') || norm.includes('anlamadim')) {
-      this.triggerFloorOverlayScenario();
-      return;
-    }
-
-    // 4. Orientation / Facade Trigger
-    if (norm.includes('kuzey') || norm.includes('guney') || norm.includes('sabah gunesi')) {
-      this.triggerOrientationScenario();
-      return;
-    }
-
-    // 5. Default Contextual Assistant Process
     const result = this.assistant.processUserMessage(messageText);
     this.appendAssistantMessage(result.aiResponseText);
   }
 
   triggerMasterBathScenario(userRequestText) {
-    this.sessionState.activeScenario = 'master_bath_relocation';
-    this.sessionState.conversationStep = 'awaiting_reason';
-    this.sessionState.selectedSpaceId = 'master_bath';
-    this.sessionState.selectedSpaceName = 'Ebeveyn Banyosu';
-    this.sessionState.userRequest = userRequestText || 'Ebeveyn banyosunun kuzey tarafına alınması.';
-    this.sessionState.decisionStatus = 'Karar bekleniyor';
+    this.stateMachine.dispatch({
+      type: "LEVEL_SELECTED",
+      payload: { levelId: "lvl_upper" }
+    });
 
-    // Update Context Badge dynamically (Requirement 1 & 2 Fix)
-    this.assistant.setContext({
-      activeScenario: 'master_bath_relocation',
-      spaceId: 'master_bath',
-      spaceName: 'Ebeveyn Banyosu'
+    this.stateMachine.dispatch({
+      type: "ENTITY_SELECTED",
+      payload: { entityId: "space_master_bath", entityType: "space" }
+    });
+
+    this.stateMachine.dispatch({
+      type: "SCENARIO_STARTED",
+      payload: {
+        scenarioId: "master_bath_relocation",
+        decisionId: "dec_master_bath",
+        targetEntityId: "space_master_bath"
+      }
     });
 
     this.appendAssistantMessage(
@@ -113,19 +149,14 @@ class ConversationOrchestrator {
       [
         "Yataktan görünmesini istemiyorum",
         "Giyinme alanından geçilsin",
-        "Daha mahrem olsun",
-        "Kuzey cephesini servis alanlarına ayırmak istiyorum"
+        "Daha mahrem olsun"
       ]
     );
 
     this.syncStateWithHistory();
   }
 
-  processMasterBathReason(reasonText, reasonType) {
-    this.sessionState.conversationStep = 'evaluating';
-    this.sessionState.clarifiedNeeds.push(reasonText);
-
-    // Render Analysis Progress View in Workspace (Requirement 2)
+  processMasterBathReason(reasonText) {
     if (this.presenter) {
       this.presenter.setMode('progress', {
         steps: [
@@ -140,26 +171,12 @@ class ConversationOrchestrator {
     }
 
     setTimeout(() => {
-      this.sessionState.conversationStep = 'presenting_options';
-      this.sessionState.presentedOptions = [
-        'Seçenek 1 — Banyoyu Kuzeye Taşımak (Güçlü Mahremiyet)',
-        'Seçenek 2 — Konumu Koru, Giriş Yönünü Değiştir (Tesisat Korumalı)'
-      ];
-
       if (this.presenter) {
         this.presenter.setMode('options_side_by_side');
       }
 
-      // Clear Separation of User Intent, System Interpretation & Architectural Recommendation (Requirement 5)
-      const formattedResponse = `
-        🗣️ <strong>Sözlü Beyan:</strong> "${escapeHtml(reasonText)}"<br>
-        🧠 <strong>Sistemin Yorumu:</strong> Ebeveyn süitinde mahremiyet ve görünmezlik önceliği.<br>
-        📐 <strong>Mimari Öneri:</strong> Yatak → Giyinme → Banyo sıralı erişim hiyerarşisi.<br><br>
-        Bu doğrultuda hazırlanan 2 farklı mimari çözümü çalışma alanında sunuyorum.
-      `;
-
       this.appendAssistantMessage(
-        formattedResponse,
+        `🗣️ <strong>Sözlü Beyan:</strong> "${escapeHtml(reasonText)}"<br>🧠 <strong>Sistemin Yorumu:</strong> Ebeveyn süitinde mahremiyet önceliği.<br>📐 <strong>Mimari Öneri:</strong> Yatak → Giyinme → Banyo sıralı erişim.<br><br>İki mimari seçeneği sunuyorum.`,
         [
           "1. Seçeneği Uygula",
           "2. Seçeneği Uygula",
@@ -172,13 +189,11 @@ class ConversationOrchestrator {
   }
 
   applyMasterBathOption(optionNum) {
-    this.sessionState.selectedOption = optionNum;
-    this.sessionState.conversationStep = 'applied';
-    this.sessionState.decisionStatus = `Seçenek ${optionNum} Seçildi (Uygulandı)`;
+    const ctx = this.stateMachine.getContext();
+    ctx.selectedOption = optionNum;
+    ctx.decisionStatus = `Seçenek ${optionNum} Seçildi (Uygulandı)`;
 
-    const optTitle = optionNum === 1 ? '1. Seçenek (Banyoyu Kuzeye Taşımak)' : '2. Seçenek (Mevcut konumu koruyup girişi değiştirmek)';
-
-    this.appendAssistantMessage(`✅ ${optTitle} onaylandı ve şematik plana uygulandı.`);
+    this.appendAssistantMessage(`✅ Seçenek ${optionNum} onaylandı ve plan kararlarına işlendi.`);
 
     if (this.presenter) {
       this.presenter.setMode('options_side_by_side', { selectedOption: optionNum });
@@ -187,58 +202,73 @@ class ConversationOrchestrator {
     this.syncStateWithHistory();
   }
 
-  deferMasterBathDecision() {
-    this.sessionState.conversationStep = 'deferred';
-    this.sessionState.decisionStatus = 'Mimara Bırakıldı';
-
-    this.appendAssistantMessage(`📌 Karar teyidi mimar değerlendirmesine bırakıldı. Mimar Karar Raporuna not eklendi.`);
-
-    this.syncStateWithHistory();
+  resumeSuspendedContext() {
+    this.stateMachine.dispatch({ type: "SCENARIO_RESUMED" });
+    const ctx = this.stateMachine.getContext();
+    this.appendAssistantMessage(`↩ Önceki bağlama dönüldü: ${this.hierarchy.getScopeTitle(ctx)}.`);
+    
+    if (this.presenter) {
+      this.presenter.setMode('options_side_by_side');
+    }
   }
 
   triggerFloorOverlayScenario() {
-    this.sessionState.activeScenario = 'floor_overlay';
-    this.assistant.setContext({ activeScenario: 'floor_overlay' });
+    this.stateMachine.dispatch({
+      type: "SCENARIO_STARTED",
+      payload: { scenarioId: "floor_overlay" }
+    });
 
     if (this.presenter) {
       this.presenter.setMode('overlay');
     }
 
     this.appendAssistantMessage(
-      "Soluk çizgiler zemin katı, koyu çizgiler üst katı gösteriyor. Mavi alanlar iki kattaki ıslak hacimlerdir. Kesikli çizgi, tesisatın düşeyde yakın tutulduğu yaklaşık aksı gösterir.",
-      [
-        "Sadece üst katı göster",
-        "Alt katı saydam göster",
-        "Islak hacimleri vurgula",
-        "Merdiven boşluğunu göster",
-        "Normal plana dön"
-      ]
+      "Kat ilişkisini aynı koordinat üzerinde gösteriyorum. Mavi alanlar ıslak hacimler, sarı alan merdiven boşluğudur.",
+      ["Sadece üst katı göster", "Alt katı saydam göster", "Normal plana dön"]
     );
   }
 
   triggerOrientationScenario() {
-    this.sessionState.activeScenario = 'orientation';
-    this.assistant.setContext({ activeScenario: 'orientation' });
+    this.stateMachine.dispatch({
+      type: "SCENARIO_STARTED",
+      payload: { scenarioId: "orientation" }
+    });
 
     if (this.presenter) {
       this.presenter.setMode('orientation');
     }
 
     this.appendAssistantMessage(
-      "Kuzey cephesi doğrudan güneş ihtiyacı daha düşük servis hacimleri için değerlendirilebilir. Ancak gerçek karar arsa yönü, komşu yapılar, açıklıklar ve yerel koşullarla doğrulanmalıdır.",
+      "Cephe yönlenmesini kat planı üzerinde gösteriyorum.",
       ["Kuzey cephesini göster", "Güney salon ilişkisini göster", "Normal plana dön"]
     );
   }
 
   syncStateWithHistory() {
     if (this.historyManager) {
-      this.historyManager.setSessionState(this.sessionState);
+      this.historyManager.setSessionState(this.stateMachine.getContext());
     }
   }
 
   appendUserMessage(text) {
     const chatContainer = document.getElementById(this.chatContainerId);
     if (!chatContainer) return;
+
+    const ctx = this.stateMachine.getContext();
+
+    // Context Snapshot attached to message (Requirement 4)
+    const snapshot = {
+      messageId: `msg_${Date.now()}`,
+      projectId: ctx.projectId,
+      buildingId: ctx.buildingId,
+      levelId: ctx.levelId,
+      zoneId: ctx.zoneId,
+      entityId: ctx.entityId,
+      entityType: ctx.entityType,
+      scenarioId: ctx.scenarioId,
+      decisionId: ctx.decisionId,
+      timestamp: new Date().toISOString()
+    };
 
     const msgDiv = document.createElement('div');
     msgDiv.className = 'message user-message';

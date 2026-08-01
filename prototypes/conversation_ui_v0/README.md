@@ -1,11 +1,10 @@
-# BRIF.AI — Conversation-First Architectural Workspace v5.2
+# BRIF.AI — Universal Architectural Context Platform v6.0
 
-Bu klasör, BRIF.AI mimari karar destek platformu için hazırlanmış sohbet merkezli kullanıcı deneyimi (UX) prototipinin **v5.2 Kalite ve Tutarlılık Revizyonu** sürümüdür.
+Bu klasör, BRIF.AI platformu için hazırlanmış **Genel Bağlam ve Kapsam Yönetimi Sistemi (v6.0)** sürümüdür.
 
-> **DÜRÜSTLÜK VE BİLDİRİM NOTU:**  
-> - **UX Prototipi**: Bu çalışma bir ön yüz (frontend) UX prototipidir; herhangi bir canlı LLM veya yapay zekâ modeli bağlı değildir.
-> - **Demo Mimari Değerlendirmesi**: Resmî mevzuat veritabanı veya yerel idare onay sistemi bağlı değildir (`DEMO_UNVERIFIED`).
-> - **Şematik Plan**: Kat planları mimari proje, uygulama veya ruhsat çizimi değildir. Geometrik değişiklikler örnek veri modelleri üzerinde simüle edilmektedir.
+> **MİMARİ TEMEL İLKE:**  
+> **Context is determined by entity relationships and active workspace scope, never by room names or project-specific labels.**  
+> *(Bağlam, oda adlarına veya örnek projeye özel koşullara göre değil; varlık ilişkileri ve aktif çalışma kapsamına göre belirlenir.)*
 
 ---
 
@@ -23,26 +22,27 @@ Daha sonra tarayıcınızda şu adrese gidin:
 
 ---
 
-## v5.2 Revizyon Yenilikleri
+## v6.0 Genel Bağlam Mimarisi Yenilikleri
 
-1. **Tek ve Güvenilir Aktif Bağlam Kaynağı (`sessionState`)**:
-   - Sohbet bağlam rozeti, seçili aşama, kat, alternatif ve mekân adı tek bir oturum durumundan yönlendirilir.
-   - Ebeveyn banyosu senaryosunda eski "Çalışma Odası" bağlam etiketi kalmaz.
+1. **Evrensel Varlık Hiyerarşisi (`EntityHierarchy`)**:
+   - `Project -> Building/Block/Tower -> Level/Floor -> Zone/Department -> Space -> Element` hiyerarşisini destekler.
+   - Oda adlarına bağlı kod yazımını tamamen yasaklar.
 
-2. **Dinamik Bağlam Rozetleri**:
-   - Aşama ve senaryoya göre anlık değişen bağlam etiketleri (Örn: `Ebeveyn Banyosu hakkında konuşuyorsunuz`, `Kat İlişkisi Anlatımı`, `Cephe Yönlenmesi — Ebeveyn Süiti`).
+2. **Merkezi Bağlam Durum Makinesi (`ContextStateMachine`)**:
+   - Tüm bağlam olayları (`PROJECT_SELECTED`, `LEVEL_SELECTED`, `ENTITY_SELECTED`, `SCENARIO_SUSPENDED` vb.) merkezi reducer üzerinden yönetilir.
+   - Dağınık JS dosyalarının bağımsız olarak etiket değiştirmesini engeller.
 
-3. **Bağlama Duyarlı İlk Giriş Mesajları**:
-   - Jenerik karşılama mesajı yalnız ilk açılışta gösterilir. Aşama değişimlerinde kısa bağlamsal giriş mesajları sunulur.
+3. **Bağlam Uyumluluk Doğrulayıcısı (`ContextValidator`)**:
+   - Her görünüm veya bağlam değişiminde aktif görünüm ile konuşma kapsamının uyumunu denetler.
+   - Uyumsuzluk durumunda eski bağlamı askıya alır (`suspendedContext`) ve çalışma alanında uyarır:
+     `"⚠️ Önceki konu başka bir kat/zon kapsamındaydı. Bu görünümde mevcut katı inceliyoruz."`
+   - Kullanıcı tek tıkla `[↩ Önceki Bağlama Dön]` butonuyla askıdaki bağlama dönebilir.
 
-4. **Kullanıcı Beyanı, Sistem Yorumu ve Mimari Öneri Ayrımı**:
-   - Sohbet cevaplarında ve mimar karar raporunda kullanıcının söylediği, sistemin yorumu ve mimari öneri net biçimde ayrılmıştır.
+4. **Konuşma Geçmişi İçin Bağlam Anlık Görüntüleri (Context Snapshots)**:
+   - Her sohbet mesajı `{ messageId, projectId, buildingId, levelId, zoneId, entityId, scenarioId, timestamp }` anlık görüntüsüyle saklanır.
+   - Görünüm değişiminde geçmiş silinmez, ancak yeni kapsamda aktif bağlam gibi sızdırılmaz.
 
-5. **Aşamalı İşlem Durum Çubuğu (Workflow Tracker Bar)**:
-   - 5 adımlı durum çubuğu (`1. Talep Alındı ➔ 2. İhtiyaç Netleştirildi ➔ 3. Değerlendirme Yapıldı ➔ 4. İki Seçenek Hazırlandı ➔ 5. Kullanıcı Kararı Bekleniyor`).
-
-6. **Tamamen Türkçeleştirilmiş Mimar Teknik Brief ve Karar Özeti**:
-   - Tüm ham İngilizce terimler Türkçeleştirilmiştir (`Karar bekleniyor`, `Uygulandı`, `Ertelendi`, `Kaynak`, `Güven düzeyi`, `Doğrulama durumu`).
-
-7. **"Sohbette Değiştir" Aksiyon Entegrasyonu**:
-   - Mekân kartlarındaki butona tıklandığında sohbet paneli ilgili mekâna odaklanır.
+5. **Sentetik Çoklu Proje Test Süiti**:
+   - **Test A**: İki katlı müstakil konut (`house_2story`)
+   - **Test B**: 50 katlı finans kulesi (`tower_50floor` — A Kulesi 18. Kat vs 32. Kat)
+   - **Test C**: Çok bloklu teknoloji kampüsü (`campus_multiblock` — Blok A vs Blok B)
