@@ -39,6 +39,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   window.appOrchestrator = orchestrator;
 
+  const localLLMGateway = new LocalLLMGateway({
+    hierarchy,
+    stateMachine,
+    orchestrator,
+    baseUrl: window.BRIF_AI_API_BASE_URL || 'http://127.0.0.1:8000'
+  });
+  orchestrator.setLocalLLMGateway(localLLMGateway);
+  window.appLocalLLMGateway = localLLMGateway;
+
   let planEditor = null;
   let rawPlanAlternativesData = null;
 
@@ -252,6 +261,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Event Delegation
   document.addEventListener('click', (e) => {
+    const proposalButton = e.target.closest('.proposal-approve-btn');
+    if (proposalButton && proposalButton.dataset.proposalId) {
+      orchestrator.approveProposalById(proposalButton.dataset.proposalId);
+      return;
+    }
+
     // Dynamic Level/Building Navigation Tab Click Delegation (Requirement 1: Sekmeler doğrudan class değiştirmemeli)
     const floorBtn = e.target.closest('.plan-floor-btn');
     if (floorBtn && floorBtn.dataset.entityId) {

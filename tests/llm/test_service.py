@@ -1,0 +1,167 @@
+from __future__ import annotations
+
+import asyncio
+from datetime import datetime, timezone
+
+import pytest
+
+from brif_ai.llm.contracts import (
+    ArchitecturalIntentResult,
+    ConversationRequest,
+    LocalModelInfo,
+    ProviderHealth,
+)
+from brif_ai.llm.provider import ProviderUnavailableError
+from brif_ai.llm.service import (
+    LLM_DISABLED_MESSAGE,
+    LocalLLMConversationService,
+    StaleContextError,
+)
+from brif_ai.llm.settings import LocalLLMSettings
+
+from .test_contracts import valid_result_data
+from .test_policy_validator import conversation_request
+
+
+class MockProvider:
+    def __init__(self, result: ArchitecturalIntentResult) -> None:
+        self.result = result
+        self.interpret_calls = 0
+        self.schema: dict[str, object] | None = None
+
+    async def health(self) -> ProviderHealth:
+        return ProviderHealth(provider="mock", reachable=True)
+
+    async def list_models(self) -> list[LocalModelInfo]:
+        return [LocalModelInfo(name="local-model:latest")]
+
+    async def interpret(
+        self, request: ConversationRequest, output_schema: dict[str, object]
+    ) -> ArchitecturalIntentResult:
+        self.interpret_calls += 1
+        self.schema = output_schema
+        return self.result
+
+
+def service(enabled: bool = True) -> tuple[LocalLLMConversationService, MockProvider]:
+    provider = MockProvider(ArchitecturalIntentResult.model_validate(valid_result_data()))
+    settings = LocalLLMSettings(enabled=enabled, model="local-model:latest")
+    return LocalLLMConversationService(settings, provider), provider
+
+
+def test_valid_structured_result_passes_policy() -> None:
+    llm_service, provider = service()
+    response = asyncio.run(llm_service.interpret(conversation_request()))
+
+    assert response.success is True
+    assert response.result is not None
+    assert response.context_fingerprint == "house|main|ground|living|study"
+    assert provider.schema == ArchitecturalIntentResult.model_json_schema()
+
+
+def test_llm_disabled_does_not_call_provider() -> None:
+    llm_service, provider = service(enabled=False)
+    response = asyncio.run(llm_service.interpret(conversation_request()))
+
+    assert response.success is False
+    assert response.error == LLM_DISABLED_MESSAGE
+    assert provider.interpret_calls == 0
+
+
+def test_stale_fingerprint_is_rejected() -> None:
+    with pytest.raises(StaleContextError, match="Eski bağlama"):
+        LocalLLMConversationService.ensure_current_context("old", "current")
+
+
+def test_user_approval_only_creates_proposal_record() -> None:
+    llm_service, _provider = service()
+    action = ArchitecturalIntentResult.model_validate(valid_result_data()).proposed_actions[0]
+    approved_at = datetime(2026, 8, 1, tzinfo=timezone.utc)  # noqa: UP017
+
+    record = llm_service.record_user_approval(
+        action,
+        "same-fingerprint",
+        "same-fingerprint",
+        approved_at=approved_at,
+    )
+
+    assert record.model_dump(mode="json") == {
+        "proposal_status": "user_approved",
+        "approved_at": "2026-08-01T00:00:00Z",
+        "context_fingerprint": "same-fingerprint",
+        "proposed_action": action.model_dump(mode="json"),
+    }
+
+
+@pytest.mark.parametrize(
+    ("message", "intent"),
+    [
+        ("Ebeveyn banyosu yataktan görünmesin ve kuzey tarafında olsun.", "modify_space"),
+        ("Bu iki plan üst üste gelince ne olduğunu anlamadım.", "explain_plan"),
+        ("Çalışma odası sessiz olsun ama tamamen kopuk olmasın.", "modify_relationship"),
+    ],
+)
+def test_scenarios_a_b_and_e(message: str, intent: str) -> None:
+    data = valid_result_data()
+    data["intent"] = intent
+    if intent == "explain_plan":
+        data["proposed_actions"] = [
+            {
+                "action_type": "explain_plan",
+                "target_entity_id": "space_study",
+                "description": "Plan çakışmasını açıkla.",
+                "requires_user_confirmation": False,
+            }
+        ]
+    request = conversation_request().model_copy(update={"message": message})
+    provider = MockProvider(ArchitecturalIntentResult.model_validate(data))
+    llm_service = LocalLLMConversationService(
+        LocalLLMSettings(enabled=True, model="local-model:latest"), provider
+    )
+
+    response = asyncio.run(llm_service.interpret(request))
+
+    assert response.result is not None
+    assert response.result.intent.value == intent
+
+
+def test_scenario_c_without_active_entity_requires_follow_up() -> None:
+    data = valid_result_data()
+    data["target"] = {
+        "project_id": "proj_house_2story",
+        "building_id": "bldg_main",
+        "level_id": "lvl_ground",
+        "zone_id": "zone_living",
+        "entity_id": None,
+    }
+    data["proposed_actions"] = []
+    data["needs_user_confirmation"] = False
+    provider = MockProvider(ArchitecturalIntentResult.model_validate(data))
+    llm_service = LocalLLMConversationService(
+        LocalLLMSettings(enabled=True, model="local-model:latest"), provider
+    )
+
+    response = asyncio.run(llm_service.interpret(conversation_request(entity_id=None)))
+
+    assert response.result is not None
+    assert response.result.needs_follow_up is True
+
+
+def test_scenario_f_provider_failure_preserves_request_state() -> None:
+    class OfflineProvider(MockProvider):
+        async def interpret(
+            self, request: ConversationRequest, output_schema: dict[str, object]
+        ) -> ArchitecturalIntentResult:
+            raise ProviderUnavailableError("offline")
+
+    request = conversation_request()
+    original = request.model_dump()
+    provider = OfflineProvider(ArchitecturalIntentResult.model_validate(valid_result_data()))
+    llm_service = LocalLLMConversationService(
+        LocalLLMSettings(enabled=True, model="local-model:latest"), provider
+    )
+
+    with pytest.raises(ProviderUnavailableError):
+        asyncio.run(llm_service.interpret(request))
+
+    assert request.model_dump() == original
