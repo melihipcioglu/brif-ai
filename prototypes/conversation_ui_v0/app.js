@@ -1,9 +1,10 @@
 /**
- * BRIF.AI — Main Orchestration Script (v6.1.3 Scope-Safe Workspace Architecture)
+ * BRIF.AI — Main Orchestration Script (v6.2 Platform Architecture)
  *
  * Integrates DOMSurfaceRegistry, EntityHierarchy, ScopedDocumentStore,
  * WorkspaceScopeResolver, RenderCompatibilityGuard, ContextStateMachine,
  * ContextValidator, ConversationOrchestrator, WorkspacePresenter, and ContextualAssistant.
+ * Guarantees cross-surface context integrity under ActiveContextSnapshot.
  */
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -19,7 +20,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const resolver = new WorkspaceScopeResolver(hierarchy, store);
   const guard = new RenderCompatibilityGuard(hierarchy);
   const stateMachine = new ContextStateMachine(hierarchy);
-  window.appStateMachine = stateMachine; // For presenter data access
+  window.appStateMachine = stateMachine;
 
   const validator = new ContextValidator(hierarchy, stateMachine);
   const changeHistory = new ChangeHistory();
@@ -68,6 +69,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       updateArchitectDecisionReport();
     }
   });
+  window.appPlanEditor = planEditor;
 
   if (rawPlanAlternativesData) {
     planEditor.loadData(rawPlanAlternativesData);
@@ -80,9 +82,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     stage1Presenter.setMode('stage1_dashboard', { hasUserMessages: false });
   }
 
-  // Subscribe state transitions to atomically clear stale space program cards (Requirement 3)
-  stateMachine.subscribe(() => {
+  // Subscribe state transitions to atomically clear stale space program cards & update decision report
+  stateMachine.subscribe((snapshot) => {
     populateSpaceGrids();
+    updateArchitectDecisionReport();
   });
 
   // Synthetic Project Selector Dropdown
@@ -91,8 +94,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     syntheticProjectSelect.addEventListener('change', (e) => {
       const projId = e.target.value;
       orchestrator.selectProject(projId);
-      populateSpaceGrids();
-      updateArchitectDecisionReport();
     });
   }
 
@@ -189,7 +190,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       stage1Presenter.setMode('stage1_dashboard', { hasUserMessages: true });
     }
     if (stageNum === 3) populateSpaceGrids();
-    if (stageNum === 4 && planEditor) planEditor.render();
+    if (stageNum === 4 && planEditor && stateMachine.getContext().projectId === 'proj_house_2story') {
+      planEditor.render();
+    }
   }
 
   // Toggle Architect View
@@ -239,15 +242,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Event Delegation
   document.addEventListener('click', (e) => {
-    // Dynamic Level Navigation Tab Click Delegation
+    // Dynamic Level/Building Navigation Tab Click Delegation (Requirement 1: Sekmeler doğrudan class değiştirmemeli)
     const floorBtn = e.target.closest('.plan-floor-btn');
     if (floorBtn && floorBtn.dataset.entityId) {
       const entityId = floorBtn.dataset.entityId;
       const entityType = floorBtn.dataset.entityType;
       if (entityType === 'building') {
-        stateMachine.dispatch({ type: 'BUILDING_SELECTED', payload: { buildingId: entityId } });
+        stateMachine.transitionToContext({ buildingId: entityId });
       } else {
-        orchestrator.selectLevel(entityId);
+        stateMachine.transitionToContext({ levelId: entityId });
       }
       return;
     }

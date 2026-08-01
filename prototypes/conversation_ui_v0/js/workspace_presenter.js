@@ -1,10 +1,12 @@
 /**
- * BRIF.AI — Workspace Presenter & Surface Engine (v6.1.4 Platform Architecture)
+ * BRIF.AI — Workspace Presenter & Surface Engine (v6.2 Platform Architecture)
  *
- * Scope-driven presenter resolving candidate documents and workspace surfaces via DOMSurfaceRegistry,
- * generation tokens, and capability checks.
- * Guarantees: "No stale or foreign workspace payload may survive an active-scope transition."
- * "NO BLANK WORKSPACE: Active scope without a renderable plan MUST mount an explicit empty state surface."
+ * Scope-driven presenter resolving candidate documents and workspace surfaces strictly from ActiveContextSnapshot.
+ * Enforces:
+ * 1. Single Snapshot Source for all 14 workspace surfaces
+ * 2. Fingerprint & Generation Token Guarding before DOM commit
+ * 3. Contextual Chat Input Placeholder (Residential vs Tower vs Campus)
+ * 4. Full House Plan Restoration (SVG, alternatives, spaces, capabilities)
  */
 
 class WorkspacePresenter {
@@ -33,24 +35,27 @@ class WorkspacePresenter {
     // 1. Next Generation Token & Fingerprint
     const token = this.registry.nextGeneration(ctx);
 
-    // 2. Atomic Cleanup of Incompatible Surfaces
+    // 2. Atomic Cleanup of Incompatible Surfaces from DOM Registry
     this.registry.unmountIncompatibleSurfaces(ctx);
 
-    // 3. UI Context Consistency Assertions
+    // 3. Render Assistant Badge & Header Info strictly from Snapshot (Requirement 2)
     this.assertUIContextConsistency(ctx);
 
-    // 4. Render Dynamic Navigation Tabs
+    // 4. Render Contextual Chat Input Placeholder (Requirement 5)
+    this.renderContextualChatPlaceholder(ctx);
+
+    // 5. Render Dynamic Navigation Tabs strictly from Snapshot (Requirements 1, 2 & 6)
     this.renderDynamicNavigationTabs(ctx);
 
-    // 5. Render Alternative Selectors Bar strictly scoped by Capability
+    // 6. Render Alternative Selectors Bar strictly scoped by Snapshot Capabilities (Requirements 2 & 4)
     this.renderAlternativeSelectors(ctx);
 
-    // 6. Workspace Document Pipeline & Explicit Empty State (Requirements 1 & 2)
+    // 7. Workspace Document Pipeline & Explicit Empty State (Requirements 1, 2 & 6)
     if (this.currentMode === 'plan' || this.currentMode === 'stage3_program') {
       const docType = this.currentMode === 'stage3_program' ? 'space_program' : 'plan';
       const doc = this.resolver.resolveDocument(ctx, docType);
 
-      // Verify token freshness before committing to DOM
+      // Verify token freshness and fingerprint match before committing to DOM (Requirement 3)
       if (!this.registry.isValidGeneration(token.generationId, ctx)) {
         console.warn(`[BRIF Generation Reject] Stale render generation ${token.generationId} rejected.`);
         return;
@@ -67,6 +72,11 @@ class WorkspacePresenter {
           generationId: token.generationId
         });
         return;
+      }
+
+      // Restore Full Interactive House Plan (Requirement 7)
+      if (ctx.projectId === 'proj_house_2story' && window.appPlanEditor) {
+        window.appPlanEditor.render();
       }
 
       // Add Payload Provenance Attributes in Dev Mode
@@ -97,11 +107,11 @@ class WorkspacePresenter {
       this.renderOrientationMode(data);
     }
 
-    // 7. Render Capability-Based Scoped Actions Bar
+    // 8. Render Capability-Based Scoped Actions Bar (Requirement 4)
     this.renderScopedActions(ctx);
   }
 
-  // Unified Workspace Empty State Surface Renderer (Requirement 1)
+  // Unified Workspace Empty State Surface Renderer (Requirements 1, 2 & 6)
   renderWorkspaceEmptyState(params = {}) {
     const activeContext = params.activeContext;
     if (!this.container || !activeContext) return;
@@ -126,21 +136,47 @@ class WorkspacePresenter {
     }
   }
 
-  // UI Context Consistency Assertion
+  // Contextual Chat Input Placeholder Renderer (Requirement 5)
+  renderContextualChatPlaceholder(activeContext) {
+    const inputEl = document.getElementById('assistantUserInput');
+    if (!inputEl || !activeContext) return;
+
+    const projId = activeContext.projectId;
+
+    if (projId === 'proj_house_2story') {
+      inputEl.placeholder = "Örn. Ebeveyn banyosunun girişini giyinme alanından yapalım.";
+    } else if (projId === 'proj_tower_50floor') {
+      inputEl.placeholder = "Örn. Toplantı odasını yönetim çekirdeğine yaklaştıralım.";
+    } else if (projId === 'proj_campus_multiblock') {
+      inputEl.placeholder = "Örn. Numune hazırlama alanını servis girişine yaklaştıralım.";
+    } else {
+      inputEl.placeholder = "Mimari ihtiyacınızı veya değiştirmek istediğiniz kararı yazın.";
+    }
+  }
+
+  // UI Context Consistency Assertion (Requirement 2)
   assertUIContextConsistency(ctx) {
     if (!ctx) return;
+
+    // Update Header Synthetic Select Dropdown
+    const projectSelect = document.getElementById('syntheticProjectSelect');
+    if (projectSelect && projectSelect.value !== ctx.projectId) {
+      projectSelect.value = ctx.projectId;
+    }
+
+    // Update Assistant Scope Badge
     const badgeEl = document.getElementById('assistantContextBadge');
     if (badgeEl) {
       badgeEl.textContent = this.hierarchy.getScopeTitle(ctx);
     }
   }
 
-  // Scoped Alternative Selector Renderer
+  // Scoped Alternative Selector Renderer (Requirements 2 & 4)
   renderAlternativeSelectors(activeContext) {
     const altBar = document.querySelector('.alternative-selector-bar');
     if (!altBar || !activeContext) return;
 
-    const activeCaps = this.hierarchy.getActiveCapabilities(activeContext);
+    const activeCaps = activeContext.capabilities || this.hierarchy.getActiveCapabilities(activeContext);
 
     // Alternative cards are ONLY mounted if residential_plan_alternatives capability is present!
     if (!activeCaps.includes('residential_plan_alternatives')) {
@@ -162,7 +198,7 @@ class WorkspacePresenter {
     `;
   }
 
-  // Dynamic Navigation Tabs derived strictly from Navigable Siblings
+  // Dynamic Navigation Tabs derived strictly from Navigable Siblings & Snapshot
   renderDynamicNavigationTabs(activeContext) {
     const planTabsContainer = document.getElementById('planFloorTabs');
     const programTabsContainer = document.getElementById('programFloorTabs');
@@ -187,12 +223,12 @@ class WorkspacePresenter {
     if (programTabsContainer) programTabsContainer.innerHTML = tabsHtml;
   }
 
-  // Capability-Based Scoped Actions Bar Renderer
+  // Capability-Based Scoped Actions Bar Renderer (Requirement 4)
   renderScopedActions(activeContext) {
     const demoBar = document.getElementById('demoScenariosBar');
     if (!demoBar || !activeContext) return;
 
-    const activeCapabilities = this.hierarchy.getActiveCapabilities(activeContext);
+    const activeCapabilities = activeContext.capabilities || this.hierarchy.getActiveCapabilities(activeContext);
     const docPackage = this.store.getWorkspacePackage(activeContext.projectId);
 
     if (!docPackage || !docPackage.scopedActions) {

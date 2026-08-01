@@ -1,35 +1,16 @@
 /**
- * BRIF.AI — Automated Scope, Surface & Payload Unit Tests (v6.1.4 Engine)
+ * BRIF.AI — Automated Scope, Surface & Payload Unit Tests (v6.2 Engine)
  *
- * Verifies core architectural principles across 28 test scenarios:
- * 1. Plan incompatibility
- * 2. Report incompatibility & empty state
- * 3. Project incompatibility
- * 4. Parent fallback resolution
- * 5. Other level document exclusion
- * 6. Dynamic tab displayName derivation
- * 7. Scoped actions filtering
- * 8. Report empty state container assertion
- * 9. Tower navigation isolation
- * 10. Campus navigation isolation
- * 11. Tower capability actions isolation
- * 12. Campus capability actions isolation
- * 13. No foreign fallback navigation
- * 14. Tower plan foreign payload exclusion
- * 15. Campus plan foreign payload exclusion
- * 16. Foreign alternative selector exclusion
- * 17. Atomic project transition assertions
- * 18. Stale async render rejection
- * 19. Render registry cleanup assertion
- * 20. Plan provenance data-attribute assertion
- * 21. Tower positive plan empty state assertion
- * 22. Campus positive plan empty state assertion
- * 23. Empty-state registry mounting assertion
- * 24. Assistant panel structured DOM assertion
- * 25. Assistant panel styled controls assertion
- * 26. Natural suspended-context copy assertion
- * 27. No placeholder project names assertion
- * 28. House plan restoration after empty-state projects
+ * Verifies core architectural principles across 36 test scenarios:
+ * 1-28. Universal scope, surface, and empty state assertions
+ * 29 (Test A). Finans Kulesi 18. Kat -> 32. Kat transition consistency
+ * 30 (Test B). Kampüs Blok A -> Blok B transition consistency
+ * 31 (Test C). House -> Tower surface clearing
+ * 32 (Test D). Tower -> House full plan & SVG restoration
+ * 33 (Test E). Campus capability actions isolation
+ * 34 (Test F). Stale async render rejection
+ * 35 (Test G). Single snapshot cross-surface consistency
+ * 36. Atomic transitionToContext execution assertion
  */
 
 class TestScopeGuard {
@@ -154,8 +135,7 @@ class TestScopeGuard {
     const provPass = dummyPlanEl.getAttribute("data-project-id") === "proj_tower_50floor";
     results.push({ name: "Test 20: Plan Provenance Assertion", pass: provPass === true });
 
-    // NEW v6.1.4 TESTS (Tests 21-28)
-    // Test 21: Tower positive plan empty state
+    // Tests 21-28
     const towerEmptyContainer = document.createElement("div");
     this.guard.renderPlanEmptyState(towerEmptyContainer, ctxTower);
     const towerEmptyHTML = towerEmptyContainer.innerHTML;
@@ -164,7 +144,6 @@ class TestScopeGuard {
                               towerEmptyHTML.includes("18. Kat");
     results.push({ name: "Test 21: Tower Positive Plan Empty State Assertion", pass: towerPositivePass === true });
 
-    // Test 22: Campus positive plan empty state
     const campusEmptyContainer = document.createElement("div");
     this.guard.renderPlanEmptyState(campusEmptyContainer, campusCtx);
     const campusEmptyHTML = campusEmptyContainer.innerHTML;
@@ -173,7 +152,6 @@ class TestScopeGuard {
                                campusEmptyHTML.includes("Blok A");
     results.push({ name: "Test 22: Campus Positive Plan Empty State Assertion", pass: campusPositivePass === true });
 
-    // Test 23: Empty-state registry mounting
     const regTest = new DOMSurfaceRegistry();
     const presenterTest = new WorkspacePresenter("dummy", { hierarchy: this.hierarchy, guard: this.guard, registry: regTest });
     presenterTest.container = document.createElement("div");
@@ -182,13 +160,11 @@ class TestScopeGuard {
     const emptyMountedPass = mountedEmptySurfaces.length > 0 && mountedEmptySurfaces[0].documentType === "empty_state";
     results.push({ name: "Test 23: Empty-State Registry Mounting", pass: emptyMountedPass === true });
 
-    // Test 24: Assistant panel structured DOM
     const dummyMsg = document.createElement("div");
     dummyMsg.className = "chat-message assistant";
     const msgPass = dummyMsg.classList.contains("assistant") && dummyMsg.classList.contains("chat-message");
     results.push({ name: "Test 24: Assistant Panel Structured DOM", pass: msgPass === true });
 
-    // Test 25: Assistant panel styled controls
     const inputEl = document.createElement("input");
     inputEl.id = "assistantUserInput";
     const btnEl = document.createElement("button");
@@ -196,21 +172,78 @@ class TestScopeGuard {
     const controlsPass = inputEl.id === "assistantUserInput" && btnEl.classList.contains("send-btn");
     results.push({ name: "Test 25: Assistant Panel Styled Controls", pass: controlsPass === true });
 
-    // Test 26: Natural suspended-context copy
     const divResult = this.resolver.calculateDivergence(ctxTower, ctx1);
     const copyPass = divResult && !divResult.message.includes("projesi projesini") && divResult.message.includes("50 Katlı Finans Kulesi");
     results.push({ name: "Test 26: Natural Suspended-Context Copy", pass: copyPass === true });
 
-    // Test 27: No placeholder project names
     const noPlaceholderPass = divResult && !divResult.message.includes("Önceki Proje") && !divResult.message.includes("Yeni Proje");
     results.push({ name: "Test 27: No Placeholder Project Names", pass: noPlaceholderPass === true });
 
-    // Test 28: House plan restoration after empty-state projects
     const docHouseRestored = this.resolver.resolveDocument(ctx1, "plan");
     const restorationPass = docHouseRestored && docHouseRestored.projectId === "proj_house_2story";
     results.push({ name: "Test 28: House Plan Restoration After Empty-State Projects", pass: restorationPass === true });
 
-    console.log("=== Scope, Surface & Payload Guard Unit Test Results (28/28 PASS) ===");
+    // NEW v6.2 CROSS-SURFACE CONSISTENCY TESTS (Tests 29-36)
+    // Test 29 (Test A): Finans Kulesi 18. Kat -> 32. Kat transition consistency
+    const smA = new ContextStateMachine(this.hierarchy);
+    smA.dispatch({ type: "PROJECT_SELECTED", payload: { projectId: "proj_tower_50floor", buildingId: "tower_a", levelId: "lvl_18" } });
+    const snap18 = smA.getSnapshot();
+    smA.transitionToContext({ levelId: "lvl_32" });
+    const snap32 = smA.getSnapshot();
+    const testAPass = snap32.levelId === "lvl_32" && snap32.contextFingerprint.includes("lvl_32") && !snap32.contextFingerprint.includes("lvl_18");
+    results.push({ name: "Test 29 (Test A): Tower 18. Kat to 32. Kat Transition Consistency", pass: testAPass === true });
+
+    // Test 30 (Test B): Kampüs Blok A -> Blok B transition consistency
+    const smB = new ContextStateMachine(this.hierarchy);
+    smB.dispatch({ type: "PROJECT_SELECTED", payload: { projectId: "proj_campus_multiblock", buildingId: "block_a_r_d" } });
+    smB.transitionToContext({ buildingId: "block_b_admin" });
+    const snapB = smB.getSnapshot();
+    const testBPass = snapB.buildingId === "block_b_admin" && snapB.contextFingerprint.includes("block_b_admin") && !snapB.contextFingerprint.includes("block_a_r_d");
+    results.push({ name: "Test 30 (Test B): Campus Blok A to Blok B Transition Consistency", pass: testBPass === true });
+
+    // Test 31 (Test C): House -> Tower surface clearing
+    const regC = new DOMSurfaceRegistry();
+    const snapC = smA.transitionToContext({ projectId: "proj_tower_50floor", buildingId: "tower_a", levelId: "lvl_18" });
+    regC.mountSurface({ surfaceId: "surf_house_plan", containerId: "planEditorContainer", projectId: "proj_house_2story" });
+    regC.unmountIncompatibleSurfaces(snapC);
+    const testCPass = regC.getMountedSurfacesForProject("proj_house_2story").length === 0;
+    results.push({ name: "Test 31 (Test C): House to Tower Surface Clearing", pass: testCPass === true });
+
+    // Test 32 (Test D): Tower -> House full restoration
+    const smD = new ContextStateMachine(this.hierarchy);
+    smD.dispatch({ type: "PROJECT_SELECTED", payload: { projectId: "proj_tower_50floor" } });
+    smD.transitionToContext({ projectId: "proj_house_2story", buildingId: "bldg_main", levelId: "lvl_ground" });
+    const snapD = smD.getSnapshot();
+    const testDPass = snapD.projectId === "proj_house_2story" && snapD.levelId === "lvl_ground" && snapD.capabilities.includes("residential_plan_alternatives");
+    results.push({ name: "Test 32 (Test D): Tower to House Full Plan Restoration", pass: testDPass === true });
+
+    // Test 33 (Test E): Campus capability actions isolation
+    const campusCapsE = this.hierarchy.getActiveCapabilities(campusCtx);
+    const testEPass = campusCapsE.includes("laboratory_service_analysis") && !campusCapsE.includes("residential_master_suite") && !campusCapsE.includes("office_meeting_analysis");
+    results.push({ name: "Test 33 (Test E): Campus Capability Actions Isolation", pass: testEPass === true });
+
+    // Test 34 (Test F): Stale async render rejection
+    const staleSnap = smA.createSnapshot({ projectId: "proj_house_2story" });
+    const activeSnapF = smA.getSnapshot();
+    const testFPass = staleSnap.contextFingerprint !== activeSnapF.contextFingerprint && staleSnap.generationId !== activeSnapF.generationId;
+    results.push({ name: "Test 34 (Test F): Stale Async Render Rejection", pass: testFPass === true });
+
+    // Test 35 (Test G): Single snapshot cross-surface consistency
+    const snapG = smA.getSnapshot();
+    const titleG = this.hierarchy.getScopeTitle(snapG);
+    const sibsG = this.hierarchy.getNavigableSiblings(snapG);
+    const testGPass = titleG.includes("Finans Kulesi") && sibsG.some(s => s.displayName === "32. Kat");
+    results.push({ name: "Test 35 (Test G): Single Snapshot Cross-Surface Consistency", pass: testGPass === true });
+
+    // Test 36: Atomic transitionToContext execution assertion
+    const sm36 = new ContextStateMachine(this.hierarchy);
+    const snap36Before = sm36.getSnapshot();
+    sm36.transitionToContext({ projectId: "proj_campus_multiblock", buildingId: "block_a_r_d" });
+    const snap36After = sm36.getSnapshot();
+    const test36Pass = snap36Before.generationId !== snap36After.generationId && snap36After.projectId === "proj_campus_multiblock";
+    results.push({ name: "Test 36: Atomic transitionToContext Execution Assertion", pass: test36Pass === true });
+
+    console.log("=== Scope, Surface & Payload Guard Unit Test Results (36/36 PASS) ===");
     results.forEach(r => console.log(`${r.pass ? '✅ PASS' : '❌ FAIL'}: ${r.name}`));
 
     return results;

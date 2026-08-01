@@ -208,21 +208,44 @@ class EntityHierarchy {
   }
 
   // Get full ancestor path for an entity
+  // Returns { project, building, level, zone, entity } where each field is set
+  // to the corresponding ancestor OR the target itself if it is of that type.
   getAncestors(entityId) {
     const ancestors = { project: null, building: null, level: null, zone: null, entity: null };
+    if (!entityId) return ancestors;
     const target = this.findEntity(entityId);
     if (!target) return ancestors;
 
-    ancestors.entity = target;
-
     for (const projId in this.projects) {
       const proj = this.projects[projId];
+      if (proj.id === entityId) {
+        ancestors.project = proj;
+        return ancestors;
+      }
       for (const bldgId in proj.buildings) {
         const bldg = proj.buildings[bldgId];
+        if (bldg.id === entityId) {
+          ancestors.project = proj;
+          ancestors.building = bldg;
+          return ancestors;
+        }
         for (const lvlId in bldg.levels) {
           const lvl = bldg.levels[lvlId];
+          if (lvl.id === entityId) {
+            ancestors.project = proj;
+            ancestors.building = bldg;
+            ancestors.level = lvl;
+            return ancestors;
+          }
           for (const znId in lvl.zones) {
             const zn = lvl.zones[znId];
+            if (zn.id === entityId) {
+              ancestors.project = proj;
+              ancestors.building = bldg;
+              ancestors.level = lvl;
+              ancestors.zone = zn;
+              return ancestors;
+            }
             for (const spId in zn.spaces) {
               const sp = zn.spaces[spId];
               if (sp.id === entityId) {
@@ -230,25 +253,11 @@ class EntityHierarchy {
                 ancestors.building = bldg;
                 ancestors.level = lvl;
                 ancestors.zone = zn;
+                ancestors.entity = sp;
                 return ancestors;
               }
             }
-            if (zn.id === entityId) {
-              ancestors.project = proj;
-              ancestors.building = bldg;
-              ancestors.level = lvl;
-              return ancestors;
-            }
           }
-          if (lvl.id === entityId) {
-            ancestors.project = proj;
-            ancestors.building = bldg;
-            return ancestors;
-          }
-        }
-        if (bldg.id === entityId) {
-          ancestors.project = proj;
-          return ancestors;
         }
       }
     }
