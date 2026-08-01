@@ -1,48 +1,73 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260" width="100%" height="100%">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 320" width="100%" height="100%">
   <defs>
-    <linearGradient id="wallGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#F4F2EB"/>
-      <stop offset="100%" stop-color="#E5E2DC"/>
+    <linearGradient id="floorGradSep" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F7F5F0"/>
+      <stop offset="100%" stop-color="#E8E4DC"/>
+    </linearGradient>
+    <linearGradient id="sunGradSep" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FEF3C7" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#FDE68A" stop-opacity="0.0"/>
     </linearGradient>
   </defs>
 
-  <!-- Background Canvas -->
-  <rect width="400" height="260" rx="12" fill="#FAF9F6" stroke="#E4E0D7" stroke-width="1"/>
+  <!-- Background Container -->
+  <rect width="500" height="320" rx="14" fill="#FAFAF7" stroke="#E5E0D8" stroke-width="1.5"/>
 
-  <!-- Axonometric Room Outline: Isolated Study -->
-  <!-- Floor Base -->
-  <polygon points="60,170 200,230 340,170 200,110" fill="url(#wallGrad1)" stroke="#3F5E4D" stroke-width="2" stroke-linejoin="round"/>
+  <!-- Axonometric Isometric Floor Grid -->
+  <polygon points="70,220 250,300 430,220 250,140" fill="url(#floorGradSep)" stroke="#2C4035" stroke-width="2.5" stroke-linejoin="round"/>
+
+  <!-- Back Left Solid Wall with Window -->
+  <polygon points="70,220 70,100 250,20 250,140" fill="#EFECE6" stroke="#2C4035" stroke-width="2.5" stroke-linejoin="round"/>
   
-  <!-- Back Left Wall -->
-  <polygon points="60,170 60,70 200,10 200,110" fill="#EFECE5" stroke="#3F5E4D" stroke-width="2" stroke-linejoin="round"/>
+  <!-- Back Right Heavy Soundproof Wall -->
+  <polygon points="250,140 250,20 430,100 430,220" fill="#DFDAD0" stroke="#2C4035" stroke-width="2.5" stroke-linejoin="round"/>
+
+  <!-- Solid Partition Wall (Acoustic Barrier) -->
+  <polygon points="170,265 170,145 250,105 250,225" fill="#2C4035" opacity="0.12" stroke="#2C4035" stroke-width="2.5"/>
   
-  <!-- Back Right Wall (Solid Isolation Wall) -->
-  <polygon points="200,110 200,10 340,70 340,170" fill="#E4E0D7" stroke="#3F5E4D" stroke-width="2" stroke-linejoin="round"/>
+  <!-- Closed Acoustic Door with Seal Arc -->
+  <polygon points="190,250 190,160 230,140 230,230" fill="#2C4035" opacity="0.9" stroke="#1E2D25" stroke-width="1.5"/>
+  <text x="210" y="200" font-family="'Inter', sans-serif" font-size="10" font-weight="700" fill="#FFFFFF" text-anchor="middle">KAPALI KAPI</text>
+  <path d="M190 250 A 25 25 0 0 1 230 230" fill="none" stroke="#EF4444" stroke-width="2" stroke-dasharray="3 3"/>
 
-  <!-- Solid Partition Wall (Foreground Isolation Divider) -->
-  <polygon points="200,110 200,230 200,230 200,110" stroke="#3F5E4D" stroke-width="3"/>
-  <polygon points="130,200 130,100 200,130 200,230" fill="#3F5E4D" opacity="0.1" stroke="#3F5E4D" stroke-width="2"/>
-  
-  <!-- Closed Door Frame in Wall -->
-  <polygon points="150,190 150,120 180,133 180,203" fill="#2A4034" opacity="0.85" stroke="#2A4034" stroke-width="1"/>
-  <text x="165" y="165" font-family="sans-serif" font-size="10" fill="#FFFFFF" text-anchor="middle" font-weight="600">KAPI (KAPALI)</text>
+  <!-- Window & Daylight Sunrays -->
+  <polygon points="90,160 140,135 140,85 90,110" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+  <line x1="115" y1="147" x2="115" y2="97" stroke="#0284C7" stroke-width="1"/>
+  <!-- Sunray vectors -->
+  <polygon points="100,145 220,240 270,215 130,120" fill="url(#sunGradSep)"/>
+  <line x1="80" y1="90" x2="130" y2="130" stroke="#F59E0B" stroke-width="2" stroke-dasharray="4 2"/>
+  <text x="100" y="80" font-family="'Inter', sans-serif" font-size="10" font-weight="600" fill="#D97706">Gün Işığı Yönü</text>
 
-  <!-- Desk & Laptop inside room -->
-  <polygon points="230,150 280,128 310,141 260,163" fill="#3F5E4D" stroke="#2A4034" stroke-width="1.5"/>
-  <rect x="260" y="133" width="14" height="10" rx="1" fill="#FAF9F6" stroke="#2A4034" stroke-width="1.5" transform="skewY(-15)"/>
+  <!-- Work Desk & Laptop -->
+  <polygon points="290,190 360,155 390,170 320,205" fill="#2C4035" stroke="#1E2D25" stroke-width="1.5"/>
+  <!-- Desk legs -->
+  <line x1="290" y1="190" x2="290" y2="225" stroke="#1E2D25" stroke-width="2"/>
+  <line x1="320" y1="205" x2="320" y2="240" stroke="#1E2D25" stroke-width="2"/>
+  <line x1="390" y1="170" x2="390" y2="200" stroke="#1E2D25" stroke-width="2"/>
 
-  <!-- Window on Left Wall -->
-  <polygon points="80,120 120,102 120,62 80,80" fill="#EEF3F0" stroke="#3F5E4D" stroke-width="1.5"/>
-  <line x1="100" y1="111" x2="100" y2="71" stroke="#3F5E4D" stroke-width="1"/>
+  <!-- Human Silhouette Working at Desk -->
+  <g transform="translate(325, 145)">
+    <!-- Head -->
+    <circle cx="12" cy="10" r="9" fill="#1E2D25"/>
+    <!-- Body/Torso seated -->
+    <path d="M4 25 C4 18 20 18 20 25 L22 45 L2 45 Z" fill="#1E2D25"/>
+    <!-- Arms typing -->
+    <path d="M6 28 L22 34" stroke="#FAF9F7" stroke-width="2.5" stroke-linecap="round"/>
+  </g>
+  <!-- Laptop on Desk -->
+  <rect x="330" y="168" width="18" height="12" rx="1.5" fill="#FFFFFF" stroke="#1E2D25" stroke-width="1.5" transform="skewY(-15)"/>
 
-  <!-- Acoustic Isolation Symbol -->
-  <g transform="translate(270, 60)">
-    <circle cx="0" cy="0" r="18" fill="#EEF3F0" stroke="#3F5E4D" stroke-width="1.5"/>
-    <path d="M-6 -4 L-6 4 L-2 4 L4 8 L4 -8 L-2 -4 Z" fill="#3F5E4D"/>
-    <line x1="8" y1="-5" x2="12" y2="-9" stroke="#DC2626" stroke-width="2"/>
-    <line x1="8" y1="5" x2="12" y2="9" stroke="#DC2626" stroke-width="2"/>
+  <!-- Acoustic Separation Icon & Lines -->
+  <g transform="translate(390, 60)">
+    <circle cx="0" cy="0" r="22" fill="#FEF2F2" stroke="#EF4444" stroke-width="2"/>
+    <!-- Speaker mute icon -->
+    <path d="M-8 -6 L-8 6 L-3 6 L4 11 L4 -11 L-3 -6 Z" fill="#EF4444"/>
+    <line x1="8" y1="-7" x2="14" y2="-1" stroke="#EF4444" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="14" y1="-7" x2="8" y2="-1" stroke="#EF4444" stroke-width="2.5" stroke-linecap="round"/>
+    <text x="0" y="36" font-family="'Inter', sans-serif" font-size="10" font-weight="700" fill="#DC2626" text-anchor="middle">TAM AKUSTİK İZOLASYON</text>
   </g>
 
-  <!-- Architectural Label -->
-  <text x="200" y="248" font-family="sans-serif" font-size="12" font-weight="700" fill="#1C1C1E" text-anchor="middle">Tamamen Ayrı Çalışma Odası</text>
+  <!-- Title Label -->
+  <rect x="15" y="15" width="220" height="26" rx="6" fill="#FFFFFF" stroke="#2C4035" stroke-width="1.5"/>
+  <text x="125" y="32" font-family="'Inter', sans-serif" font-size="12" font-weight="700" fill="#2C4035" text-anchor="middle">Tamamen Ayrı Çalışma Odası</text>
 </svg>

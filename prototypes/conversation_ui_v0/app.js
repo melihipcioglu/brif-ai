@@ -1,64 +1,174 @@
 /**
- * BRIF.AI - Multi-Stage Architectural UX Prototype v0 Interaction Script
+ * BRIF.AI — Multi-Stage Architectural UX Prototype v3 Interaction Script
  *
- * NOTE: Standalone frontend UX prototype for BRIF.AI.
- * Powers Stage Navigation, Visual Preference Analysis, Space Program & Relationship Graph,
- * Draft Plan Alternatives, and Dynamic Insight Synthesis.
- * Contains NO real backend, database, API, or AI model calls.
+ * Handles:
+ * 1. Process Stepper Stage Navigation & Contextual Right Panel switching
+ * 2. Stage 1 Chat Conversation & User Statement collection
+ * 3. Stage 2 Visual Preferences (3 Comparative Rounds & Attribute Chips)
+ * 4. Stage 3 Space Program (2 Floor Tabs & Spatial Relationship Graph)
+ * 5. Stage 4 Draft Schematic Floor Plans (Inline SVG injection, floor views, room click reasoning)
+ * 6. Qualitative Indicators, Plan Assumptions Simulation & User Inclination
+ * 7. Architect View Toggle & Mobile Drawer Handling
  */
 
 document.addEventListener('DOMContentLoaded', () => {
+
   // --------------------------------------------------------------------------
-  // DOM Element References
+  // Data Repositories & State
+  // --------------------------------------------------------------------------
+  let currentStage = 1;
+  let currentAlt = 'a'; // 'a' or 'b'
+  let currentFloor = 'ground'; // 'ground' or 'upper'
+  let isArchitectView = false;
+  let selectedAttributes = new Set();
+  let userInclination = null;
+
+  // Cached Inline SVGs to prevent duplicate fetch calls
+  const svgCache = {
+    a: null,
+    b: null
+  };
+
+  // Room Reasoning Knowledge Base (Requirements 5 & 8)
+  const roomReasoningMap = {
+    study: {
+      title: 'Çalışma Odası — Neden Burada?',
+      userStatement: 'Eşim evden çalışıyor, online toplantılar yapıyor.',
+      visualAttr: 'Sessizlik ve gerektiğinde kapanabilmesi.',
+      archInterp: 'Çalışma alanı ortak yaşama yakın ancak akustik olarak izole edilebilir olmalıdır.',
+      altDiff: 'Alternatif A: Tam izole kapalı oda. Alternatif B: Kayar panelli esnek dönüşüm.',
+      verifyTopic: 'Tam ayrışma ile esnek bağlantı arasındaki öncelik henüz kesinleşmedi.',
+      sourceType: 'Doğrudan kullanıcı beyanı',
+      sourceClass: 'user-said',
+      confidence: 'Güven: Orta'
+    },
+    living: {
+      title: 'Yaşam Alanı (Salon) — Neden Burada?',
+      userStatement: 'Öğleden sonra 16:00 sonrası çocuklar okuldan gelince yoğun kullanılıyor.',
+      visualAttr: 'Ferahlık, gün ışığı ve peyzaj teras teması.',
+      archInterp: 'Güney cephesinde terasla bütünleşen ana aile toplanma alanı.',
+      altDiff: 'Alternatif A: Çalışma alanından bağımsız. Alternatif B: Çalışma alanına kayar panelle açılan akış.',
+      verifyTopic: 'Mutfak ile açık/kapı ilişkisi netleştirilecek.',
+      sourceType: 'Doğrudan kullanıcı beyanı',
+      sourceClass: 'user-said',
+      confidence: 'Güven: Yüksek'
+    },
+    kitchen: {
+      title: 'Mutfak ve Yemek — Neden Burada?',
+      userStatement: 'Günlük aile yemekleri ve hızlı bahçe servisi ihtiyacı.',
+      visualAttr: 'Görsel bağlantı & koku/ses kontrolü.',
+      archInterp: 'Zemin kat servis kanadında, teras ve salona doğrudan erişim.',
+      altDiff: 'Alternatif A: Yarı-kontrollü bağımsız kurgu. Alternatif B: Açık ada mutfak kurgusu.',
+      verifyTopic: 'Ada mutfak çevresi sirkülasyon genişliği.',
+      sourceType: 'Kullanıcının görsel tercihi',
+      sourceClass: 'pref-chip',
+      confidence: 'Güven: Yüksek'
+    },
+    master: {
+      title: 'Ebeveyn Yatak Odası — Neden Burada?',
+      userStatement: 'Gece kuşağında sessizlik ve özel dinlenme alanı.',
+      visualAttr: 'Mahremiyet ve özel banyo konforu.',
+      archInterp: 'Üst katta çocuk odalarından merdiven holü ile ayrışan özel süit.',
+      altDiff: 'Her iki alternatifte üst kat korunaklı cephede konumlanmıştır.',
+      verifyTopic: 'Giyinme bölümünün banyo ile ilişkisi.',
+      sourceType: 'Doğrudan kullanıcı beyanı',
+      sourceClass: 'user-said',
+      confidence: 'Güven: Yüksek'
+    },
+    kids: {
+      title: 'Çocuk Odaları — Neden Burada?',
+      userStatement: 'Çocuklar 16:00 sonrası odalarını çalışma ve oyun için kullanıyor.',
+      visualAttr: 'Gün ışığı ve ortak banyo erişimi.',
+      archInterp: 'Üst kat doğu/güney-doğu cephesinde ikiz çocuk alanı.',
+      altDiff: 'Her iki alternatifte ortak banyo ve merdiven holüne hizalı.',
+      verifyTopic: 'Gelecekte çalışma masası büyüme ihtiyacı.',
+      sourceType: 'Doğrudan kullanıcı beyanı',
+      sourceClass: 'user-said',
+      confidence: 'Güven: Yüksek'
+    },
+    entry: {
+      title: 'Giriş ve Vestiyer — Neden Burada?',
+      userStatement: 'Dört kişilik aile ayakkabı/mont ve okul çantası depolama.',
+      visualAttr: 'Mahremiyet süzgeci ve düzen.',
+      archInterp: 'Rüzgarlık ve vestiyer tamponu sağlayan ana giriş düğümü.',
+      altDiff: 'Zemin kat kuzey/kuzey-doğu aksında konumlandırılmıştır.',
+      verifyTopic: 'Ayakkabılık depolama hacmi yeterliliği.',
+      sourceType: 'Prototip varsayımı',
+      sourceClass: 'proto-assump',
+      confidence: 'Güven: Yüksek'
+    },
+    terrace: {
+      title: 'Peyzaj Terası — Neden Burada?',
+      userStatement: 'Salondan bahçeye doğrudan geçiş ve dış mekân kullanımı.',
+      visualAttr: 'Ferahlık ve gün ışığı.',
+      archInterp: 'Salona doğrudan bağlı açık dış mekân yaşama platformu.',
+      altDiff: 'Açık alandır, kapalı brüt toplama eklenmez.',
+      verifyTopic: 'Teras üstü gölgelendirme elemanı tercihi.',
+      sourceType: 'Kullanıcının görsel tercihi',
+      sourceClass: 'pref-chip',
+      confidence: 'Güven: Orta'
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // DOM References
   // --------------------------------------------------------------------------
   const stepNodes = document.querySelectorAll('.step-node');
   const stageViews = document.querySelectorAll('.stage-view');
+  
+  const toggleViewBtn = document.getElementById('toggleViewBtn');
+  const toggleBtnText = document.getElementById('toggleBtnText');
+  const architectStageView = document.getElementById('architectStageView');
 
+  const panelTitle = document.getElementById('panelTitle');
+  const panelSubtitle = document.getElementById('panelSubtitle');
+  const panelStage1 = document.getElementById('panelStage1');
+  const panelStage2 = document.getElementById('panelStage2');
+  const panelStage3 = document.getElementById('panelStage3');
+  const panelStage4 = document.getElementById('panelStage4');
+
+  const drawerHandleBar = document.getElementById('drawerHandleBar');
+  const contextualPanel = document.getElementById('contextualPanel');
+
+  // Stage 1 Chat
   const chatMessages = document.getElementById('chatMessages');
   const suggestionChips = document.getElementById('suggestionChips');
   const chatForm = document.getElementById('chatForm');
   const userInput = document.getElementById('userInput');
   const voiceBtn = document.getElementById('voiceBtn');
 
-  const toggleViewBtn = document.getElementById('toggleViewBtn');
-  const toggleBtnText = document.getElementById('toggleBtnText');
-  const panelTitle = document.getElementById('panelTitle');
-  const panelSubtitle = document.getElementById('panelSubtitle');
-  const clientView = document.getElementById('clientView');
-  const architectView = document.getElementById('architectView');
-
-  const routineCards = document.getElementById('routineCards');
-  const interpretationCards = document.getElementById('interpretationCards');
-  const pendingCards = document.getElementById('pendingCards');
-
-  const toggleExtraRoutineBtn = document.getElementById('toggleExtraRoutineBtn');
-  const extraRoutineItems = document.getElementById('extraRoutineItems');
-  const routineCount = document.getElementById('routineCount');
-
-  const confirmCorrectBtn = document.getElementById('confirmCorrectBtn');
-  const confirmEditBtn = document.getElementById('confirmEditBtn');
-  const confirmRejectBtn = document.getElementById('confirmRejectBtn');
-  const confirmationText = document.getElementById('confirmationText');
-  const inlineEditor = document.getElementById('inlineEditor');
-  const editInput = document.getElementById('editInput');
-  const cancelEditBtn = document.getElementById('cancelEditBtn');
-  const saveEditBtn = document.getElementById('saveEditBtn');
-  const confirmationActions = document.getElementById('confirmationActions');
-
+  // Stage 2 Visual Preferences
+  const roundTabs = document.querySelectorAll('.round-tab');
+  const prefRoundContainers = document.querySelectorAll('.pref-round-container');
+  const selectedChipsSummary = document.getElementById('selectedChipsSummary');
   const btnNextToProgram = document.getElementById('btnNextToProgram');
+
+  // Stage 3 Space Program
+  const floorTabGround = document.getElementById('floorTabGround');
+  const floorTabUpper = document.getElementById('floorTabUpper');
+  const spacesGround = document.getElementById('spacesGround');
+  const spacesUpper = document.getElementById('spacesUpper');
+  const stage3PanelCards = document.getElementById('stage3PanelCards');
+
+  // Stage 4 Plan & Alternatives
   const btnAltA = document.getElementById('btnAltA');
   const btnAltB = document.getElementById('btnAltB');
-  const planIframe = document.getElementById('planIframe');
-  const archTendencyVal = document.getElementById('archTendencyVal');
+  const planFloorGroundBtn = document.getElementById('planFloorGroundBtn');
+  const planFloorUpperBtn = document.getElementById('planFloorUpperBtn');
+  const planSvgContainer = document.getElementById('planSvgContainer');
+  const openAssumptionsBtn = document.getElementById('openAssumptionsBtn');
+  const assumptionsModal = document.getElementById('assumptionsModal');
+  const closeAssumptionsBtn = document.getElementById('closeAssumptionsBtn');
+  const assumptionsForm = document.getElementById('assumptionsForm');
 
-  let isArchitectView = false;
-  let isExtraRoutineExpanded = false;
-  let currentStage = 1;
+  // Accordion for Past Rationale
+  const togglePastRationaleBtn = document.getElementById('togglePastRationaleBtn');
+  const pastRationaleContent = document.getElementById('pastRationaleContent');
 
   // --------------------------------------------------------------------------
-  // 1. Process Stepper Navigation
+  // 1. Process Stepper Navigation & Stage Switching (Requirement 1 & 8)
   // --------------------------------------------------------------------------
-  stepNodes.forEach((node) => {
+  stepNodes.forEach(node => {
     node.addEventListener('click', () => {
       const targetStage = parseInt(node.dataset.stage, 10);
       switchStage(targetStage);
@@ -66,10 +176,14 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   function switchStage(stageNum) {
+    if (isArchitectView) {
+      toggleArchitectView(false);
+    }
+
     currentStage = stageNum;
 
-    // Update Stepper Nodes UI
-    stepNodes.forEach((node) => {
+    // Update Stepper Bar UI
+    stepNodes.forEach(node => {
       const num = parseInt(node.dataset.stage, 10);
       node.classList.remove('active');
       const badge = node.querySelector('.step-badge');
@@ -78,7 +192,7 @@ document.addEventListener('DOMContentLoaded', () => {
         node.classList.add('active');
         if (badge) {
           badge.className = 'step-badge badge-active';
-          badge.textContent = 'Devam ediyor';
+          badge.textContent = 'Aktif';
         }
       } else if (num < stageNum) {
         node.classList.add('completed');
@@ -89,13 +203,13 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         if (badge) {
           badge.className = 'step-badge badge-pending';
-          badge.textContent = 'Henüz başlamadı';
+          badge.textContent = num === 2 ? '3 Tur' : (num === 3 ? '2 Katlı' : 'Şematik');
         }
       }
     });
 
-    // Update Stage Views Display
-    stageViews.forEach((view) => {
+    // Update Main Stage Views
+    stageViews.forEach(view => {
       view.classList.add('hidden');
       view.classList.remove('active');
     });
@@ -105,16 +219,41 @@ document.addEventListener('DOMContentLoaded', () => {
       activeView.classList.remove('hidden');
       activeView.classList.add('active');
     }
+
+    // Update Contextual Right Panel Content & Titles (Requirements 1 & 8)
+    updateRightPanelForStage(stageNum);
+
+    // If Stage 4, load plan SVG inline
+    if (stageNum === 4) {
+      loadPlanSvg(currentAlt, currentFloor);
+    }
   }
 
-  if (btnNextToProgram) {
-    btnNextToProgram.addEventListener('click', () => {
-      switchStage(3);
-    });
+  function updateRightPanelForStage(stageNum) {
+    // Hide all panel stage containers
+    [panelStage1, panelStage2, panelStage3, panelStage4].forEach(el => el.classList.add('hidden'));
+
+    if (stageNum === 1) {
+      panelTitle.textContent = 'Sizi nasıl anladım?';
+      panelSubtitle.textContent = 'Sohbetten elde edilen günlük yaşam bulguları';
+      panelStage1.classList.remove('hidden');
+    } else if (stageNum === 2) {
+      panelTitle.textContent = 'Görsellerden ne anladım?';
+      panelSubtitle.textContent = 'Seçilen mekânsal nitelikler ve tercihler';
+      panelStage2.classList.remove('hidden');
+    } else if (stageNum === 3) {
+      panelTitle.textContent = 'Program kararlarının dayanakları';
+      panelSubtitle.textContent = 'Mekân ve ilişki düğümü detayları';
+      panelStage3.classList.remove('hidden');
+    } else if (stageNum === 4) {
+      panelTitle.textContent = 'Planı neden böyle kurduk?';
+      panelSubtitle.textContent = 'Seçili mekânın mimari dayanakları';
+      panelStage4.classList.remove('hidden');
+    }
   }
 
   // --------------------------------------------------------------------------
-  // 2. Stage 1 Chat Conversation Dynamics
+  // 2. Stage 1 Chat Conversation Logic
   // --------------------------------------------------------------------------
   if (suggestionChips) {
     suggestionChips.addEventListener('click', (e) => {
@@ -133,331 +272,439 @@ document.addEventListener('DOMContentLoaded', () => {
       handleUserSendMessage(text);
       userInput.value = '';
     });
-
-    userInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        chatForm.dispatchEvent(new Event('submit'));
-      }
-    });
   }
 
   if (voiceBtn) {
     voiceBtn.addEventListener('click', () => {
-      alert('🎤 Sesli yanıt alma demosu: Konuşmanız simüle edilmektedir...');
-      userInput.value = 'Eşim gün boyu online toplantılar yapıyor, tam ses izolasyonu çok kritik.';
+      alert('🎤 Sesli yanıt simülasyonu: "Eşim evden çalışıyor, toplantılar için tam ses izolasyonu çok kritik." mesajı yazıldı.');
+      userInput.value = 'Eşim evden çalışıyor, toplantılar için tam ses izolasyonu çok kritik.';
     });
   }
 
   function handleUserSendMessage(messageText) {
     if (suggestionChips) suggestionChips.style.display = 'none';
-
-    appendMessage('user', 'Siz', 'MK', messageText);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+    appendChatMessage('user', 'Siz', 'MK', messageText);
 
     setTimeout(() => {
-      generateSoundAiResponse(messageText);
+      appendChatMessage('brif', 'BRIF.AI Mimari Danışman', 'B', `Anladım: "${messageText}". Bu beyanı ve ihtiyaçlarınızı not aldım. İkinci aşamada görsel tercihler üzerinden mekan kalitelerini netleştireceğiz.`);
     }, 600);
   }
 
-  function appendMessage(senderType, senderName, avatarText, text) {
+  function appendChatMessage(type, sender, avatar, text) {
     const msgDiv = document.createElement('div');
-    msgDiv.className = `message ${senderType}-message`;
-
+    msgDiv.className = `message ${type === 'user' ? 'user-message' : 'ai-message'}`;
     msgDiv.innerHTML = `
-      <div class="message-avatar ${senderType === 'user' ? 'user' : 'brif'}">${avatarText}</div>
+      <div class="message-avatar ${type === 'user' ? 'user' : 'brif'}">${avatar}</div>
       <div class="message-content">
-        <div class="message-sender">${senderName}</div>
+        <div class="message-sender">${sender}</div>
         <div class="message-text">${escapeHtml(text)}</div>
       </div>
     `;
-
     chatMessages.appendChild(msgDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }
 
-  function generateSoundAiResponse(userText) {
-    let aiReply = '';
-    let newCard = null;
+  // --------------------------------------------------------------------------
+  // 3. Stage 2 Visual Preferences (3 Comparative Rounds & Attribute Chips - Requirement 2 & 9)
+  // --------------------------------------------------------------------------
+  roundTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const rNum = parseInt(tab.dataset.round, 10);
+      switchPrefRound(rNum);
+    });
+  });
 
-    if (userText.includes('toplantı') || userText.includes('izolasyon') || userText.includes('ses')) {
-      aiReply = 'Akustik mahremiyet ihtiyacının önemli olduğunu anlıyorum. Eşinizin toplantıları sırasında evdeki diğer seslerin çalışma alanına ulaşması mı, yoksa içerideki sesin dışarı çıkmaması mı daha öncelikli? Bu ihtiyaç ileride mimarın değerlendireceği mekânsal ve akustik kararlara dönüşebilir.';
-      
-      newCard = {
-        group: 'routine',
-        title: 'Çalışma alanında yoğun ses izolasyonu talebi',
-        badge: 'Kullanıcı söyledi',
-        badgeClass: 'badge-user-said',
-        rationale: `"${userText}"`
-      };
-    } else {
-      aiReply = `İfade ettiğiniz konuyu not aldım: "${userText}". Bu durumun hane içi diğer kullanım alışkanlıklarıyla uyumunu değerlendireceğiz. Ayrıntıları netleştirmek için ikinci aşamadaki Görsel Tercihler bölümüne geçebiliriz.`;
-      
-      newCard = {
-        group: 'routine',
-        title: 'Kullanıcı beyanı eklendi',
-        badge: 'Kullanıcı söyledi',
-        badgeClass: 'badge-user-said',
-        rationale: `"${userText}"`
-      };
-    }
+  function switchPrefRound(rNum) {
+    roundTabs.forEach(tab => tab.classList.remove('active'));
+    prefRoundContainers.forEach(cont => cont.classList.add('hidden'));
 
-    appendMessage('ai', 'BRIF.AI Mimari Danışman', 'B', aiReply);
-    if (newCard) addGroundedCard(newCard);
+    document.getElementById(`roundTab${rNum}`).classList.add('active');
+    document.getElementById(`prefRound${rNum}`).classList.remove('hidden');
   }
 
-  function addGroundedCard(cardData) {
-    const cardDiv = document.createElement('div');
-    cardDiv.className = 'insight-card';
-    if (cardData.badgeClass === 'badge-system') cardDiv.classList.add('highlight-system');
+  // Primary Buttons & Secondary Links on Cards
+  document.querySelectorAll('.pref-card-large').forEach(card => {
+    const chipSection = card.querySelector('.attribute-chip-section');
+    const primaryBtns = card.querySelectorAll('.pref-card-actions button');
+    const dislikeLink = card.querySelector('.pref-link-dislike');
 
-    cardDiv.innerHTML = `
-      <div class="card-top">
-        <span class="card-text">${escapeHtml(cardData.title)}</span>
-        <span class="badge ${cardData.badgeClass}">${escapeHtml(cardData.badge)}</span>
-      </div>
-      <div class="card-rationale">
-        <span class="rationale-label">Dayanak:</span> ${escapeHtml(cardData.rationale)}
-      </div>
-    `;
-
-    if (cardData.group === 'routine') {
-      routineCards.insertBefore(cardDiv, routineCards.firstChild);
-    } else if (cardData.group === 'interpretation') {
-      interpretationCards.insertBefore(cardDiv, interpretationCards.firstChild);
-    } else {
-      pendingCards.insertBefore(cardDiv, pendingCards.firstChild);
-    }
-  }
-
-  // --------------------------------------------------------------------------
-  // 3. Stage 2 Visual Preference Cards Interactions
-  // --------------------------------------------------------------------------
-  const prefCards = document.querySelectorAll('.pref-card');
-  prefCards.forEach((card) => {
-    const actions = card.querySelectorAll('.pref-action-btn');
-    const selector = card.querySelector('.attribute-selector');
-    const title = card.querySelector('.pref-card-title').textContent.trim();
-
-    actions.forEach((btn) => {
+    primaryBtns.forEach(btn => {
       btn.addEventListener('click', () => {
-        actions.forEach((b) => b.classList.remove('selected'));
-        btn.classList.add('selected');
+        const action = btn.dataset.action;
+        card.classList.remove('selected-like', 'selected-dislike');
 
-        const actionType = btn.dataset.action;
-        if (actionType === 'like') {
-          if (selector) selector.classList.remove('hidden');
-          addGroundedCard({
-            group: 'interpretation',
-            title: `Görsel Tercih: ${title} örneği uygun bulundu`,
-            badge: 'Sistem yorumu',
-            badgeClass: 'badge-system',
-            rationale: `Kullanıcı "${title}" örneğini "Bana uygun" olarak işaretledi.`
-          });
-        } else {
-          if (selector) selector.classList.add('hidden');
+        if (action === 'like') {
+          card.classList.add('selected-like');
+        } else if (action === 'neutral') {
+          // Requirement 9: "Kararsızım" selected -> system creates "Teyit gerekli"
         }
+
+        if (chipSection) chipSection.classList.remove('hidden');
       });
     });
 
-    // Attribute Chips
-    const attrChips = card.querySelectorAll('.attr-chip');
-    attrChips.forEach((chip) => {
+    if (dislikeLink) {
+      dislikeLink.addEventListener('click', () => {
+        card.classList.remove('selected-like');
+        card.classList.add('selected-dislike');
+      });
+    }
+
+    // Attribute Chips Click Listeners
+    const chips = card.querySelectorAll('.attr-chip');
+    chips.forEach(chip => {
       chip.addEventListener('click', () => {
         chip.classList.toggle('selected');
         const attrVal = chip.dataset.attr;
 
-        addGroundedCard({
-          group: 'interpretation',
-          title: `Mekânsal Nitelik: "${attrVal}" öne çıkarıldı`,
-          badge: 'Sistem yorumu',
-          badgeClass: 'badge-system',
-          rationale: `Kullanıcı "${title}" görselinde "${attrVal}" özelliğini seçti.`
-        });
+        if (chip.classList.contains('selected')) {
+          selectedAttributes.add(attrVal);
+        } else {
+          selectedAttributes.delete(attrVal);
+        }
+
+        updateSelectedChipsSummary();
       });
     });
   });
 
-  // --------------------------------------------------------------------------
-  // 4. Stage 3 Space Program & Relationship Diagram Interactions
-  // --------------------------------------------------------------------------
-  const spaceCards = document.querySelectorAll('.space-card');
-  spaceCards.forEach((scard) => {
-    const sbtns = scard.querySelectorAll('.space-btn');
-    const sname = scard.querySelector('.space-name').textContent;
+  function updateSelectedChipsSummary() {
+    if (!selectedChipsSummary) return;
+    selectedChipsSummary.innerHTML = '';
 
-    sbtns.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const action = btn.dataset.action;
-        if (action === 'remove') {
-          scard.style.opacity = '0.4';
-          scard.style.textDecoration = 'line-through';
-          btn.textContent = 'Çıkarılması istendi';
-          addGroundedCard({
-            group: 'routine',
-            title: `Mekân Çıkarma Talebi: ${sname}`,
-            badge: 'Kullanıcı söyledi',
-            badgeClass: 'badge-user-said',
-            rationale: `Kullanıcı ${sname} alanının programdan çıkarılmasını istedi.`
-          });
-        } else if (action === 'size-up') {
-          alert(`📐 ${sname} alanı tahmini boyutu artırıldı.`);
-        } else if (action === 'size-down') {
-          alert(`📐 ${sname} alanı tahmini boyutu azaltıldı.`);
+    if (selectedAttributes.size === 0) {
+      selectedChipsSummary.innerHTML = '<span class="summary-chip">Sessizlik</span><span class="summary-chip">Gerektiğinde kapanabilmesi</span>';
+      return;
+    }
+
+    selectedAttributes.forEach(attr => {
+      const span = document.createElement('span');
+      span.className = 'summary-chip';
+      span.textContent = attr;
+      selectedChipsSummary.appendChild(span);
+    });
+  }
+
+  if (btnNextToProgram) {
+    btnNextToProgram.addEventListener('click', () => {
+      switchStage(3);
+    });
+  }
+
+  // --------------------------------------------------------------------------
+  // 4. Stage 3 Space Program & Spatial Relationship Graph (Requirements 4 & 5)
+  // --------------------------------------------------------------------------
+  floorTabGround.addEventListener('click', () => {
+    floorTabGround.classList.add('active');
+    floorTabUpper.classList.remove('active');
+    spacesGround.classList.remove('hidden');
+    spacesGround.classList.add('active');
+    spacesUpper.classList.add('hidden');
+    spacesUpper.classList.remove('active');
+  });
+
+  floorTabUpper.addEventListener('click', () => {
+    floorTabUpper.classList.add('active');
+    floorTabGround.classList.remove('active');
+    spacesUpper.classList.remove('hidden');
+    spacesUpper.classList.add('active');
+    spacesGround.classList.add('hidden');
+    spacesGround.classList.remove('active');
+  });
+
+  // Space Card Clicks in Stage 3 -> Right Panel Update
+  document.querySelectorAll('.space-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const spaceId = card.dataset.spaceId;
+      const spaceTitle = card.querySelector('.space-title').textContent;
+      const spaceMeta = card.querySelector('.space-meta').textContent;
+
+      if (stage3PanelCards) {
+        stage3PanelCards.innerHTML = `
+          <div class="insight-card highlight-card">
+            <div class="insight-card-header">
+              <span class="source-badge user-said">Doğrudan kullanıcı beyanı</span>
+              <span class="conf-badge high">Güven: Yüksek</span>
+            </div>
+            <h4 class="insight-card-title">${escapeHtml(spaceTitle)}</h4>
+            <p class="insight-card-desc"><strong>Metraj:</strong> ${escapeHtml(spaceMeta)}</p>
+            <p class="insight-card-desc"><strong>Mimari Nitelik:</strong> Aile ritmi ve erişilebilirlik gereksinimine uygun ön değerlendirme.</p>
+          </div>
+        `;
+      }
+    });
+  });
+
+  // Spatial Relationship Diagram Node Clicks
+  document.querySelectorAll('.rel-node-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const relKey = btn.dataset.rel;
+      let relText = '';
+
+      if (relKey === 'rel_work_living') {
+        relText = 'Çalışma ↔ Salon: Online toplantı sessizliği için akustik ayrışma öncelikli; kayar panel seçeneğinde esnek bağlantı olası.';
+      } else if (relKey === 'rel_kitchen_living') {
+        relText = 'Mutfak ↔ Salon: Açık ada mutfak sosyal teması artırırken sürgülü cam kapı koku/ses kontrolü sağlar.';
+      } else if (relKey === 'rel_stair_vertical') {
+        relText = 'Merdiven (Zemin ↕ Üst): Zemin kat gündüz yaşama alanı ile üst kat gece mahremiyet alanı arasındaki düşey geçiş düğümü.';
+      } else {
+        relText = 'Ebeveyn ↔ Çocuk Odaları: Üst katta merdiven holü ile sağlanan akustik ve mahremiyet mesafesi.';
+      }
+
+      if (stage3PanelCards) {
+        stage3PanelCards.innerHTML = `
+          <div class="insight-card highlight-card">
+            <div class="insight-card-header">
+              <span class="source-badge sys-interp">Sistem yorumu</span>
+              <span class="conf-badge high">Güven: Yüksek</span>
+            </div>
+            <h4 class="insight-card-title">İlişki Kararı Analizi</h4>
+            <p class="insight-card-desc">${relText}</p>
+          </div>
+        `;
+      }
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // 5. Stage 4 Plan SVGs Fetch, Inline Injection & Room Interactions (Requirements 1, 2, 6, 7)
+  // --------------------------------------------------------------------------
+  btnAltA.addEventListener('click', () => {
+    btnAltA.classList.add('active');
+    btnAltB.classList.remove('active');
+    currentAlt = 'a';
+    loadPlanSvg('a', currentFloor);
+  });
+
+  btnAltB.addEventListener('click', () => {
+    btnAltB.classList.add('active');
+    btnAltA.classList.remove('active');
+    currentAlt = 'b';
+    loadPlanSvg('b', currentFloor);
+  });
+
+  planFloorGroundBtn.addEventListener('click', () => {
+    planFloorGroundBtn.classList.add('active');
+    planFloorUpperBtn.classList.remove('active');
+    currentFloor = 'ground';
+    switchSvgFloorView('ground');
+  });
+
+  planFloorUpperBtn.addEventListener('click', () => {
+    planFloorUpperBtn.classList.add('active');
+    planFloorGroundBtn.classList.remove('active');
+    currentFloor = 'upper';
+    switchSvgFloorView('upper');
+  });
+
+  async function loadPlanSvg(alt, floor) {
+    if (!planSvgContainer) return;
+
+    try {
+      if (!svgCache[alt]) {
+        const url = alt === 'a' ? 'assets/plans/alternative_a.svg' : 'assets/plans/alternative_b.svg';
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        svgCache[alt] = await res.text();
+      }
+
+      // Inject Inline SVG (Requirement 1)
+      planSvgContainer.innerHTML = svgCache[alt];
+
+      // Switch Floor View inside SVG (<g data-floor-view="ground/upper">)
+      switchSvgFloorView(floor);
+
+      // Attach Interactions to [data-room] elements (Requirement 1)
+      attachRoomSvgListeners();
+
+    } catch (err) {
+      console.error('Plan SVG Yükleme Hatası:', err);
+      planSvgContainer.innerHTML = `<div class="error-box">Plan yüklenemedi: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  function switchSvgFloorView(floor) {
+    const svgEl = planSvgContainer.querySelector('svg');
+    if (!svgEl) return;
+
+    const groundGroup = svgEl.querySelector('[data-floor-view="ground"]');
+    const upperGroup = svgEl.querySelector('[data-floor-view="upper"]');
+
+    if (groundGroup && upperGroup) {
+      if (floor === 'ground') {
+        groundGroup.style.display = 'block';
+        upperGroup.style.display = 'none';
+      } else {
+        groundGroup.style.display = 'none';
+        upperGroup.style.display = 'block';
+      }
+    }
+  }
+
+  function attachRoomSvgListeners() {
+    const svgEl = planSvgContainer.querySelector('svg');
+    if (!svgEl) return;
+
+    const interactiveRooms = svgEl.querySelectorAll('[data-room]');
+
+    interactiveRooms.forEach(roomEl => {
+      // Accessibility attributes
+      if (!roomEl.getAttribute('tabindex')) roomEl.setAttribute('tabindex', '0');
+      if (!roomEl.getAttribute('role')) roomEl.setAttribute('role', 'button');
+
+      const roomKey = roomEl.dataset.room;
+
+      // Event listener for click
+      roomEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        selectRoom(roomEl, roomKey);
+      });
+
+      // Keyboard navigation: Enter or Space key (Requirement 1)
+      roomEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          selectRoom(roomEl, roomKey);
         }
       });
     });
-  });
+  }
 
-  // Relationship SVG Nodes Interactivity
-  const relNodes = document.querySelectorAll('.rel-node');
-  relNodes.forEach((rnode) => {
-    rnode.addEventListener('click', () => {
-      const nodeName = rnode.dataset.node;
-      addGroundedCard({
-        group: 'interpretation',
-        title: `Mekânsal İlişki İncelemesi: ${nodeName.toUpperCase()}`,
-        badge: 'Sistem yorumu',
-        badgeClass: 'badge-system',
-        rationale: `Diyagramda ${nodeName} odağı seçildi; diğer mekânlarla akustik ve görsel bağları analiz ediliyor.`
-      });
-    });
-  });
+  function selectRoom(roomEl, roomKey) {
+    // Remove previous selection styling
+    const svgEl = planSvgContainer.querySelector('svg');
+    if (svgEl) {
+      svgEl.querySelectorAll('.room-shape').forEach(el => el.classList.remove('selected'));
+    }
+
+    roomEl.classList.add('selected');
+
+    // Update Right Panel with Room Reasoning (Requirements 5 & 8)
+    const reasoning = roomReasoningMap[roomKey] || roomReasoningMap['study'];
+
+    document.getElementById('roomReasoningTitle').textContent = reasoning.title;
+    document.getElementById('roomUserStatement').textContent = reasoning.userStatement;
+    document.getElementById('roomVisualAttr').textContent = reasoning.visualAttr;
+    document.getElementById('roomArchInterp').textContent = reasoning.archInterp;
+    document.getElementById('roomAltDiff').textContent = reasoning.altDiff;
+    document.getElementById('roomVerifyTopic').textContent = reasoning.verifyTopic;
+
+    const sourceBadge = document.getElementById('roomSourceType');
+    if (sourceBadge) {
+      sourceBadge.textContent = reasoning.sourceType;
+      sourceBadge.className = `source-badge ${reasoning.sourceClass}`;
+    }
+
+    const confBadge = document.getElementById('roomConfidence');
+    if (confBadge) {
+      confBadge.textContent = reasoning.confidence;
+    }
+  }
 
   // --------------------------------------------------------------------------
-  // 5. Stage 4 Draft Plan Alternatives & Preference Tracking
+  // 6. Plan Assumptions Simulation Modal (Requirement 10)
   // --------------------------------------------------------------------------
-  if (btnAltA && btnAltB && planIframe) {
-    btnAltA.addEventListener('click', () => {
-      btnAltA.classList.add('active');
-      btnAltB.classList.remove('active');
-      planIframe.src = 'assets/plans/alternative_a.svg';
-    });
-
-    btnAltB.addEventListener('click', () => {
-      btnAltB.classList.add('active');
-      btnAltA.classList.remove('active');
-      planIframe.src = 'assets/plans/alternative_b.svg';
+  if (openAssumptionsBtn && assumptionsModal) {
+    openAssumptionsBtn.addEventListener('click', () => {
+      assumptionsModal.classList.remove('hidden');
     });
   }
 
-  const tendencyBtns = document.querySelectorAll('.tendency-btn');
-  tendencyBtns.forEach((tbtn) => {
-    tbtn.addEventListener('click', () => {
-      tendencyBtns.forEach((b) => b.classList.remove('selected'));
-      tbtn.classList.add('selected');
+  if (closeAssumptionsBtn && assumptionsModal) {
+    closeAssumptionsBtn.addEventListener('click', () => {
+      assumptionsModal.classList.add('hidden');
+    });
+  }
 
-      const val = tbtn.dataset.tendency;
-      if (archTendencyVal) {
-        archTendencyVal.textContent = val;
+  if (assumptionsForm) {
+    assumptionsForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const studyPriority = document.getElementById('assumpStudy').value;
+
+      if (studyPriority === 'flexible') {
+        // Highlight Alt B
+        btnAltB.click();
+        alert('⚙️ Varsayım Güncellendi: Esnek dönüşüm önceliğine göre Alternatif B (Esnek Bağlantı) öne çıkarıldı.');
+      } else {
+        // Highlight Alt A
+        btnAltA.click();
+        alert('⚙️ Varsayım Güncellendi: Akustik izolasyon önceliğine göre Alternatif A (Kontrollü Ayrışma) öne çıkarıldı.');
       }
 
-      addGroundedCard({
-        group: 'routine',
-        title: `Plan Eğilimi Seçildi: ${val}`,
-        badge: 'Kullanıcı söyledi',
-        badgeClass: 'badge-user-said',
-        rationale: `Kullanıcı taslak plan alternatifleri arasından "${val}" eğilimini belirtti.`
-      });
+      assumptionsModal.classList.add('hidden');
+    });
+  }
+
+  // User Inclination Buttons
+  document.querySelectorAll('.inc-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.inc-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      userInclination = btn.dataset.inc;
+
+      const incStatus = document.getElementById('inclinationStatus');
+      if (incStatus) {
+        incStatus.textContent = `Kullanıcı eğilimi kaydedildi (${btn.textContent}) — nihai tasarım kararı değildir.`;
+      }
     });
   });
 
+  // Accordion for Past Rationale
+  if (togglePastRationaleBtn && pastRationaleContent) {
+    togglePastRationaleBtn.addEventListener('click', () => {
+      pastRationaleContent.classList.toggle('hidden');
+    });
+  }
+
   // --------------------------------------------------------------------------
-  // 6. Right Panel View Toggle (Client Understanding vs Architect Brief View)
+  // 7. Architect View Toggle Mode
   // --------------------------------------------------------------------------
   if (toggleViewBtn) {
     toggleViewBtn.addEventListener('click', () => {
-      isArchitectView = !isArchitectView;
+      toggleArchitectView(!isArchitectView);
+    });
+  }
 
-      if (isArchitectView) {
-        clientView.classList.add('hidden');
-        architectView.classList.remove('hidden');
-        toggleBtnText.textContent = 'Müşteri Görünümü';
-        panelTitle.textContent = 'Mimar Sentez Raporu';
-        panelSubtitle.textContent = 'Teknik mimari brief ve gereksinim analizi';
-        toggleViewBtn.classList.add('active');
-      } else {
-        architectView.classList.add('hidden');
-        clientView.classList.remove('hidden');
-        toggleBtnText.textContent = 'Mimar Önizlemesi';
-        panelTitle.textContent = 'Sizi nasıl anladım?';
-        panelSubtitle.textContent = 'Sohbetinizden çıkarılan canlı mimari profil';
-        toggleViewBtn.classList.remove('active');
-      }
+  function toggleArchitectView(showArch) {
+    isArchitectView = showArch;
+
+    if (showArch) {
+      stageViews.forEach(v => v.classList.add('hidden'));
+      architectStageView.classList.remove('hidden');
+      toggleBtnText.textContent = 'Müşteri Görünümüne Dön';
+
+      panelTitle.textContent = 'Doğrulanmış brief ve güven durumu';
+      panelSubtitle.textContent = 'Mimarlar için sentezlenmiş veriler';
+    } else {
+      architectStageView.classList.add('hidden');
+      toggleBtnText.textContent = 'Mimar Önizlemesine Geç';
+      switchStage(currentStage);
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // 8. Mobile Drawer Handle Toggle (<1024px)
+  // --------------------------------------------------------------------------
+  if (drawerHandleBar && contextualPanel) {
+    drawerHandleBar.addEventListener('click', () => {
+      contextualPanel.classList.toggle('drawer-open');
     });
   }
 
   // --------------------------------------------------------------------------
-  // 7. Interactive Confirmation Actions
+  // Helpers
   // --------------------------------------------------------------------------
-  if (confirmCorrectBtn) {
-    confirmCorrectBtn.addEventListener('click', () => {
-      confirmationText.style.backgroundColor = '#E6F4EA';
-      confirmationText.style.borderColor = '#137333';
-      confirmationText.innerHTML = '✅ <strong>Kullanıcı Doğruladı:</strong> ' + confirmationText.textContent.replace('✅ Kullanıcı Doğruladı: ', '').replace(/^"|"$/g, '');
-      confirmationActions.style.display = 'none';
-
-      const systemBadge = interpretationCards.querySelector('.badge-system');
-      if (systemBadge) {
-        systemBadge.className = 'badge badge-confirmed';
-        systemBadge.textContent = 'Kullanıcı doğruladı';
-      }
+  function escapeHtml(str) {
+    return str.replace(/[&<>"']/g, match => {
+      const escapeMap = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      };
+      return escapeMap[match];
     });
   }
 
-  if (confirmRejectBtn || confirmEditBtn) {
-    const handleEditOpen = () => {
-      inlineEditor.classList.remove('hidden');
-      editInput.value = confirmationText.textContent.trim().replace(/^"|"$/g, '').replace('✅ Kullanıcı Doğruladı: ', '');
-      editInput.focus();
-    };
-
-    if (confirmRejectBtn) confirmRejectBtn.addEventListener('click', handleEditOpen);
-    if (confirmEditBtn) confirmEditBtn.addEventListener('click', handleEditOpen);
-  }
-
-  if (cancelEditBtn) {
-    cancelEditBtn.addEventListener('click', () => {
-      inlineEditor.classList.add('hidden');
-    });
-  }
-
-  if (saveEditBtn) {
-    saveEditBtn.addEventListener('click', () => {
-      const updatedText = editInput.value.trim();
-      if (!updatedText) return;
-
-      confirmationText.textContent = `"${updatedText}"`;
-      confirmationText.style.backgroundColor = '#EEF3F0';
-      confirmationText.style.borderColor = '#3F5E4D';
-      inlineEditor.classList.add('hidden');
-
-      const systemBadge = interpretationCards.querySelector('.badge-system');
-      if (systemBadge) {
-        systemBadge.className = 'badge badge-user-said';
-        systemBadge.textContent = 'Kullanıcı söyledi';
-      }
-    });
-  }
-
-  if (toggleExtraRoutineBtn && extraRoutineItems) {
-    toggleExtraRoutineBtn.addEventListener('click', () => {
-      isExtraRoutineExpanded = !isExtraRoutineExpanded;
-      if (isExtraRoutineExpanded) {
-        extraRoutineItems.classList.remove('hidden');
-        toggleExtraRoutineBtn.querySelector('span').textContent = 'Daha az göster';
-        if (routineCount) routineCount.textContent = '3 Gösteriliyor';
-      } else {
-        extraRoutineItems.classList.add('hidden');
-        toggleExtraRoutineBtn.querySelector('span').textContent = 'Diğer bulguları göster (+1)';
-        if (routineCount) routineCount.textContent = '2 Gösteriliyor';
-      }
-    });
-  }
-
-  function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
 });

@@ -1,26 +1,56 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260" width="100%" height="100%">
-  <rect width="400" height="260" rx="12" fill="#FAF9F6" stroke="#E4E0D7" stroke-width="1"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 320" width="100%" height="100%">
+  <defs>
+    <linearGradient id="floorGradKitCtrl" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F7F5EE"/>
+      <stop offset="100%" stop-color="#E2DDCF"/>
+    </linearGradient>
+  </defs>
 
-  <!-- Base Floor -->
-  <polygon points="60,170 200,230 340,170 200,110" fill="#F4F2EB" stroke="#3F5E4D" stroke-width="2"/>
+  <!-- Container -->
+  <rect width="500" height="320" rx="14" fill="#FAFAF7" stroke="#E5E0D8" stroke-width="1.5"/>
+
+  <!-- Floor Base -->
+  <polygon points="60,220 250,300 440,220 250,140" fill="url(#floorGradKitCtrl)" stroke="#2C4035" stroke-width="2.5" stroke-linejoin="round"/>
+
+  <!-- Back Left Wall -->
+  <polygon points="60,220 60,100 250,20 250,140" fill="#EFECE6" stroke="#2C4035" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- Back Right Wall -->
+  <polygon points="250,140 250,20 440,100 440,220" fill="#DFDAD0" stroke="#2C4035" stroke-width="2.5" stroke-linejoin="round"/>
+
+  <!-- Dividing Partition Wall with Glass Pocket Door -->
+  <polygon points="180,260 180,140 250,100 250,220" fill="#2C4035" opacity="0.1" stroke="#2C4035" stroke-width="2"/>
   
-  <!-- Back Wall -->
-  <polygon points="60,170 60,70 200,10 200,110" fill="#EFECE5" stroke="#3F5E4D" stroke-width="2"/>
-  <polygon points="200,110 200,10 340,70 340,170" fill="#EFECE5" stroke="#3F5E4D" stroke-width="2"/>
+  <!-- Sliding Glass Door Frame -->
+  <polygon points="200,245 200,165 240,142 240,222" fill="#38BDF8" opacity="0.35" stroke="#0284C7" stroke-width="2"/>
+  <line x1="220" y1="234" x2="220" y2="154" stroke="#0284C7" stroke-width="1.5"/>
 
-  <!-- Partial Shielding Wall (Perde Duvar) -->
-  <polygon points="170,195 170,95 210,78 210,178" fill="#E4E0D7" stroke="#3F5E4D" stroke-width="2"/>
-  <polygon points="210,178 210,78 210,78 210,178" stroke="#3F5E4D" stroke-width="2"/>
-
-  <!-- Enclosed Kitchen Area on Left -->
-  <polygon points="80,150 140,124 160,133 100,159" fill="#3F5E4D" stroke="#2A4034" stroke-width="1.5"/>
-  <text x="110" y="140" font-family="sans-serif" font-size="9" font-weight="600" fill="#FFFFFF">MUTFAK</text>
-
-  <!-- Privacy Shield Icon -->
-  <g transform="translate(190, 130)">
-    <circle cx="0" cy="0" r="14" fill="#FFFFFF" stroke="#3F5E4D" stroke-width="1.5"/>
-    <path d="M0 -7 L6 -3 L6 3 C6 7 0 10 0 10 C0 10 -6 7 -6 3 L-6 -3 Z" fill="#EEF3F0" stroke="#3F5E4D" stroke-width="1.5"/>
+  <!-- Sliding Arrow -->
+  <g transform="translate(220, 145)">
+    <line x1="-15" y1="0" x2="15" y2="0" stroke="#0284C7" stroke-width="2.5"/>
+    <polygon points="15,0 8,-4 8,4" fill="#0284C7"/>
   </g>
 
-  <text x="200" y="248" font-family="sans-serif" font-size="12" font-weight="700" fill="#1C1C1E" text-anchor="middle">Mahrem ve Kontrollü Mutfak Alanı</text>
+  <!-- Kitchen Equipment inside (Left zone) -->
+  <polygon points="90,195 140,170 170,185 120,210" fill="#64748B" stroke="#334155" stroke-width="1.5"/>
+  <g transform="translate(115, 140)">
+    <circle cx="8" cy="6" r="7" fill="#1E293B"/>
+    <path d="M2 16 C2 11 14 11 14 16 L15 32 L1 32 Z" fill="#1E293B"/>
+  </g>
+
+  <!-- Dining Table Outside (Right zone) -->
+  <polygon points="280,215 350,180 400,205 330,240" fill="#475569" stroke="#1E293B" stroke-width="1.5"/>
+  <g transform="translate(330, 155)">
+    <circle cx="8" cy="6" r="7" fill="#1E293B"/>
+    <path d="M2 16 C2 11 14 11 14 16 L15 30 L1 30 Z" fill="#1E293B"/>
+  </g>
+
+  <!-- Odor / Sound Isolation Indicator Badge -->
+  <g transform="translate(370, 55)">
+    <rect x="-65" y="-14" width="130" height="28" rx="14" fill="#F0F9FF" stroke="#0284C7" stroke-width="1.5"/>
+    <text x="0" y="4" font-family="'Inter', sans-serif" font-size="10" font-weight="700" fill="#0369A1" text-anchor="middle">🛡️ Koku &amp; Ses Kontrolü</text>
+  </g>
+
+  <!-- Title Label -->
+  <rect x="15" y="15" width="290" height="26" rx="6" fill="#FFFFFF" stroke="#2C4035" stroke-width="1.5"/>
+  <text x="160" y="32" font-family="'Inter', sans-serif" font-size="12" font-weight="700" fill="#2C4035" text-anchor="middle">Daha Kontrollü ve Mahrem Mutfak</text>
 </svg>

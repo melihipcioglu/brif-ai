@@ -1,105 +1,257 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 480" width="100%" height="100%" id="planSvgA">
-  <style>
-    .plan-wall { stroke: #1C1C1E; stroke-width: 4; fill: none; }
-    .plan-partition { stroke: #3F5E4D; stroke-width: 2.5; fill: none; }
-    .plan-room { fill: #FAF9F6; stroke: #E4E0D7; stroke-width: 1.5; cursor: pointer; transition: all 0.2s ease; }
-    .plan-room:hover { fill: #EEF3F0; stroke: #3F5E4D; }
-    .plan-room.selected { fill: #E8F0FE; stroke: #1A73E8; stroke-width: 2; }
-    .room-title { font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 700; fill: #1C1C1E; pointer-events: none; }
-    .room-area { font-family: 'Inter', sans-serif; font-size: 11px; fill: #5C5C60; pointer-events: none; }
-    .door-arc { fill: none; stroke: #2563EB; stroke-width: 1.5; stroke-dasharray: 3 2; }
-  </style>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 560" width="100%" height="100%" id="planSvgA">
+  <defs>
+    <style>
+      .wall-outer { fill: none; stroke: #1E293B; stroke-width: 7; stroke-linejoin: miter; }
+      .wall-inner { fill: none; stroke: #334155; stroke-width: 3.5; stroke-linejoin: round; }
+      .room-shape { fill: #FAFAF7; stroke: #CBD5E1; stroke-width: 1.5; cursor: pointer; transition: all 0.2s ease; }
+      .room-shape:hover, .room-shape:focus-visible { fill: #ECFDF5; stroke: #059669; stroke-width: 2.5; outline: none; }
+      .room-shape.selected { fill: #E0F2FE; stroke: #0284C7; stroke-width: 3; }
+      .room-title { font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 700; fill: #0F172A; pointer-events: none; }
+      .room-area { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600; fill: #475569; pointer-events: none; }
+      .room-tag { font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 600; fill: #059669; pointer-events: none; }
+      .door-arc { fill: none; stroke: #2563EB; stroke-width: 1.5; stroke-dasharray: 3 2; }
+      .window-rect { fill: #FFFFFF; stroke: #0284C7; stroke-width: 2; }
+      .stair-tread { stroke: #64748B; stroke-width: 1.5; }
+    </style>
+  </defs>
 
-  <!-- Canvas Background -->
-  <rect width="700" height="480" rx="10" fill="#FFFFFF" stroke="#E4E0D7" stroke-width="1"/>
-  
-  <!-- Conceptual Draft Warning Banner -->
-  <rect x="20" y="15" width="660" height="28" rx="6" fill="#FEF7E0" stroke="#B06000" stroke-width="1"/>
-  <text x="350" y="33" font-family="'Inter', sans-serif" font-size="11.5" font-weight="700" fill="#B06000" text-anchor="middle">
-    ⚠️ Kavramsal taslak — mimari proje, uygulama veya ruhsat çizimi değildir.
+  <!-- Background -->
+  <rect width="840" height="560" rx="12" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.5"/>
+
+  <!-- Conceptual Banner -->
+  <rect x="25" y="15" width="790" height="28" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="1"/>
+  <text x="420" y="33" font-family="'Inter', sans-serif" font-size="11.5" font-weight="700" fill="#92400E" text-anchor="middle">
+    ⚠️ Kavramsal Ön Taslak Plan — Alternatif A (Kontrollü Ayrışma) — Şematik Mimari Kat Planı (Ruhsat/Taşıyıcı İddiası İçermez)
   </text>
 
   <!-- North Arrow -->
-  <g transform="translate(640, 75)">
-    <circle cx="0" cy="0" r="16" fill="#FAF9F6" stroke="#3F5E4D" stroke-width="1.5"/>
-    <path d="M0 -10 L5 6 L0 2 L-5 6 Z" fill="#3F5E4D"/>
-    <text x="0" y="14" font-family="sans-serif" font-size="9" font-weight="700" fill="#3F5E4D" text-anchor="middle">K</text>
+  <g transform="translate(780, 75)">
+    <circle cx="0" cy="0" r="18" fill="#F8FAFC" stroke="#334155" stroke-width="1.5"/>
+    <path d="M0 -12 L6 8 L0 3 L-6 8 Z" fill="#0F172A"/>
+    <text x="0" y="17" font-family="'Inter', sans-serif" font-size="9" font-weight="800" fill="#0F172A" text-anchor="middle">K</text>
   </g>
 
-  <!-- ROOM 1: GİRİŞ VE VESTİYER -->
-  <g class="plan-room-group" data-room="entry" data-name="Giriş ve Vestiyer" data-area="8-10 m²" data-rationale="Ana sirkülasyon başlangıcı, mahremiyet süzgeci.">
-    <rect x="60" y="200" width="100" height="110" class="plan-room"/>
-    <text x="110" y="250" class="room-title" text-anchor="middle">Giriş / Antre</text>
-    <text x="110" y="268" class="room-area" text-anchor="middle">8 - 10 m²</text>
+  <!-- ==================================================================== -->
+  <!-- FLOOR 1: ZEMİN KAT (GROUND FLOOR) -->
+  <!-- ==================================================================== -->
+  <g id="floor-ground" data-floor-view="ground">
+    <text x="45" y="70" font-family="'Inter', sans-serif" font-size="16" font-weight="800" fill="#0F172A">ZEMİN KAT PLAN ŞEMASI</text>
+    <text x="45" y="88" font-family="'Inter', sans-serif" font-size="11" fill="#64748B">Gündüz Yaşama, Kapalı Çalışma, Mutfak &amp; Servis Katı</text>
+
+    <!-- ROOM 1: GİRİŞ VE VESTİYER -->
+    <g class="interactive-room-group">
+      <rect x="60" y="270" width="130" height="120" rx="4" class="room-shape" 
+            data-room="entry" data-floor="ground" tabindex="0" role="button" aria-label="Giriş ve Vestiyer kararını incele"/>
+      <text x="125" y="320" class="room-title" text-anchor="middle">Giriş / Vestiyer</text>
+      <text x="125" y="338" class="room-area" text-anchor="middle">7 - 9 m²</text>
+      <text x="125" y="354" class="room-tag" text-anchor="middle">Zorunlu</text>
+    </g>
+
+    <!-- ROOM 2: YAŞAM ALANI (SALON) -->
+    <g class="interactive-room-group">
+      <rect x="190" y="270" width="240" height="180" rx="4" class="room-shape" 
+            data-room="living" data-floor="ground" tabindex="0" role="button" aria-label="Yaşam Alanı kararını incele"/>
+      <text x="310" y="350" class="room-title" text-anchor="middle">Yaşam Alanı (Salon)</text>
+      <text x="310" y="370" class="room-area" text-anchor="middle">30 - 34 m²</text>
+      <text x="310" y="388" class="room-tag" text-anchor="middle">Zorunlu • Güney Cephe</text>
+    </g>
+
+    <!-- ROOM 3: MUTFAK VE YEMEK -->
+    <g class="interactive-room-group">
+      <rect x="190" y="110" width="190" height="160" rx="4" class="room-shape" 
+            data-room="kitchen" data-floor="ground" tabindex="0" role="button" aria-label="Mutfak ve Yemek alanı kararını incele"/>
+      <text x="285" y="180" class="room-title" text-anchor="middle">Mutfak &amp; Yemek</text>
+      <text x="285" y="198" class="room-area" text-anchor="middle">16 - 20 m²</text>
+      <text x="285" y="214" class="room-tag" text-anchor="middle">Zorunlu • Yarı Kapalı</text>
+    </g>
+
+    <!-- ROOM 4: TAM AYRI ÇALIŞMA ODASI -->
+    <g class="interactive-room-group">
+      <rect x="380" y="110" width="160" height="160" rx="4" class="room-shape" fill="#ECFDF5" stroke="#059669" stroke-width="2"
+            data-room="study" data-floor="ground" tabindex="0" role="button" aria-label="Çalışma Odası kararını incele"/>
+      <text x="460" y="175" class="room-title" text-anchor="middle" fill="#065F46">Çalışma Odası</text>
+      <text x="460" y="192" class="room-title" text-anchor="middle" font-size="10" fill="#047857">(Kapalı Akustik Bölüm)</text>
+      <text x="460" y="210" class="room-area" text-anchor="middle">11 - 13 m²</text>
+      <text x="460" y="226" class="room-tag" text-anchor="middle">Zorunlu • İzole</text>
+    </g>
+
+    <!-- ROOM 5: MİSAFİR / ESNEK ODA -->
+    <g class="interactive-room-group">
+      <rect x="540" y="110" width="170" height="160" rx="4" class="room-shape" 
+            data-room="guest" data-floor="ground" tabindex="0" role="button" aria-label="Misafir Odası kararını incele"/>
+      <text x="625" y="180" class="room-title" text-anchor="middle">Misafir / Esnek Oda</text>
+      <text x="625" y="198" class="room-area" text-anchor="middle">11 - 13 m²</text>
+      <text x="625" y="214" class="room-tag" text-anchor="middle">Muhtemel</text>
+    </g>
+
+    <!-- ROOM 6: ORTAK WC -->
+    <g class="interactive-room-group">
+      <rect x="60" y="110" width="130" height="80" rx="4" class="room-shape" 
+            data-room="wc" data-floor="ground" tabindex="0" role="button" aria-label="Ortak WC kararını incele"/>
+      <text x="125" y="145" class="room-title" text-anchor="middle">Ortak WC</text>
+      <text x="125" y="162" class="room-area" text-anchor="middle">3 - 4 m²</text>
+    </g>
+
+    <!-- ROOM 7: DEPOLAMA / KİLER -->
+    <g class="interactive-room-group">
+      <rect x="60" y="190" width="130" height="80" rx="4" class="room-shape" 
+            data-room="storage" data-floor="ground" tabindex="0" role="button" aria-label="Depolama kararını incele"/>
+      <text x="125" y="225" class="room-title" text-anchor="middle">Depolama / Kiler</text>
+      <text x="125" y="242" class="room-area" text-anchor="middle">4 - 5 m²</text>
+    </g>
+
+    <!-- ROOM 8: STAIRCASE & CIRCULATION HALL -->
+    <g class="interactive-room-group">
+      <rect x="430" y="270" width="110" height="180" rx="4" class="room-shape" fill="#F8FAFC"
+            data-room="stair" data-floor="ground" tabindex="0" role="button" aria-label="Merdiven ve Dolaşım Holü kararını incele"/>
+      <text x="485" y="340" class="room-title" text-anchor="middle">Merdiven &amp; Hol</text>
+      <text x="485" y="358" class="room-area" text-anchor="middle">10 - 12 m²</text>
+      <!-- Stair treads -->
+      <line x1="440" y1="285" x2="530" y2="285" class="stair-tread"/>
+      <line x1="440" y1="297" x2="530" y2="297" class="stair-tread"/>
+      <line x1="440" y1="309" x2="530" y2="309" class="stair-tread"/>
+      <line x1="440" y1="321" x2="530" y2="321" class="stair-tread"/>
+      <line x1="440" y1="333" x2="530" y2="333" class="stair-tread"/>
+      <!-- Climbing direction arrow -->
+      <path d="M485 410 L485 375" stroke="#2563EB" stroke-width="2.5" marker-end="url(#arrowHead)"/>
+      <polygon points="485,370 480,380 490,380" fill="#2563EB"/>
+      <text x="485" y="425" font-family="'Inter', sans-serif" font-size="9" font-weight="700" fill="#2563EB" text-anchor="middle">ÇIKIŞ ▲</text>
+    </g>
+
+    <!-- ROOM 9: TERAS / AÇIK ALAN -->
+    <g class="interactive-room-group">
+      <rect x="190" y="450" width="240" height="60" rx="4" class="room-shape" fill="#FFFBEB" stroke-dasharray="4 3"
+            data-room="terrace" data-floor="ground" tabindex="0" role="button" aria-label="Peyzaj Terası kararını incele"/>
+      <text x="310" y="480" class="room-title" text-anchor="middle" fill="#B45309">Peyzaj Terası (Açık)</text>
+      <text x="310" y="496" class="room-area" text-anchor="middle">16 - 20 m² (Açık)</text>
+    </g>
+
+    <!-- ARCHITECTURAL WALLS & DOORS -->
+    <!-- Exterior Perimeter Wall -->
+    <path d="M60 110 L710 110 L710 270 L540 270 L540 450 L190 450 L190 390 L60 390 Z" class="wall-outer"/>
+
+    <!-- Interior Partition Walls -->
+    <line x1="190" y1="110" x2="190" y2="390" class="wall-inner"/>
+    <line x1="380" y1="110" x2="380" y2="270" class="wall-inner"/>
+    <line x1="540" y1="110" x2="540" y2="270" class="wall-inner"/>
+    <line x1="60" y1="190" x2="190" y2="190" class="wall-inner"/>
+    <line x1="60" y1="270" x2="710" y2="270" class="wall-inner"/>
+    <line x1="430" y1="270" x2="430" y2="450" class="wall-inner"/>
+
+    <!-- Doors & Swing Arcs -->
+    <!-- Main Entrance Door -->
+    <line x1="60" y1="330" x2="60" y2="360" stroke="#FFFFFF" stroke-width="8"/>
+    <path d="M60 330 A30 30 0 0 1 90 360" class="door-arc"/>
+    <text x="35" y="348" font-family="'Inter', sans-serif" font-size="9" font-weight="700" fill="#2563EB">GİRİŞ</text>
+
+    <!-- Study Room Door (Closed Acoustic) -->
+    <path d="M380 180 A25 25 0 0 1 405 205" class="door-arc"/>
+    <line x1="380" y1="180" x2="380" y2="205" stroke="#DC2626" stroke-width="2.5"/>
+
+    <!-- Windows (Openings in Outer Wall) -->
+    <rect x="250" y="106" width="60" height="8" class="window-rect"/>
+    <rect x="430" y="106" width="60" height="8" class="window-rect"/>
+    <rect x="590" y="106" width="60" height="8" class="window-rect"/>
+    <rect x="250" y="446" width="80" height="8" class="window-rect"/>
   </g>
 
-  <!-- ROOM 2: YAŞAM ALANI (SALON) -->
-  <g class="plan-room-group" data-room="living" data-name="Yaşam Alanı (Salon)" data-area="32-38 m²" data-rationale="Güney cepheli, teras bağlantılı ana aile toplanma mekânı.">
-    <rect x="160" y="200" width="220" height="180" class="plan-room"/>
-    <text x="270" y="280" class="room-title" text-anchor="middle">Yaşam Alanı (Salon)</text>
-    <text x="270" y="300" class="room-area" text-anchor="middle">32 - 38 m²</text>
+  <!-- ==================================================================== -->
+  <!-- FLOOR 2: ÜST KAT (UPPER FLOOR) -->
+  <!-- ==================================================================== -->
+  <g id="floor-upper" data-floor-view="upper" style="display: none;">
+    <text x="45" y="70" font-family="'Inter', sans-serif" font-size="16" font-weight="800" fill="#0F172A">ÜST KAT PLAN ŞEMASI</text>
+    <text x="45" y="88" font-family="'Inter', sans-serif" font-size="11" fill="#64748B">Gece Mahremiyet, Yatak Odaları &amp; Özel Islak Hacim Katı</text>
+
+    <!-- ROOM 1: EBEVEYN YATAK ODASI -->
+    <g class="interactive-room-group">
+      <rect x="190" y="110" width="220" height="160" rx="4" class="room-shape" fill="#F0FDF4" stroke="#166534" stroke-width="2"
+            data-room="master" data-floor="upper" tabindex="0" role="button" aria-label="Ebeveyn Yatak Odası kararını incele"/>
+      <text x="300" y="175" class="room-title" text-anchor="middle" fill="#14532D">Ebeveyn Odası</text>
+      <text x="300" y="195" class="room-area" text-anchor="middle">16 - 18 m²</text>
+      <text x="300" y="212" class="room-tag" text-anchor="middle">Zorunlu • Özel Süit</text>
+    </g>
+
+    <!-- ROOM 2: EBEVEYN BANYOSU -->
+    <g class="interactive-room-group">
+      <rect x="60" y="110" width="130" height="100" rx="4" class="room-shape" 
+            data-room="mbath" data-floor="upper" tabindex="0" role="button" aria-label="Ebeveyn Banyosu kararını incele"/>
+      <text x="125" y="155" class="room-title" text-anchor="middle">Ebeveyn Banyosu</text>
+      <text x="125" y="172" class="room-area" text-anchor="middle">4 - 5 m²</text>
+    </g>
+
+    <!-- ROOM 3: ÇAMAŞIR ODASI -->
+    <g class="interactive-room-group">
+      <rect x="60" y="210" width="130" height="60" rx="4" class="room-shape" 
+            data-room="laundry" data-floor="upper" tabindex="0" role="button" aria-label="Çamaşır Odası kararını incele"/>
+      <text x="125" y="240" class="room-title" text-anchor="middle">Çamaşır Odası</text>
+      <text x="125" y="255" class="room-area" text-anchor="middle">3 - 4 m²</text>
+    </g>
+
+    <!-- ROOM 4: ÇOCUK ODASI 1 -->
+    <g class="interactive-room-group">
+      <rect x="410" y="110" width="150" height="160" rx="4" class="room-shape" 
+            data-room="child1" data-floor="upper" tabindex="0" role="button" aria-label="Çocuk Odası 1 kararını incele"/>
+      <text x="485" y="175" class="room-title" text-anchor="middle">Çocuk Odası 1</text>
+      <text x="485" y="195" class="room-area" text-anchor="middle">11 - 13 m²</text>
+      <text x="485" y="212" class="room-tag" text-anchor="middle">Zorunlu</text>
+    </g>
+
+    <!-- ROOM 5: ÇOCUK ODASI 2 -->
+    <g class="interactive-room-group">
+      <rect x="560" y="110" width="150" height="160" rx="4" class="room-shape" 
+            data-room="child2" data-floor="upper" tabindex="0" role="button" aria-label="Çocuk Odası 2 kararını incele"/>
+      <text x="635" y="175" class="room-title" text-anchor="middle">Çocuk Odası 2</text>
+      <text x="635" y="195" class="room-area" text-anchor="middle">11 - 13 m²</text>
+      <text x="635" y="212" class="room-tag" text-anchor="middle">Zorunlu</text>
+    </g>
+
+    <!-- ROOM 6: ORTAK BANYO -->
+    <g class="interactive-room-group">
+      <rect x="560" y="270" width="150" height="120" rx="4" class="room-shape" 
+            data-room="bath" data-floor="upper" tabindex="0" role="button" aria-label="Ortak Banyo kararını incele"/>
+      <text x="635" y="325" class="room-title" text-anchor="middle">Ortak Banyo</text>
+      <text x="635" y="342" class="room-area" text-anchor="middle">5 - 6 m²</text>
+    </g>
+
+    <!-- ROOM 7: MERDİVEN HOLÜ VE DOLAŞIM (VERTICAL NODE ALIGNED AT X=430) -->
+    <g class="interactive-room-group">
+      <rect x="430" y="270" width="130" height="180" rx="4" class="room-shape" fill="#F8FAFC"
+            data-room="stair" data-floor="upper" tabindex="0" role="button" aria-label="Üst Kat Merdiven Holü kararını incele"/>
+      <text x="495" y="340" class="room-title" text-anchor="middle">Merdiven Holü</text>
+      <text x="495" y="358" class="room-area" text-anchor="middle">8 - 10 m²</text>
+      <!-- Stair treads -->
+      <line x1="440" y1="285" x2="550" y2="285" class="stair-tread"/>
+      <line x1="440" y1="297" x2="550" y2="297" class="stair-tread"/>
+      <line x1="440" y1="309" x2="550" y2="309" class="stair-tread"/>
+      <line x1="440" y1="321" x2="550" y2="321" class="stair-tread"/>
+      <line x1="440" y1="333" x2="550" y2="333" class="stair-tread"/>
+      <text x="495" y="425" font-family="'Inter', sans-serif" font-size="9" font-weight="700" fill="#059669" text-anchor="middle">İNİŞ ▼</text>
+    </g>
+
+    <!-- ROOM 8: EBEVEYN BALKONU / AÇIK ALAN -->
+    <g class="interactive-room-group">
+      <rect x="190" y="270" width="220" height="80" rx="4" class="room-shape" fill="#FFFBEB" stroke-dasharray="4 3"
+            data-room="balcony" data-floor="upper" tabindex="0" role="button" aria-label="Ebeveyn Balkonu kararını incele"/>
+      <text x="300" y="305" class="room-title" text-anchor="middle" fill="#B45309">Ebeveyn Balkonu</text>
+      <text x="300" y="322" class="room-area" text-anchor="middle">8 - 10 m² (Açık)</text>
+    </g>
+
+    <!-- ARCHITECTURAL WALLS -->
+    <path d="M60 110 L710 110 L710 390 L430 390 L430 450 L190 450 L190 350 L60 350 Z" class="wall-outer"/>
+    <line x1="190" y1="110" x2="190" y2="350" class="wall-inner"/>
+    <line x1="410" y1="110" x2="410" y2="270" class="wall-inner"/>
+    <line x1="560" y1="110" x2="560" y2="390" class="wall-inner"/>
+    <line x1="60" y1="210" x2="190" y2="210" class="wall-inner"/>
+    <line x1="60" y1="270" x2="710" y2="270" class="wall-inner"/>
+
+    <!-- Windows -->
+    <rect x="250" y="106" width="60" height="8" class="window-rect"/>
+    <rect x="450" y="106" width="50" height="8" class="window-rect"/>
+    <rect x="600" y="106" width="50" height="8" class="window-rect"/>
   </g>
 
-  <!-- ROOM 3: MUTFAK VE YEMEK -->
-  <g class="plan-room-group" data-room="kitchen" data-name="Mutfak ve Yemek" data-area="18-22 m²" data-rationale="Yarı kapalı, yaşam alanından bağımsız ama servise yakın kurgu.">
-    <rect x="160" y="70" width="150" height="130" class="plan-room"/>
-    <text x="235" y="130" class="room-title" text-anchor="middle">Mutfak &amp; Yemek</text>
-    <text x="235" y="148" class="room-area" text-anchor="middle">18 - 22 m²</text>
-  </g>
-
-  <!-- ROOM 4: TAM AYRI ÇALIŞMA ODASI (ISOLATED STUDY) -->
-  <g class="plan-room-group" data-room="study" data-name="Tam Ayrı Çalışma Odası" data-area="12-14 m²" data-rationale="Salondan akustik ve duvarla tam izole, kuzey-doğu ışığı alan çalışma mekânı.">
-    <rect x="310" y="70" width="130" height="130" class="plan-room" fill="#EEF3F0" stroke="#3F5E4D" stroke-width="2"/>
-    <text x="375" y="125" class="room-title" text-anchor="middle" fill="#2A4034">Çalışma Odası</text>
-    <text x="375" y="142" class="room-title" text-anchor="middle" font-size="10" fill="#137333">(Ayrı Bölüm)</text>
-    <text x="375" y="160" class="room-area" text-anchor="middle">12 - 14 m²</text>
-  </g>
-
-  <!-- ROOM 5: ÇOCUK ODALARI SİTESİ -->
-  <g class="plan-room-group" data-room="children" data-name="Çocuk Alanı" data-area="24-28 m²" data-rationale="Saat 16:00 sonrası hareketlilik alanı, gece mahremiyet kanadında.">
-    <rect x="440" y="70" width="200" height="150" class="plan-room"/>
-    <text x="540" y="140" class="room-title" text-anchor="middle">Çocuk Odaları</text>
-    <text x="540" y="158" class="room-area" text-anchor="middle">24 - 28 m²</text>
-  </g>
-
-  <!-- ROOM 6: EBEVEYN SUİTİ -->
-  <g class="plan-room-group" data-room="master" data-name="Ebeveyn Süiti" data-area="22-26 m²" data-rationale="Gece kuşağında, özel banyolu ve sessiz arka cephede.">
-    <rect x="440" y="220" width="200" height="160" class="plan-room"/>
-    <text x="540" y="290" class="room-title" text-anchor="middle">Ebeveyn Süiti</text>
-    <text x="540" y="310" class="room-area" text-anchor="middle">22 - 26 m²</text>
-  </g>
-
-  <!-- ROOM 7: TERAS / AÇIK ALAN -->
-  <g class="plan-room-group" data-room="terrace" data-name="Açık Alan / Teras" data-area="16-20 m²" data-rationale="Salona doğrudan bağlı bahçe ve dış mekân entegrasyonu.">
-    <rect x="160" y="380" width="220" height="60" class="plan-room" fill="#FAF8FE" stroke-dasharray="4 2"/>
-    <text x="270" y="415" class="room-title" text-anchor="middle">Peyzaj Terası</text>
-    <text x="270" y="430" class="room-area" text-anchor="middle">16 - 20 m²</text>
-  </g>
-
-  <!-- ROOM 8: ORTAK BANYO -->
-  <g class="plan-room-group" data-room="bathroom" data-name="Ortak Banyo &amp; WC" data-area="6-8 m²" data-rationale="Giriş ve gece koridoru kesişiminde merkezi erişim.">
-    <rect x="60" y="120" width="100" height="80" class="plan-room"/>
-    <text x="110" y="155" class="room-title" text-anchor="middle">Banyo / WC</text>
-    <text x="110" y="170" class="room-area" text-anchor="middle">6 - 8 m²</text>
-  </g>
-
-  <!-- WALL OUTLINES -->
-  <!-- Outer Perimeter Wall -->
-  <path d="M60 70 L640 70 L640 380 L160 380 L160 310 L60 310 Z" class="plan-wall"/>
-
-  <!-- Main Partition Walls -->
-  <line x1="160" y1="70" x2="160" y2="380" class="plan-partition"/>
-  <line x1="310" y1="70" x2="310" y2="200" class="plan-partition"/>
-  <line x1="440" y1="70" x2="440" y2="380" class="plan-partition"/>
-  <line x1="160" y1="200" x2="440" y2="200" class="plan-partition"/>
-  <line x1="440" y1="220" x2="640" y2="220" class="plan-partition"/>
-
-  <!-- Doors & Openings -->
-  <path d="M160 230 A20 20 0 0 1 180 250" class="door-arc"/>
-  <path d="M310 130 A20 20 0 0 1 330 150" class="door-arc"/>
-
-  <!-- Plan Legend Footer -->
-  <text x="60" y="465" font-family="'Inter', sans-serif" font-size="11" font-weight="600" fill="#3F5E4D">
-    Alternatif A: Kontrollü Ayrışma — Yüksek Akustik Mahremiyet Kurgusu
+  <!-- Legend Footer -->
+  <text x="60" y="535" font-family="'Inter', sans-serif" font-size="11" font-weight="600" fill="#047857">
+    🔍 Alternatif A: Kontrollü Ayrışma — Düşey hizalanmış ıslak hacimler &amp; izole kapalı çalışma odası kurgusu.
   </text>
 </svg>
