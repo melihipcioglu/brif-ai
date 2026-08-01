@@ -1,10 +1,9 @@
 /**
- * BRIF.AI — Surface & Scope Compatibility Guard (v6.1.3 Platform Architecture)
+ * BRIF.AI — Surface & Scope Compatibility Guard (v6.1.4 Platform Architecture)
  *
  * Core architectural principle:
  * "No stale or foreign workspace payload may survive an active-scope transition."
- *
- * Ensures no rejected render path ends in an unexplained blank container or foreign fallback.
+ * "NO BLANK WORKSPACE: Active scope without a plan MUST mount an explicit empty state surface."
  */
 
 class RenderCompatibilityGuard {
@@ -12,7 +11,7 @@ class RenderCompatibilityGuard {
     this.hierarchy = hierarchy || new EntityHierarchy();
   }
 
-  // Universal Document & Surface Scope Compatibility Validator (Requirements 1 & 2)
+  // Universal Document & Surface Scope Compatibility Validator
   isDocumentCompatible(doc, activeContext) {
     if (!doc || !activeContext) {
       console.warn('[BRIF Görünüm Uyum Kontrolü] Geçersiz belge veya aktif kapsam.');
@@ -48,7 +47,7 @@ class RenderCompatibilityGuard {
     return true;
   }
 
-  // Capability Compatibility Validator (Requirement 6)
+  // Capability Compatibility Validator
   isCapabilityCompatible(action, activeCapabilities) {
     if (!action) return false;
     const reqCaps = action.requiredCapabilities || [];
@@ -57,24 +56,32 @@ class RenderCompatibilityGuard {
     return reqCaps.every(cap => activeCapabilities.includes(cap));
   }
 
-  // Context-Derived Explicit Plan Empty State Renderer (Requirements 2, 7 & 9)
-  renderPlanEmptyState(container, activeContext) {
+  // Context-Derived Explicit Plan Empty State Renderer (Requirements 1 & 2)
+  renderPlanEmptyState(container, activeContext, options = {}) {
     if (!container) return;
-    container.innerHTML = ''; // Clear container — NO STALE SVG PAYLOAD SURVIVES!
+    container.innerHTML = ''; // Clear container
 
     const title = this.hierarchy.getScopeTitle(activeContext);
+    const token = options.generationId || 0;
+    const fp = options.scopeFingerprint || '';
+
+    container.setAttribute('data-document-id', `doc_empty_state_${activeContext.projectId}`);
+    container.setAttribute('data-project-id', activeContext.projectId);
+    container.setAttribute('data-scope-fingerprint', fp);
+    container.setAttribute('data-render-generation', token);
 
     container.innerHTML = `
       <div class="empty-state-workspace-card plan-empty" id="planEmptyStateContainer">
         <div class="empty-state-icon">📐</div>
         <h3 class="empty-state-title">Bu kapsam için şematik plan bulunmuyor</h3>
         <p class="empty-state-desc">
-          Şu anda <strong>${escapeHtml(title)}</strong> kapsamındasınız. Bu kapsamla uyumlu plan belgesi tanımlanmamış. Başka projeye ait plan kullanılmayacaktır.
+          Şu anda <strong>${escapeHtml(title)}</strong> kapsamındasınız. Bu kapsamla uyumlu şematik plan belgesi tanımlanmamış. Başka projeye ait bir plan kullanılmayacaktır.
         </p>
 
         <div class="empty-state-actions">
           <button class="empty-act-btn" id="btnEmptyShowUpper">Üst Kapsamı Göster</button>
           <button class="empty-act-btn" id="btnEmptySelectLevel">Başka Kat Seç</button>
+          <button class="empty-act-btn" id="btnShowScopeDecisions">Uygun Belgeleri Göster</button>
           <button class="empty-act-btn highlight" id="btnResumeContext">↩ Önceki Bağlama Dön</button>
         </div>
       </div>
@@ -93,7 +100,7 @@ class RenderCompatibilityGuard {
         <div class="empty-state-icon">📂</div>
         <h3 class="empty-state-title">Bu kapsam için çalışma alanı verisi bulunmuyor</h3>
         <p class="empty-state-desc">
-          Şu anda <strong>${escapeHtml(title)}</strong> kapsamındasınız. Bu kapsamla uyumlu şematik plan veya belge verisi tanımlanmamış. Başka projeye ait veriler kullanılmayacaktır.
+          Şu anda <strong>${escapeHtml(title)}</strong> kapsamındasınız. Bu kapsamla uyumlu şematik plan veya belge verisi tanımlanmamış. Başka projeye ait bir plan kullanılmayacaktır.
         </p>
 
         <div class="empty-state-actions">
@@ -105,10 +112,10 @@ class RenderCompatibilityGuard {
     `;
   }
 
-  // Architect Decision Report Specific Explicit Empty State Renderer (Requirements 3 & 9)
+  // Architect Decision Report Specific Explicit Empty State Renderer
   renderReportEmptyState(container, activeContext, incompatibleReportTitle) {
     if (!container) return;
-    container.innerHTML = ''; // Clear container — NO BLANK CONTAINERS!
+    container.innerHTML = '';
 
     const title = this.hierarchy.getScopeTitle(activeContext);
     const incTitle = incompatibleReportTitle ? ` (${incompatibleReportTitle})` : '';

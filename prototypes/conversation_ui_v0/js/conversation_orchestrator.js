@@ -1,5 +1,5 @@
 /**
- * BRIF.AI — Conversation Orchestrator & State Engine (v6.1.2 Platform Architecture)
+ * BRIF.AI — Conversation Orchestrator & State Engine (v6.1.4 Platform Architecture)
  *
  * Atomically updates workspace on project switches, filters conversation by active scope,
  * attaches context snapshots to every message, and handles scoped actions for all project types.
@@ -18,7 +18,7 @@ class ConversationOrchestrator {
     this.historyManager = options.historyManager;
     this.intentParser = new DemoIntentParser();
 
-    this.chatContainerId = 'chatMessages';
+    this.chatContainerId = 'chatMessagesContainer';
     this.allChatMessages = [];
     this.chatFilterMode = 'active_scope';
 
@@ -145,7 +145,7 @@ class ConversationOrchestrator {
 
     filtered.forEach(msg => {
       const msgDiv = document.createElement('div');
-      msgDiv.className = `message ${msg.role === 'user' ? 'user-message' : 'ai-message'}`;
+      msgDiv.className = `chat-message ${msg.role === 'user' ? 'user' : 'assistant'}`;
 
       let chipsHtml = '';
       if (msg.quickReplies && msg.quickReplies.length > 0) {

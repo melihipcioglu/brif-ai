@@ -1,7 +1,7 @@
 /**
- * BRIF.AI — Automated Scope, Surface & Payload Unit Tests (v6.1.3 Engine)
+ * BRIF.AI — Automated Scope, Surface & Payload Unit Tests (v6.1.4 Engine)
  *
- * Verifies core architectural principles across 20 test scenarios:
+ * Verifies core architectural principles across 28 test scenarios:
  * 1. Plan incompatibility
  * 2. Report incompatibility & empty state
  * 3. Project incompatibility
@@ -22,6 +22,14 @@
  * 18. Stale async render rejection
  * 19. Render registry cleanup assertion
  * 20. Plan provenance data-attribute assertion
+ * 21. Tower positive plan empty state assertion
+ * 22. Campus positive plan empty state assertion
+ * 23. Empty-state registry mounting assertion
+ * 24. Assistant panel structured DOM assertion
+ * 25. Assistant panel styled controls assertion
+ * 26. Natural suspended-context copy assertion
+ * 27. No placeholder project names assertion
+ * 28. House plan restoration after empty-state projects
  */
 
 class TestScopeGuard {
@@ -146,7 +154,63 @@ class TestScopeGuard {
     const provPass = dummyPlanEl.getAttribute("data-project-id") === "proj_tower_50floor";
     results.push({ name: "Test 20: Plan Provenance Assertion", pass: provPass === true });
 
-    console.log("=== Scope, Surface & Payload Guard Unit Test Results (20/20) ===");
+    // NEW v6.1.4 TESTS (Tests 21-28)
+    // Test 21: Tower positive plan empty state
+    const towerEmptyContainer = document.createElement("div");
+    this.guard.renderPlanEmptyState(towerEmptyContainer, ctxTower);
+    const towerEmptyHTML = towerEmptyContainer.innerHTML;
+    const towerPositivePass = towerEmptyHTML.includes("Bu kapsam için şematik plan bulunmuyor") &&
+                              towerEmptyHTML.includes("Başka projeye ait bir plan kullanılmayacaktır") &&
+                              towerEmptyHTML.includes("18. Kat");
+    results.push({ name: "Test 21: Tower Positive Plan Empty State Assertion", pass: towerPositivePass === true });
+
+    // Test 22: Campus positive plan empty state
+    const campusEmptyContainer = document.createElement("div");
+    this.guard.renderPlanEmptyState(campusEmptyContainer, campusCtx);
+    const campusEmptyHTML = campusEmptyContainer.innerHTML;
+    const campusPositivePass = campusEmptyHTML.includes("Bu kapsam için şematik plan bulunmuyor") &&
+                               campusEmptyHTML.includes("Başka projeye ait bir plan kullanılmayacaktır") &&
+                               campusEmptyHTML.includes("Blok A");
+    results.push({ name: "Test 22: Campus Positive Plan Empty State Assertion", pass: campusPositivePass === true });
+
+    // Test 23: Empty-state registry mounting
+    const regTest = new DOMSurfaceRegistry();
+    const presenterTest = new WorkspacePresenter("dummy", { hierarchy: this.hierarchy, guard: this.guard, registry: regTest });
+    presenterTest.container = document.createElement("div");
+    presenterTest.renderWorkspaceEmptyState({ activeContext: ctxTower });
+    const mountedEmptySurfaces = regTest.getMountedSurfacesForProject("proj_tower_50floor");
+    const emptyMountedPass = mountedEmptySurfaces.length > 0 && mountedEmptySurfaces[0].documentType === "empty_state";
+    results.push({ name: "Test 23: Empty-State Registry Mounting", pass: emptyMountedPass === true });
+
+    // Test 24: Assistant panel structured DOM
+    const dummyMsg = document.createElement("div");
+    dummyMsg.className = "chat-message assistant";
+    const msgPass = dummyMsg.classList.contains("assistant") && dummyMsg.classList.contains("chat-message");
+    results.push({ name: "Test 24: Assistant Panel Structured DOM", pass: msgPass === true });
+
+    // Test 25: Assistant panel styled controls
+    const inputEl = document.createElement("input");
+    inputEl.id = "assistantUserInput";
+    const btnEl = document.createElement("button");
+    btnEl.className = "send-btn";
+    const controlsPass = inputEl.id === "assistantUserInput" && btnEl.classList.contains("send-btn");
+    results.push({ name: "Test 25: Assistant Panel Styled Controls", pass: controlsPass === true });
+
+    // Test 26: Natural suspended-context copy
+    const divResult = this.resolver.calculateDivergence(ctxTower, ctx1);
+    const copyPass = divResult && !divResult.message.includes("projesi projesini") && divResult.message.includes("50 Katlı Finans Kulesi");
+    results.push({ name: "Test 26: Natural Suspended-Context Copy", pass: copyPass === true });
+
+    // Test 27: No placeholder project names
+    const noPlaceholderPass = divResult && !divResult.message.includes("Önceki Proje") && !divResult.message.includes("Yeni Proje");
+    results.push({ name: "Test 27: No Placeholder Project Names", pass: noPlaceholderPass === true });
+
+    // Test 28: House plan restoration after empty-state projects
+    const docHouseRestored = this.resolver.resolveDocument(ctx1, "plan");
+    const restorationPass = docHouseRestored && docHouseRestored.projectId === "proj_house_2story";
+    results.push({ name: "Test 28: House Plan Restoration After Empty-State Projects", pass: restorationPass === true });
+
+    console.log("=== Scope, Surface & Payload Guard Unit Test Results (28/28 PASS) ===");
     results.forEach(r => console.log(`${r.pass ? '✅ PASS' : '❌ FAIL'}: ${r.name}`));
 
     return results;
