@@ -1,7 +1,7 @@
 /**
  * BRIF.AI — Automated Scope, Surface & Payload Unit Tests (v6.2 Engine)
  *
- * Verifies core architectural principles across 36 test scenarios:
+ * Verifies core architectural principles across 47 test scenarios:
  * 1-28. Universal scope, surface, and empty state assertions
  * 29 (Test A). Finans Kulesi 18. Kat -> 32. Kat transition consistency
  * 30 (Test B). Kampüs Blok A -> Blok B transition consistency
@@ -11,6 +11,7 @@
  * 34 (Test F). Stale async render rejection
  * 35 (Test G). Single snapshot cross-surface consistency
  * 36. Atomic transitionToContext execution assertion
+ * 37-47. Stage, ancestor, XSS, decision, and immutability regressions
  */
 
 class TestScopeGuard {
@@ -60,7 +61,12 @@ class TestScopeGuard {
 
     // Test 7: Scoped actions filtering
     const campusCtx = { projectId: "proj_campus_multiblock", buildingId: "block_a_r_d" };
-    const isHouseActionInCampus = false;
+    const campusCaps7 = this.hierarchy.getActiveCapabilities(campusCtx);
+    const houseOnlyAction7 = { requiredCapabilities: ["residential_master_suite"] };
+    const isHouseActionInCampus = this.guard.isCapabilityCompatible(
+      houseOnlyAction7,
+      campusCaps7
+    );
     results.push({ name: "Test 7: Scoped Actions Filtering (House action excluded in Campus)", pass: isHouseActionInCampus === false });
 
     // Test 8: Report empty state
@@ -196,9 +202,14 @@ class TestScopeGuard {
     // Test 30 (Test B): Kampüs Blok A -> Blok B transition consistency
     const smB = new ContextStateMachine(this.hierarchy);
     smB.dispatch({ type: "PROJECT_SELECTED", payload: { projectId: "proj_campus_multiblock", buildingId: "block_a_r_d" } });
+    const snapBlockA = smB.getSnapshot();
     smB.transitionToContext({ buildingId: "block_b_admin" });
     const snapB = smB.getSnapshot();
-    const testBPass = snapB.buildingId === "block_b_admin" && snapB.contextFingerprint.includes("block_b_admin") && !snapB.contextFingerprint.includes("block_a_r_d");
+    const testBPass = snapBlockA.levelId === "lvl_2_block_a" &&
+      snapB.buildingId === "block_b_admin" &&
+      snapB.levelId === "lvl_2_block_b" &&
+      snapB.contextFingerprint.includes("block_b_admin") &&
+      !snapB.contextFingerprint.includes("block_a_r_d");
     results.push({ name: "Test 30 (Test B): Campus Blok A to Blok B Transition Consistency", pass: testBPass === true });
 
     // Test 31 (Test C): House -> Tower surface clearing
@@ -243,7 +254,223 @@ class TestScopeGuard {
     const test36Pass = snap36Before.generationId !== snap36After.generationId && snap36After.projectId === "proj_campus_multiblock";
     results.push({ name: "Test 36: Atomic transitionToContext Execution Assertion", pass: test36Pass === true });
 
-    console.log("=== Scope, Surface & Payload Guard Unit Test Results (36/36 PASS) ===");
+    // Test 37: Tower stage changes preserve the active spatial scope
+    const sm37 = new ContextStateMachine(this.hierarchy);
+    sm37.dispatch({
+      type: "PROJECT_SELECTED",
+      payload: {
+        projectId: "proj_tower_50floor",
+        buildingId: "tower_a",
+        levelId: "lvl_18",
+        entityId: "space_meeting_18a"
+      }
+    });
+    const orchestrator37 = new ConversationOrchestrator({
+      hierarchy: this.hierarchy,
+      stateMachine: sm37
+    });
+    orchestrator37.chatContainerId = "test-scope-guard-missing-37";
+    orchestrator37.setStage(2);
+    const snap37 = sm37.getSnapshot();
+    const test37Pass = snap37.projectId === "proj_tower_50floor" &&
+      snap37.buildingId === "tower_a" &&
+      snap37.levelId === "lvl_18" &&
+      snap37.activeStage === 2;
+    results.push({ name: "Test 37: Tower Stage 2 Preserves Context", pass: test37Pass });
+
+    // Test 38: Campus stage changes preserve the active spatial scope
+    const sm38 = new ContextStateMachine(this.hierarchy);
+    sm38.dispatch({
+      type: "PROJECT_SELECTED",
+      payload: {
+        projectId: "proj_campus_multiblock",
+        buildingId: "block_a_r_d",
+        levelId: "lvl_2_block_a",
+        entityId: "space_robotics_lab"
+      }
+    });
+    const orchestrator38 = new ConversationOrchestrator({
+      hierarchy: this.hierarchy,
+      stateMachine: sm38
+    });
+    orchestrator38.chatContainerId = "test-scope-guard-missing-38";
+    orchestrator38.setStage(3);
+    const snap38 = sm38.getSnapshot();
+    const test38Pass = snap38.projectId === "proj_campus_multiblock" &&
+      snap38.buildingId === "block_a_r_d" &&
+      snap38.levelId === "lvl_2_block_a" &&
+      snap38.activeStage === 3;
+    results.push({ name: "Test 38: Campus Stage 3 Preserves Context", pass: test38Pass });
+
+    // Test 39: A foreign level normalizes the complete ancestor chain
+    const sm39 = new ContextStateMachine(this.hierarchy);
+    sm39.dispatch({
+      type: "PROJECT_SELECTED",
+      payload: {
+        projectId: "proj_tower_50floor",
+        buildingId: "tower_a",
+        levelId: "lvl_18",
+        entityId: "space_meeting_18a"
+      }
+    });
+    const snap39 = sm39.transitionToContext({ levelId: "lvl_ground" });
+    const test39Pass = snap39.projectId === "proj_house_2story" &&
+      snap39.buildingId === "bldg_main" &&
+      snap39.levelId === "lvl_ground" &&
+      snap39.entityId === null;
+    results.push({ name: "Test 39: Foreign Level Cannot Produce Hybrid Snapshot", pass: test39Pass });
+
+    // Test 40: A foreign entity normalizes the complete ancestor chain
+    const sm40 = new ContextStateMachine(this.hierarchy);
+    sm40.dispatch({
+      type: "PROJECT_SELECTED",
+      payload: {
+        projectId: "proj_campus_multiblock",
+        buildingId: "block_a_r_d",
+        levelId: "lvl_2_block_a",
+        entityId: "space_robotics_lab"
+      }
+    });
+    const snap40 = sm40.transitionToContext({
+      entityId: "space_study",
+      entityType: "space"
+    });
+    const test40Pass = snap40.projectId === "proj_house_2story" &&
+      snap40.buildingId === "bldg_main" &&
+      snap40.levelId === "lvl_ground" &&
+      snap40.zoneId === "zone_living" &&
+      snap40.entityId === "space_study";
+    results.push({ name: "Test 40: Foreign Entity Cannot Produce Hybrid Snapshot", pass: test40Pass });
+
+    // Test 41: User HTML payload remains inert text
+    const chat41 = document.createElement("div");
+    chat41.id = "test-scope-guard-chat-41";
+    document.body.appendChild(chat41);
+    const orchestrator41 = new ConversationOrchestrator({ hierarchy: this.hierarchy });
+    orchestrator41.chatContainerId = chat41.id;
+    delete window.__xss;
+    const userPayload41 = '<img src=x onerror="window.__xss=true">';
+    orchestrator41.appendUserMessage(userPayload41);
+    const renderedUser41 = chat41.querySelector(".message-text");
+    const test41Pass = renderedUser41 &&
+      renderedUser41.textContent === userPayload41 &&
+      chat41.querySelector("img") === null &&
+      window.__xss === undefined;
+    chat41.remove();
+    delete window.__xss;
+    results.push({ name: "Test 41: User Chat HTML Is Inert", pass: test41Pass === true });
+
+    // Test 42: Assistant scripts and quick-reply attributes remain inert
+    const chat42 = document.createElement("div");
+    chat42.id = "test-scope-guard-chat-42";
+    document.body.appendChild(chat42);
+    const orchestrator42 = new ConversationOrchestrator({ hierarchy: this.hierarchy });
+    orchestrator42.chatContainerId = chat42.id;
+    delete window.__assistantXss;
+    const assistantPayload42 = '<script>window.__assistantXss=true</script>';
+    const quickReply42 = '"><svg onload="window.__assistantXss=true">';
+    orchestrator42.appendAssistantMessage(assistantPayload42, [quickReply42]);
+    const renderedAssistant42 = chat42.querySelector(".message-text");
+    const renderedReply42 = chat42.querySelector(".followup-chip");
+    const test42Pass = renderedAssistant42 &&
+      renderedAssistant42.textContent === assistantPayload42 &&
+      renderedReply42 &&
+      renderedReply42.dataset.reply === quickReply42 &&
+      chat42.querySelector("script, svg") === null &&
+      window.__assistantXss === undefined;
+    chat42.remove();
+    delete window.__assistantXss;
+    results.push({ name: "Test 42: Assistant And Quick Reply HTML Is Inert", pass: test42Pass === true });
+
+    // Test 43: Decision state is persisted before history synchronization
+    const history43 = {
+      states: [],
+      setSessionState(state) {
+        this.states.push(state);
+      }
+    };
+    const sm43 = new ContextStateMachine(this.hierarchy);
+    const orchestrator43 = new ConversationOrchestrator({
+      hierarchy: this.hierarchy,
+      stateMachine: sm43,
+      historyManager: history43
+    });
+    orchestrator43.chatContainerId = "test-scope-guard-missing-43";
+    const applied43 = orchestrator43.applyMasterBathOption(1);
+    const snap43 = sm43.getSnapshot();
+    const historyState43 = history43.states[history43.states.length - 1];
+    const expectedDecision43 = "Seçenek 1 Seçildi (Uygulandı)";
+    const test43Pass = applied43 === true &&
+      snap43.selectedOption === 1 &&
+      snap43.decisionStatus === expectedDecision43 &&
+      historyState43 &&
+      historyState43.selectedOption === 1 &&
+      historyState43.decisionStatus === expectedDecision43;
+    results.push({ name: "Test 43: Decision State Persists In Snapshot And History", pass: test43Pass === true });
+
+    // Test 44: Nested snapshot values cannot mutate internal state
+    const sm44 = new ContextStateMachine(this.hierarchy);
+    sm44.transitionToContext({
+      suspendedContext: {
+        scenarioId: "immutability_test",
+        levelId: "lvl_ground",
+        reason: "original"
+      }
+    });
+    const external44 = sm44.getContext();
+    external44.workspaceScope.levelId = "tampered_level";
+    external44.conversationScope.levelId = "tampered_level";
+    external44.capabilities.push("tampered_capability");
+    external44.suspendedContext.reason = "tampered_reason";
+    const internal44 = sm44.getSnapshot();
+    const test44Pass = internal44.workspaceScope.levelId === "lvl_ground" &&
+      internal44.conversationScope.levelId === "lvl_ground" &&
+      !internal44.capabilities.includes("tampered_capability") &&
+      internal44.suspendedContext.reason === "original";
+    results.push({ name: "Test 44: Nested Snapshot State Is Immutable", pass: test44Pass });
+
+    // Test 45: Architect view round-trip preserves the last customer stage
+    const sm45 = new ContextStateMachine(this.hierarchy);
+    const orchestrator45 = new ConversationOrchestrator({
+      hierarchy: this.hierarchy,
+      stateMachine: sm45
+    });
+    orchestrator45.chatContainerId = "test-scope-guard-missing-45";
+    orchestrator45.setStage(2);
+    sm45.dispatch({ type: "ARCHITECT_VIEW_OPENED" });
+    const architectSnapshot45 = sm45.getSnapshot();
+    orchestrator45.setStage(architectSnapshot45.activeStage);
+    const customerSnapshot45 = sm45.getSnapshot();
+    const test45Pass = architectSnapshot45.activeStage === 2 &&
+      customerSnapshot45.activeStage === 2;
+    results.push({ name: "Test 45: Architect Customer Round-Trip Preserves Stage", pass: test45Pass });
+
+    // Test 46: Invalid IDs reject the transition and preserve the snapshot
+    const sm46 = new ContextStateMachine(this.hierarchy);
+    const before46 = sm46.getSnapshot();
+    const returned46 = sm46.transitionToContext({ entityId: "space_missing" });
+    const after46 = sm46.getSnapshot();
+    const test46Pass = returned46.contextFingerprint === before46.contextFingerprint &&
+      after46.contextFingerprint === before46.contextFingerprint &&
+      after46.generationId === before46.generationId;
+    results.push({ name: "Test 46: Invalid Entity Transition Is Rejected", pass: test46Pass });
+
+    // Test 47: House stage changes preserve the active spatial scope
+    const sm47 = new ContextStateMachine(this.hierarchy);
+    const orchestrator47 = new ConversationOrchestrator({
+      hierarchy: this.hierarchy,
+      stateMachine: sm47
+    });
+    orchestrator47.chatContainerId = "test-scope-guard-missing-47";
+    orchestrator47.setStage(1);
+    const snap47 = sm47.getSnapshot();
+    const test47Pass = snap47.projectId === "proj_house_2story" &&
+      snap47.buildingId === "bldg_main" &&
+      snap47.levelId === "lvl_ground" &&
+      snap47.activeStage === 1;
+    results.push({ name: "Test 47: House Stage 1 Preserves Context", pass: test47Pass });
+
+    console.log(`=== Scope, Surface & Payload Guard Unit Test Results (${results.length} total) ===`);
     results.forEach(r => console.log(`${r.pass ? '✅ PASS' : '❌ FAIL'}: ${r.name}`));
 
     return results;

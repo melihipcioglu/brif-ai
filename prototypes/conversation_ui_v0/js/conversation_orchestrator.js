@@ -33,15 +33,9 @@ class ConversationOrchestrator {
   }
 
   setStage(stageNum) {
-    let levelId = "lvl_ground";
-    if (stageNum === 4) {
-      const ctx = this.stateMachine.getContext();
-      levelId = ctx.levelId || "lvl_ground";
-    }
-
     this.stateMachine.dispatch({
-      type: "LEVEL_SELECTED",
-      payload: { levelId: levelId }
+      type: "STAGE_CHANGED",
+      payload: { activeStage: stageNum }
     });
 
     if (stageNum === 3) {
@@ -92,7 +86,7 @@ class ConversationOrchestrator {
       });
 
       this.appendAssistantMessage(
-        `📌 **${escapeHtml(entity.name)}** seçildi. Bu varlık hakkında düzenleme yapabiliriz.`
+        `📌 **${entity.name}** seçildi. Bu varlık hakkında düzenleme yapabiliriz.`
       );
     }
   }
@@ -147,23 +141,39 @@ class ConversationOrchestrator {
       const msgDiv = document.createElement('div');
       msgDiv.className = `chat-message ${msg.role === 'user' ? 'user' : 'assistant'}`;
 
-      let chipsHtml = '';
+      const avatar = document.createElement('div');
+      avatar.className = `message-avatar ${msg.role === 'user' ? 'user' : 'brif'}`;
+      avatar.textContent = msg.role === 'user' ? 'MK' : 'B';
+
+      const content = document.createElement('div');
+      content.className = 'message-content';
+
+      const sender = document.createElement('div');
+      sender.className = 'message-sender';
+      sender.textContent = msg.role === 'user' ? 'Siz' : 'BRIF.AI Mimari Asistan';
+
+      const messageText = document.createElement('div');
+      messageText.className = 'message-text';
+      messageText.textContent = msg.text === undefined || msg.text === null
+        ? ''
+        : String(msg.text);
+
+      content.append(sender, messageText);
+
       if (msg.quickReplies && msg.quickReplies.length > 0) {
-        chipsHtml = `
-          <div class="suggestion-chips">
-            ${msg.quickReplies.map(r => `<button class="chip-btn followup-chip" data-reply="${escapeHtml(r)}">${escapeHtml(r)}</button>`).join('')}
-          </div>
-        `;
+        const chips = document.createElement('div');
+        chips.className = 'suggestion-chips';
+        msg.quickReplies.forEach(reply => {
+          const button = document.createElement('button');
+          button.className = 'chip-btn followup-chip';
+          button.dataset.reply = String(reply);
+          button.textContent = String(reply);
+          chips.appendChild(button);
+        });
+        content.appendChild(chips);
       }
 
-      msgDiv.innerHTML = `
-        <div class="message-avatar ${msg.role === 'user' ? 'user' : 'brif'}">${msg.role === 'user' ? 'MK' : 'B'}</div>
-        <div class="message-content">
-          <div class="message-sender">${msg.role === 'user' ? 'Siz' : 'BRIF.AI Mimari Asistan'}</div>
-          <div class="message-text">${msg.text}</div>
-          ${chipsHtml}
-        </div>
-      `;
+      msgDiv.append(avatar, content);
       chatContainer.appendChild(msgDiv);
     });
 
@@ -199,17 +209,30 @@ class ConversationOrchestrator {
   }
 
   applyMasterBathOption(optionNum) {
-    const ctx = this.stateMachine.getContext();
-    ctx.selectedOption = optionNum;
-    ctx.decisionStatus = `Seçenek ${optionNum} Seçildi (Uygulandı)`;
+    const decisionStatus = `Seçenek ${optionNum} Seçildi (Uygulandı)`;
+    this.stateMachine.dispatch({
+      type: "DECISION_RECORDED",
+      payload: {
+        selectedOption: optionNum,
+        decisionStatus: decisionStatus
+      }
+    });
 
-    this.appendAssistantMessage(`✅ Seçenek ${optionNum} onaylandı ve plan kararlarına işlendi.`);
+    const updated = this.stateMachine.getSnapshot();
+    if (
+      updated.selectedOption !== optionNum ||
+      updated.decisionStatus !== decisionStatus
+    ) {
+      return false;
+    }
 
     if (this.presenter) {
       this.presenter.setMode('options_side_by_side', { selectedOption: optionNum });
     }
 
     this.syncStateWithHistory();
+    this.appendAssistantMessage(`✅ Seçenek ${optionNum} onaylandı ve plan kararlarına işlendi.`);
+    return true;
   }
 
   resumeSuspendedContext() {

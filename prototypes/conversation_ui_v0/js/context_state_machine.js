@@ -6,6 +6,24 @@
  *   conversationScope, capabilities, generationId, contextFingerprint, timestamp }
  */
 
+function cloneContextState(value) {
+  if (Array.isArray(value)) {
+    return value.map(item => cloneContextState(item));
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, cloneContextState(item)])
+    );
+  }
+  return value;
+}
+
+function freezeContextState(value) {
+  if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
+  Object.values(value).forEach(item => freezeContextState(item));
+  return Object.freeze(value);
+}
+
 class ContextStateMachine {
   constructor(hierarchy) {
     this.hierarchy = hierarchy || new EntityHierarchy();
@@ -24,6 +42,8 @@ class ContextStateMachine {
       activeStage: 4,
       scenarioId: null,
       decisionId: null,
+      selectedOption: null,
+      decisionStatus: null,
       workspaceScope: { levelId: "lvl_ground", buildingId: "bldg_main", projectId: "proj_house_2story" },
       conversationScope: { entityId: "space_study", levelId: "lvl_ground" },
       suspendedContext: null
@@ -38,15 +58,15 @@ class ContextStateMachine {
   }
 
   notify() {
-    this.listeners.forEach(fn => fn(this.activeSnapshot));
+    this.listeners.forEach(fn => fn(this.getSnapshot()));
   }
 
   getContext() {
-    return { ...this.activeSnapshot };
+    return cloneContextState(this.activeSnapshot);
   }
 
   getSnapshot() {
-    return { ...this.activeSnapshot };
+    return cloneContextState(this.activeSnapshot);
   }
 
   createFingerprint(ctx) {
@@ -56,96 +76,152 @@ class ContextStateMachine {
 
   createSnapshot(ctx) {
     this.generationId++;
-    const ancestors = this.hierarchy.getAncestors(ctx.entityId || ctx.levelId || ctx.buildingId || ctx.projectId);
-    const capabilities = this.hierarchy.getActiveCapabilities(ctx);
-    const fingerprint = this.createFingerprint(ctx);
+    const normalized = cloneContextState(ctx);
+    const targetId = normalized.entityId || normalized.zoneId || normalized.levelId ||
+      normalized.buildingId || normalized.projectId;
+    const ancestors = this.hierarchy.getAncestors(targetId);
+    if (ancestors.project) normalized.projectId = ancestors.project.id;
+    if (ancestors.building) normalized.buildingId = ancestors.building.id;
+    if (ancestors.level) normalized.levelId = ancestors.level.id;
+    if (ancestors.zone) normalized.zoneId = ancestors.zone.id;
+    if (ancestors.entity) normalized.entityId = ancestors.entity.id;
 
-    return {
-      projectId: ctx.projectId,
+    const capabilities = this.hierarchy.getActiveCapabilities(normalized);
+    const fingerprint = this.createFingerprint(normalized);
+    const snapshot = {
+      projectId: normalized.projectId,
       projectType: ancestors.project ? ancestors.project.type : 'project',
-      buildingId: ctx.buildingId || (ancestors.building ? ancestors.building.id : null),
-      levelId: ctx.levelId || (ancestors.level ? ancestors.level.id : null),
-      zoneId: ctx.zoneId || (ancestors.zone ? ancestors.zone.id : null),
-      entityId: ctx.entityId || (ancestors.entity ? ancestors.entity.id : null),
-      entityType: ctx.entityType || 'space',
-      viewMode: ctx.viewMode || 'plan',
-      activeStage: ctx.activeStage || 4,
-      scenarioId: ctx.scenarioId || null,
-      decisionId: ctx.decisionId || null,
+      buildingId: normalized.buildingId || (ancestors.building ? ancestors.building.id : null),
+      levelId: normalized.levelId || (ancestors.level ? ancestors.level.id : null),
+      zoneId: normalized.zoneId || (ancestors.zone ? ancestors.zone.id : null),
+      entityId: normalized.entityId || (ancestors.entity ? ancestors.entity.id : null),
+      entityType: normalized.entityType || 'space',
+      viewMode: normalized.viewMode || 'plan',
+      activeStage: normalized.activeStage ?? 4,
+      scenarioId: normalized.scenarioId || null,
+      decisionId: normalized.decisionId || null,
+      selectedOption: normalized.selectedOption ?? null,
+      decisionStatus: normalized.decisionStatus || null,
       workspaceScope: {
-        projectId: ctx.projectId,
-        buildingId: ctx.buildingId || (ancestors.building ? ancestors.building.id : null),
-        levelId: ctx.levelId || (ancestors.level ? ancestors.level.id : null)
+        projectId: normalized.projectId,
+        buildingId: normalized.buildingId || (ancestors.building ? ancestors.building.id : null),
+        levelId: normalized.levelId || (ancestors.level ? ancestors.level.id : null)
       },
       conversationScope: {
-        entityId: ctx.entityId || (ancestors.entity ? ancestors.entity.id : null),
-        levelId: ctx.levelId || (ancestors.level ? ancestors.level.id : null)
+        entityId: normalized.entityId || (ancestors.entity ? ancestors.entity.id : null),
+        levelId: normalized.levelId || (ancestors.level ? ancestors.level.id : null)
       },
-      suspendedContext: ctx.suspendedContext || null,
+      suspendedContext: normalized.suspendedContext || null,
       capabilities: capabilities,
       generationId: this.generationId,
       contextFingerprint: fingerprint,
       timestamp: new Date().toISOString()
     };
+    return freezeContextState(snapshot);
+  }
+
+  referencesAreValid(partialContext) {
+    const expectedTypes = {
+      projectId: 'project',
+      buildingId: 'building',
+      levelId: 'level',
+      zoneId: 'zone'
+    };
+
+    for (const [field, expectedType] of Object.entries(expectedTypes)) {
+      const value = partialContext[field];
+      if (value === undefined) continue;
+      if (value === null) return field !== 'projectId';
+      const entity = this.hierarchy.findEntity(value);
+      if (!entity || entity.type !== expectedType) return false;
+    }
+
+    if (partialContext.entityId !== undefined && partialContext.entityId !== null) {
+      const entity = this.hierarchy.findEntity(partialContext.entityId);
+      if (!entity) return false;
+      const expectedEntityType = partialContext.entityType || 'space';
+      if (entity.type !== expectedEntityType) return false;
+    }
+
+    return true;
   }
 
   // Central Atomic Transition Function (Requirement 1)
   transitionToContext(partialContext) {
-    if (!partialContext) return this.activeSnapshot;
+    if (!partialContext) return this.getSnapshot();
 
-    const current = { ...this.activeContext };
+    const partial = cloneContextState(partialContext);
+    const previousSnapshot = this.getSnapshot();
+    if (!this.referencesAreValid(partial)) return previousSnapshot;
+
+    const current = cloneContextState(this.activeContext);
 
     // 1. Project transition
-    if (partialContext.projectId && partialContext.projectId !== current.projectId) {
-      current.projectId = partialContext.projectId;
-      current.buildingId = partialContext.buildingId || null;
-      current.levelId = partialContext.levelId || null;
-      current.zoneId = partialContext.zoneId || null;
-      current.entityId = partialContext.entityId || null;
+    if (partial.projectId && partial.projectId !== current.projectId) {
+      current.projectId = partial.projectId;
+      current.buildingId = partial.buildingId || null;
+      current.levelId = partial.levelId || null;
+      current.zoneId = partial.zoneId || null;
+      current.entityId = partial.entityId || null;
     }
 
     // 2. Building transition
-    if (partialContext.buildingId !== undefined) {
-      current.buildingId = partialContext.buildingId;
-      // Auto-resolve default level for building if not specified
-      if (!partialContext.levelId) {
-        const bldg = this.hierarchy.findEntity(current.buildingId);
-        if (bldg && bldg.levels) {
-          const firstLvl = Object.values(bldg.levels)[0];
-          current.levelId = firstLvl ? firstLvl.id : null;
-        } else {
-          current.levelId = null;
-        }
-      } else {
-        current.levelId = partialContext.levelId;
+    const needsDefaultLevel = partial.levelId === undefined &&
+      partial.zoneId === undefined &&
+      partial.entityId === undefined &&
+      current.levelId === null;
+    if (
+      partial.buildingId !== undefined &&
+      (partial.buildingId !== current.buildingId || needsDefaultLevel)
+    ) {
+      current.buildingId = partial.buildingId;
+      if (partial.levelId === undefined && current.buildingId) {
+        const building = this.hierarchy.findEntity(current.buildingId);
+        const firstLevel = building && building.levels
+          ? Object.values(building.levels)[0]
+          : null;
+        current.levelId = firstLevel ? firstLevel.id : null;
+      } else if (partial.levelId !== undefined) {
+        current.levelId = partial.levelId;
       }
       current.zoneId = null;
       current.entityId = null;
     }
 
     // 3. Level transition
-    if (partialContext.levelId !== undefined && partialContext.levelId !== current.levelId) {
-      current.levelId = partialContext.levelId;
+    if (partial.levelId !== undefined && partial.levelId !== current.levelId) {
+      current.levelId = partial.levelId;
       current.zoneId = null;
       current.entityId = null;
     }
 
     // 4. Zone / Entity transition
-    if (partialContext.zoneId !== undefined) current.zoneId = partialContext.zoneId;
-    if (partialContext.entityId !== undefined) {
-      current.entityId = partialContext.entityId;
-      if (partialContext.entityType) current.entityType = partialContext.entityType;
+    if (partial.zoneId !== undefined && partial.zoneId !== current.zoneId) {
+      current.zoneId = partial.zoneId;
+      current.entityId = null;
+    }
+    if (partial.entityId !== undefined) {
+      current.entityId = partial.entityId;
+      if (partial.entityType) current.entityType = partial.entityType;
     }
 
-    // 5. Stage / View / Scenario transition
-    if (partialContext.activeStage !== undefined) current.activeStage = partialContext.activeStage;
-    if (partialContext.viewMode !== undefined) current.viewMode = partialContext.viewMode;
-    if (partialContext.scenarioId !== undefined) current.scenarioId = partialContext.scenarioId;
-    if (partialContext.decisionId !== undefined) current.decisionId = partialContext.decisionId;
-    if (partialContext.suspendedContext !== undefined) current.suspendedContext = partialContext.suspendedContext;
+    // 5. Stage / View / Scenario / Decision transition
+    if (partial.activeStage !== undefined) current.activeStage = partial.activeStage;
+    if (partial.viewMode !== undefined) current.viewMode = partial.viewMode;
+    if (partial.scenarioId !== undefined) current.scenarioId = partial.scenarioId;
+    if (partial.decisionId !== undefined) current.decisionId = partial.decisionId;
+    if (partial.selectedOption !== undefined) current.selectedOption = partial.selectedOption;
+    if (partial.decisionStatus !== undefined) current.decisionStatus = partial.decisionStatus;
+    if (partial.suspendedContext !== undefined) {
+      current.suspendedContext = cloneContextState(partial.suspendedContext);
+    }
 
-    // Resolve full ancestors to ensure no orphaned building/level/zone IDs remain
-    const ancestors = this.hierarchy.getAncestors(current.entityId || current.levelId || current.buildingId || current.projectId);
+    // The most specific target owns the full ancestor chain.
+    const targetId = current.entityId || current.zoneId || current.levelId ||
+      current.buildingId || current.projectId;
+    const ancestors = this.hierarchy.getAncestors(targetId);
+    if (!ancestors.project) return previousSnapshot;
+    current.projectId = ancestors.project.id;
     if (ancestors.building) current.buildingId = ancestors.building.id;
     if (ancestors.level) current.levelId = ancestors.level.id;
     if (ancestors.zone) current.zoneId = ancestors.zone.id;
@@ -159,7 +235,7 @@ class ContextStateMachine {
     }
 
     this.notify();
-    return this.activeSnapshot;
+    return this.getSnapshot();
   }
 
   // Central Event Reducer using transitionToContext
@@ -203,6 +279,12 @@ class ContextStateMachine {
         });
         break;
 
+      case "STAGE_CHANGED":
+        this.transitionToContext({
+          activeStage: payload.activeStage
+        });
+        break;
+
       case "SCENARIO_STARTED":
         this.transitionToContext({
           scenarioId: payload.scenarioId,
@@ -233,6 +315,13 @@ class ContextStateMachine {
             suspendedContext: null
           });
         }
+        break;
+
+      case "DECISION_RECORDED":
+        this.transitionToContext({
+          selectedOption: payload.selectedOption,
+          decisionStatus: payload.decisionStatus
+        });
         break;
 
       case "ARCHITECT_VIEW_OPENED":
