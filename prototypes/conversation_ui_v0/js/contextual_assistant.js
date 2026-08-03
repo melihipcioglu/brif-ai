@@ -60,11 +60,15 @@ class ContextualAssistant {
 
   processUserMessage(messageText) {
     const ctx = this.stateMachine.getContext();
-    const actionPayload = this.intentParser.parseMessage(messageText, ctx);
-    
-    let aiResponseText = `Talebinizi not aldım: "${messageText}". Bu durumu ${this.hierarchy.getScopeTitle(ctx)} kararlarına ve mimar özetine yansıtacağız.`;
+    const safeMessageText = typeof messageText === 'string'
+      ? messageText.trim()
+      : '';
+    const actionPayload = this.intentParser.parseMessage(safeMessageText, ctx);
+    const aiResponseText = safeMessageText
+      ? `Talebinizi not aldım: "${safeMessageText}". Bu durumu ${this.hierarchy.getScopeTitle(ctx)} kararlarına ve mimar özetine yansıtacağız.`
+      : 'Mesajınızı anlayamadım. Lütfen talebinizi kısa bir cümleyle tekrar yazın.';
 
-    this.historyMemory.push({ role: 'user', text: messageText, contextSnapshot: { ...ctx, timestamp: new Date().toISOString() } });
+    this.historyMemory.push({ role: 'user', text: safeMessageText, contextSnapshot: { ...ctx, timestamp: new Date().toISOString() } });
     this.historyMemory.push({ role: 'assistant', text: aiResponseText });
 
     return { actionPayload, aiResponseText };

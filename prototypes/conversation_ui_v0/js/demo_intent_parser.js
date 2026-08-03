@@ -45,7 +45,7 @@ class DemoIntentParser {
   }
 
   normalizeText(text) {
-    if (!text) return '';
+    if (typeof text !== 'string') return '';
     let str = text.toLowerCase().trim();
     // Turkish char replacement for soft matching
     str = str.replace(/ı/g, 'i')
@@ -55,6 +55,36 @@ class DemoIntentParser {
              .replace(/ö/g, 'o')
              .replace(/ç/g, 'c');
     return str;
+  }
+
+  parseMessage(messageText, context = {}) {
+    const sourceMessage = this.normalizeText(messageText)
+      ? messageText.trim()
+      : '';
+    const safeContext = context && typeof context === 'object' ? context : {};
+    const workspaceScope = safeContext.workspaceScope &&
+      typeof safeContext.workspaceScope === 'object'
+      ? safeContext.workspaceScope
+      : safeContext;
+    const entityId = safeContext.entityId || workspaceScope.entityId || 'space_study';
+    const levelId = safeContext.levelId || workspaceScope.levelId || 'lvl_ground';
+    const spaceId = entityId.startsWith('space_')
+      ? entityId.slice('space_'.length)
+      : entityId;
+
+    return {
+      intent: 'ambiguous_request',
+      target: {
+        space_id: spaceId,
+        floor: levelId === 'lvl_upper' ? 'upper' : 'ground',
+        alternative: safeContext.alternative || 'b'
+      },
+      operation: { type: 'unknown' },
+      preserve: [],
+      effects: [],
+      requires_confirmation: false,
+      source_message: sourceMessage
+    };
   }
 
   isMasterBathInitial(text) {

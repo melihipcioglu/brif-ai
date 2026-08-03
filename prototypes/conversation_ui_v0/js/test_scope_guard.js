@@ -1,7 +1,7 @@
 /**
  * BRIF.AI — Automated Scope, Surface & Payload Unit Tests (v6.2 Engine)
  *
- * Verifies core architectural principles across 47 test scenarios:
+ * Verifies core architectural principles across 53 test scenarios:
  * 1-28. Universal scope, surface, and empty state assertions
  * 29 (Test A). Finans Kulesi 18. Kat -> 32. Kat transition consistency
  * 30 (Test B). Kampüs Blok A -> Blok B transition consistency
@@ -12,6 +12,7 @@
  * 35 (Test G). Single snapshot cross-surface consistency
  * 36. Atomic transitionToContext execution assertion
  * 37-47. Stage, ancestor, XSS, decision, and immutability regressions
+ * 48-53. Deterministic demo parser and chat regressions
  */
 
 class TestScopeGuard {
@@ -469,6 +470,106 @@ class TestScopeGuard {
       snap47.levelId === "lvl_ground" &&
       snap47.activeStage === 1;
     results.push({ name: "Test 47: House Stage 1 Preserves Context", pass: test47Pass });
+
+    // Test 48: The deterministic parser API used by ContextualAssistant exists
+    const parser48 = new DemoIntentParser();
+    results.push({
+      name: "Test 48: DemoIntentParser Exposes parseMessage",
+      pass: typeof parser48.parseMessage === "function"
+    });
+
+    // Test 49: Generic messages return a complete assistant result
+    const sm49 = new ContextStateMachine(this.hierarchy);
+    const assistant49 = new ContextualAssistant({
+      hierarchy: this.hierarchy,
+      stateMachine: sm49
+    });
+    let genericResult49 = null;
+    let genericError49 = null;
+    try {
+      genericResult49 = assistant49.processUserMessage("Çalışma odası sessiz olsun.");
+    } catch (error) {
+      genericError49 = error;
+    }
+    const test49Pass = genericError49 === null &&
+      genericResult49 &&
+      genericResult49.actionPayload &&
+      genericResult49.actionPayload.intent === "ambiguous_request" &&
+      genericResult49.actionPayload.source_message === "Çalışma odası sessiz olsun." &&
+      typeof genericResult49.aiResponseText === "string" &&
+      genericResult49.aiResponseText.length > 0;
+    results.push({ name: "Test 49: Generic Message Returns Action Payload", pass: test49Pass });
+
+    // Test 50: Existing master-bath recognition remains intact
+    const masterText50 = "Ebeveyn banyosu yataktan görünmesin ve kuzey tarafında olsun.";
+    const test50Pass = parser48.isMasterBathInitial(masterText50) &&
+      parser48.parseMasterBathReason(masterText50) === "visibility";
+    results.push({ name: "Test 50: Master Bath Patterns Remain Intact", pass: test50Pass });
+
+    // Test 51: The master-bath orchestrator flow still starts its scenario
+    const sm51 = new ContextStateMachine(this.hierarchy);
+    const assistant51 = new ContextualAssistant({
+      hierarchy: this.hierarchy,
+      stateMachine: sm51
+    });
+    const orchestrator51 = new ConversationOrchestrator({
+      hierarchy: this.hierarchy,
+      stateMachine: sm51,
+      assistant: assistant51
+    });
+    orchestrator51.chatContainerId = "test-scope-guard-missing-51";
+    orchestrator51.handleUserMessage(masterText50);
+    const snap51 = sm51.getSnapshot();
+    const test51Pass = snap51.scenarioId === "master_bath_relocation" &&
+      snap51.entityId === "space_master_bath" &&
+      snap51.levelId === "lvl_upper";
+    results.push({ name: "Test 51: Master Bath Demo Flow Still Starts", pass: test51Pass });
+
+    // Test 52: Empty and invalid messages are handled without throwing
+    let emptyResult52 = null;
+    let invalidResult52 = null;
+    let invalidError52 = null;
+    try {
+      emptyResult52 = assistant49.processUserMessage("   ");
+      invalidResult52 = assistant49.processUserMessage(null);
+    } catch (error) {
+      invalidError52 = error;
+    }
+    const test52Pass = invalidError52 === null &&
+      emptyResult52 &&
+      invalidResult52 &&
+      emptyResult52.actionPayload.source_message === "" &&
+      invalidResult52.actionPayload.source_message === "" &&
+      emptyResult52.aiResponseText === invalidResult52.aiResponseText;
+    results.push({ name: "Test 52: Empty And Invalid Messages Are Safe", pass: test52Pass });
+
+    // Test 53: HTML remains inert through the complete generic chat path
+    const chat53 = document.createElement("div");
+    chat53.id = "test-scope-guard-chat-53";
+    document.body.appendChild(chat53);
+    const sm53 = new ContextStateMachine(this.hierarchy);
+    const assistant53 = new ContextualAssistant({
+      hierarchy: this.hierarchy,
+      stateMachine: sm53
+    });
+    const orchestrator53 = new ConversationOrchestrator({
+      hierarchy: this.hierarchy,
+      stateMachine: sm53,
+      assistant: assistant53
+    });
+    orchestrator53.chatContainerId = chat53.id;
+    delete window.__parserXss;
+    const htmlPayload53 = '<img src=x onerror="window.__parserXss=true">';
+    orchestrator53.appendUserMessage(htmlPayload53);
+    orchestrator53.handleUserMessage(htmlPayload53);
+    const renderedTexts53 = Array.from(chat53.querySelectorAll(".message-text"))
+      .map(element => element.textContent);
+    const test53Pass = renderedTexts53.some(text => text === htmlPayload53) &&
+      chat53.querySelector("img, script, svg") === null &&
+      window.__parserXss === undefined;
+    chat53.remove();
+    delete window.__parserXss;
+    results.push({ name: "Test 53: Generic Chat HTML Is Inert", pass: test53Pass });
 
     console.log(`=== Scope, Surface & Payload Guard Unit Test Results (${results.length} total) ===`);
     results.forEach(r => console.log(`${r.pass ? '✅ PASS' : '❌ FAIL'}: ${r.name}`));
