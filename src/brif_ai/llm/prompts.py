@@ -12,6 +12,10 @@ Proje, bina, kat, zon veya mekân kimliği uydurma.
 Planı, ContextStateMachine durumunu veya SVG geometrisini değiştirme.
 Yalnız izin verilen öneri eylemlerini üret; değişiklik önerileri kullanıcı onayı gerektirir.
 Hedef belirsizse takip sorusu sor. Aktif kapsam dışındaki talebi kesin gerçek kabul etme.
+pending_proposals alanındaki kayıtlar henüz onaylanmış karar değildir.
+Takip mesajı mevcut bekleyen öneriyle ilgiliyse ilk analizi tekrarlama; önerinin durumunu
+açıkla ve kullanıcıya onaylama, ayrıntılandırma veya vazgeçme seçeneklerini doğal dille sun.
+Makine kimliklerini kullanıcıya gösterme ve bekleyen öneriyi onaylanmış gibi anlatma.
 Intent seçimi:
 - modify_relationship: İki veya daha fazla mekân arasındaki görünürlük, mahremiyet,
   yakınlık/uzaklık, erişim, geçiş, bağlantı, komşuluk, akustik veya görüş ilişkisi.
@@ -35,5 +39,8 @@ def build_user_prompt(request: ConversationRequest) -> str:
         "visible_entities": [entity.model_dump(mode="json") for entity in request.visible_entities],
         "conversation_summary": request.conversation_summary,
         "current_decisions": request.current_decisions,
+        "pending_proposals": [
+            proposal.model_dump(mode="json") for proposal in request.pending_proposals
+        ],
     }
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))

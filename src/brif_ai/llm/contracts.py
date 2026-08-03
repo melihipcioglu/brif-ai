@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from datetime import datetime
 from enum import Enum
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
@@ -84,6 +84,34 @@ class ConversationRequest(StrictContract):
     visible_entities: list[VisibleEntity]
     conversation_summary: str = ""
     current_decisions: list[str] = Field(default_factory=list)
+    pending_proposals: list[PendingProposalContext] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_pending_proposals(self) -> ConversationRequest:
+        visible_ids = {
+            entity.entity_id
+            for entity in self.visible_entities
+            if entity.project_id == self.active_context.project_id
+            and (
+                self.active_context.building_id is None
+                or entity.building_id == self.active_context.building_id
+            )
+            and (
+                self.active_context.level_id is None
+                or entity.level_id == self.active_context.level_id
+            )
+        }
+        for proposal in self.pending_proposals:
+            if proposal.context_fingerprint != self.active_context.context_fingerprint:
+                raise ValueError("pending proposal context fingerprint must match active context")
+            if proposal.generation_id != self.active_context.generation_id:
+                raise ValueError("pending proposal generation must match active context")
+            if not proposal.action.requires_user_confirmation:
+                raise ValueError("pending proposal must require user confirmation")
+            target_id = proposal.action.target_entity_id
+            if target_id is not None and target_id not in visible_ids:
+                raise ValueError("pending proposal target must be visible in active context")
+        return self
 
 
 class EntityTarget(StrictContract):
@@ -99,6 +127,13 @@ class ProposedAction(StrictContract):
     target_entity_id: NonEmptyString | None = None
     description: NonEmptyString
     requires_user_confirmation: bool
+
+
+class PendingProposalContext(StrictContract):
+    status: Literal["pending_user_confirmation"] = "pending_user_confirmation"
+    context_fingerprint: NonEmptyString
+    generation_id: int = Field(ge=0)
+    action: ProposedAction
 
 
 class ArchitecturalIntentResult(StrictContract):

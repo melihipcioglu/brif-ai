@@ -10,6 +10,7 @@ class LocalLLMGateway {
     this.orchestrator = options.orchestrator;
     this.baseUrl = (options.baseUrl || 'http://127.0.0.1:8000').replace(/\/$/, '');
     this.timeoutMs = options.timeoutMs || 600000;
+    this.fetchFn = options.fetchFn || ((...args) => fetch(...args));
   }
 
   async interpret(message) {
@@ -21,7 +22,7 @@ class LocalLLMGateway {
     const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
 
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1/conversation/interpret`, {
+      const response = await this.fetchFn(`${this.baseUrl}/api/v1/conversation/interpret`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),
@@ -30,18 +31,14 @@ class LocalLLMGateway {
       const payload = await this.readResponse(response);
 
       if (!payload.llm_enabled) {
-        this.orchestrator.appendAssistantMessage(
-          payload.error || 'Yerel yapay zekâ bağlantısı devre dışı. Demo konuşma modu kullanılıyor.'
-        );
-        this.orchestrator.handleDemoUserMessage(message);
+        this.runFallback(message, 'disabled');
         return { status: 'demo', payload };
       }
 
       if (!response.ok || !payload.success) {
-        this.orchestrator.appendAssistantMessage(
-          payload.error || 'Yerel yapay zekâ isteği tamamlanamadı.'
-        );
-        return { status: 'error', payload };
+        const failureStatus = this.classifyFailure(response, payload);
+        this.runFallback(message, failureStatus);
+        return { status: failureStatus, payload };
       }
 
       if (!this.isCurrentResponse(payload, requestSnapshot)) {
@@ -52,26 +49,42 @@ class LocalLLMGateway {
       }
 
       if (!this.isValidatedResult(payload.result, requestBody)) {
-        this.orchestrator.appendAssistantMessage(
-          'Yerel model doğrulanabilir bir mimari niyet yanıtı üretmedi.'
-        );
+        this.runFallback(message, 'invalid');
         return { status: 'invalid', payload };
       }
 
-      this.orchestrator.handleStructuredLLMResponse(payload.result, payload.context_fingerprint);
+      this.orchestrator.handleStructuredLLMResponse(
+        payload.result,
+        payload.context_fingerprint,
+        payload.generation_id
+      );
       return { status: 'success', payload };
     } catch (error) {
       if (error && error.name === 'AbortError') {
-        this.orchestrator.appendAssistantMessage('Yerel yapay zekâ isteği zaman aşımına uğradı.');
+        this.runFallback(message, 'timeout');
         return { status: 'timeout' };
       }
-      this.orchestrator.appendAssistantMessage(
-        'Yerel yapay zekâ servisine ulaşılamadı. Ollamanın çalıştığını kontrol edin.'
-      );
+      this.runFallback(message, 'unreachable');
       return { status: 'unreachable' };
     } finally {
       clearTimeout(timeoutId);
     }
+  }
+
+  classifyFailure(response, payload) {
+    const errorText = typeof payload.error === 'string' ? payload.error : '';
+    if (
+      payload.invalid_response === true ||
+      response.status === 422 ||
+      /geçersiz|doğrulanabilir/i.test(errorText)
+    ) {
+      return 'invalid';
+    }
+    return 'error';
+  }
+
+  runFallback(message, status) {
+    this.orchestrator.handleLocalLLMFallback(message, status);
   }
 
   buildRequest(message, snapshot) {
@@ -88,7 +101,8 @@ class LocalLLMGateway {
       },
       visible_entities: this.collectVisibleEntities(snapshot),
       conversation_summary: this.orchestrator.getConversationSummary(),
-      current_decisions: this.orchestrator.getCurrentDecisions()
+      current_decisions: this.orchestrator.getCurrentDecisions(),
+      pending_proposals: this.orchestrator.getPendingProposalContext(snapshot)
     };
   }
 
@@ -186,6 +200,7 @@ class LocalLLMGateway {
       return {
         success: false,
         llm_enabled: true,
+        invalid_response: true,
         error: 'Yerel yapay zekâ servisi geçersiz bir yanıt döndürdü.'
       };
     }

@@ -17,6 +17,10 @@ class ConversationOrchestrator {
     this.presenter = options.presenter;
     this.historyManager = options.historyManager;
     this.intentParser = new DemoIntentParser();
+    this.localLLMGateway = options.localLLMGateway || null;
+    this.proposalRecords = [];
+    this.pendingProposals = new Map();
+    this.proposalSequence = 0;
 
     this.chatContainerId = options.chatContainerId || 'chatMessagesContainer';
     this.allChatMessages = [];
@@ -114,6 +118,10 @@ class ConversationOrchestrator {
     this.renderFilteredChatMessages();
   }
 
+  setLocalLLMGateway(gateway) {
+    this.localLLMGateway = gateway;
+  }
+
   renderFilteredChatMessages() {
     const chatContainer = document.getElementById(this.chatContainerId);
     if (!chatContainer) return;
@@ -181,6 +189,23 @@ class ConversationOrchestrator {
         content.appendChild(chips);
       }
 
+      if (msg.proposedActions && msg.proposedActions.length > 0) {
+        const proposals = document.createElement('div');
+        proposals.className = 'suggestion-chips';
+        msg.proposedActions.forEach(proposal => {
+          const label = document.createElement('span');
+          label.className = 'message-text';
+          label.textContent = proposal.action.description;
+          proposals.appendChild(label);
+          const button = document.createElement('button');
+          button.className = 'chip-btn proposal-approve-btn';
+          button.dataset.proposalId = proposal.id;
+          button.textContent = 'Öneriyi onayla';
+          proposals.appendChild(button);
+        });
+        content.appendChild(proposals);
+      }
+
       msgDiv.append(avatar, content);
       chatContainer.appendChild(msgDiv);
     });
@@ -188,7 +213,20 @@ class ConversationOrchestrator {
     chatContainer.scrollTop = chatContainer.scrollHeight;
   }
 
-  handleUserMessage(messageText) {
+  async handleUserMessage(messageText) {
+    if (!messageText) return;
+
+    const pendingCommand = this.handlePendingProposalCommand(messageText);
+    if (pendingCommand) return pendingCommand;
+
+    if (this.localLLMGateway) {
+      return this.localLLMGateway.interpret(messageText);
+    }
+
+    return this.handleDemoUserMessage(messageText);
+  }
+
+  handleDemoUserMessage(messageText) {
     if (!messageText) return;
 
     if (this.intentParser.isMasterBathInitial(messageText)) {
@@ -209,6 +247,177 @@ class ConversationOrchestrator {
 
     const result = this.assistant.processUserMessage(messageText);
     this.appendAssistantMessage(result.aiResponseText);
+  }
+
+  handleStructuredLLMResponse(result, contextFingerprint, generationId = null) {
+    const needsSeparateQuestion = result.needs_follow_up
+      && result.follow_up_question
+      && !result.assistant_message.includes(result.follow_up_question);
+    const assistantMessage = needsSeparateQuestion
+      ? result.assistant_message + '\n\n' + result.follow_up_question
+      : result.assistant_message;
+    const current = this.stateMachine.getSnapshot();
+    const proposalGenerationId = Number.isInteger(generationId)
+      ? generationId
+      : current.generationId;
+    const proposedActions = Array.isArray(result.proposed_actions)
+      ? result.proposed_actions
+      : [];
+    const proposals = proposedActions.map(action => {
+      const actionCopy = JSON.parse(JSON.stringify(action));
+      const existing = Array.from(this.pendingProposals.values()).find(candidate =>
+        candidate.contextFingerprint === contextFingerprint &&
+        candidate.generationId === proposalGenerationId &&
+        JSON.stringify(candidate.action) === JSON.stringify(actionCopy)
+      );
+      if (existing) return existing;
+
+      this.proposalSequence += 1;
+      const id = `proposal_${this.proposalSequence}`;
+      const proposal = {
+        id,
+        action: actionCopy,
+        contextFingerprint,
+        generationId: proposalGenerationId
+      };
+      this.pendingProposals.set(id, proposal);
+      return proposal;
+    });
+    this.appendAssistantMessage(assistantMessage, [], proposals);
+  }
+
+  approveProposalById(proposalId) {
+    const proposal = this.pendingProposals.get(proposalId);
+    if (!proposal) return null;
+    const current = this.stateMachine.getSnapshot();
+    if (
+      proposal.contextFingerprint !== current.contextFingerprint ||
+      proposal.generationId !== current.generationId
+    ) {
+      this.appendAssistantMessage('Bağlam değiştiği için bu öneri onaylanamadı.');
+      return null;
+    }
+
+    const record = {
+      proposal_status: 'user_approved',
+      approved_at: new Date().toISOString(),
+      context_fingerprint: current.contextFingerprint,
+      proposed_action: JSON.parse(JSON.stringify(proposal.action))
+    };
+    this.proposalRecords.push(record);
+    this.pendingProposals.delete(proposalId);
+    this.appendAssistantMessage(
+      'Öneri onay kaydı oluşturuldu. Plan henüz değiştirilmedi.'
+    );
+    return record;
+  }
+
+  dismissProposalById(proposalId) {
+    const proposal = this.pendingProposals.get(proposalId);
+    if (!proposal) return false;
+    const current = this.stateMachine.getSnapshot();
+    if (
+      proposal.contextFingerprint !== current.contextFingerprint ||
+      proposal.generationId !== current.generationId
+    ) {
+      this.appendAssistantMessage('Bağlam değiştiği için bu öneri iptal edilemedi.');
+      return false;
+    }
+
+    this.pendingProposals.delete(proposalId);
+    this.appendAssistantMessage('Bekleyen öneri iptal edildi. Plan değiştirilmedi.');
+    return true;
+  }
+
+  getActivePendingProposals(snapshot = null) {
+    const active = snapshot || this.stateMachine.getSnapshot();
+    return Array.from(this.pendingProposals.values()).filter(proposal =>
+      proposal.contextFingerprint === active.contextFingerprint &&
+      proposal.generationId === active.generationId
+    );
+  }
+
+  getPendingProposalContext(snapshot = null) {
+    return this.getActivePendingProposals(snapshot).map(proposal => ({
+      status: 'pending_user_confirmation',
+      context_fingerprint: proposal.contextFingerprint,
+      generation_id: proposal.generationId,
+      action: JSON.parse(JSON.stringify(proposal.action))
+    }));
+  }
+
+  getConversationSummary() {
+    const transcript = this.allChatMessages
+      .slice(-6)
+      .map(message => message.role + ': ' + message.text);
+    const pending = this.getPendingProposalContext().map(proposal =>
+      `${proposal.status}: ${proposal.action.description}`
+    );
+    return [...transcript, ...pending].join('\n');
+  }
+
+  getCurrentDecisions() {
+    return this.proposalRecords.map(record => (
+      record.proposal_status + ': ' + record.proposed_action.description
+    ));
+  }
+
+  handlePendingProposalCommand(messageText) {
+    const pending = this.getActivePendingProposals();
+    if (pending.length === 0) return null;
+    const normalized = String(messageText || '').trim().toLocaleLowerCase('tr-TR');
+
+    if (['onayla', 'onaylıyorum', 'kabul et', 'kabul ediyorum'].some(command =>
+      normalized.includes(command)
+    )) {
+      const record = this.approveProposalById(pending[0].id);
+      return { status: record ? 'approved' : 'stale', record };
+    }
+
+    if (['vazgeç', 'iptal et', 'reddet'].some(command =>
+      normalized.includes(command)
+    )) {
+      const dismissed = this.dismissProposalById(pending[0].id);
+      return { status: dismissed ? 'dismissed' : 'stale' };
+    }
+
+    return null;
+  }
+
+  handleLocalLLMFallback(messageText, status = 'error') {
+    const commandResult = this.handlePendingProposalCommand(messageText);
+    if (commandResult) return commandResult;
+
+    const pending = this.getPendingProposalContext();
+    if (pending.length > 0) {
+      const reason = {
+        disabled: 'Yerel yapay zekâ bağlantısı şu anda devre dışı.',
+        error: 'Yerel yapay zekâ isteği tamamlanamadı.',
+        invalid: 'Yerel modelin yanıtı güvenlik doğrulamasını geçemedi.',
+        timeout: 'Yerel yapay zekâ isteği zaman aşımına uğradı.',
+        unreachable: 'Yerel yapay zekâ servisine şu anda ulaşılamıyor.'
+      }[status] || 'Yerel yapay zekâ yanıt veremedi.';
+      const descriptions = pending
+        .map(proposal => proposal.action.description)
+        .join(' ');
+      this.appendAssistantMessage(
+        `${reason} Bekleyen öneriniz: ${descriptions} ` +
+        'Plan otomatik değiştirilmedi. Öneriyi onaylayabilir, ' +
+        'ayrıntılandırabilir veya vazgeçebilirsiniz.'
+      );
+      return { status: 'pending_continuation', failureStatus: status };
+    }
+
+    const reason = {
+      disabled: 'Yerel yapay zekâ bağlantısı devre dışı. Demo konuşma modu kullanılıyor.',
+      error: 'Yerel yapay zekâ isteği tamamlanamadı. Demo konuşma modu kullanılıyor.',
+      invalid: 'Yerel model doğrulanabilir bir mimari niyet yanıtı üretmedi.',
+      timeout: 'Yerel yapay zekâ isteği zaman aşımına uğradı.',
+      unreachable: 'Yerel yapay zekâ servisine ulaşılamadı.'
+    }[status] || 'Yerel yapay zekâ yanıt veremedi.';
+    this.appendAssistantMessage(reason);
+    this.handleDemoUserMessage(messageText);
+    return { status: 'demo', failureStatus: status };
   }
 
   normalizeQuickReply(reply, scopeSnapshot = null) {
@@ -417,7 +626,7 @@ class ConversationOrchestrator {
     this.renderFilteredChatMessages();
   }
 
-  appendAssistantMessage(text, quickReplies = []) {
+  appendAssistantMessage(text, quickReplies = [], proposedActions = []) {
     const ctx = this.stateMachine.getContext();
     this.allChatMessages.push({
       role: 'assistant',
@@ -425,6 +634,7 @@ class ConversationOrchestrator {
       quickReplies: quickReplies
         .map(reply => this.normalizeQuickReply(reply, ctx))
         .filter(reply => reply.label),
+      proposedActions: Array.isArray(proposedActions) ? proposedActions : [],
       snapshot: { ...ctx, timestamp: new Date().toISOString() }
     });
     this.renderFilteredChatMessages();
