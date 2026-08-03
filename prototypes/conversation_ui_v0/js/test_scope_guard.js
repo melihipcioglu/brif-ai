@@ -1,7 +1,7 @@
 /**
  * BRIF.AI — Automated Scope, Surface & Payload Unit Tests (v6.2 Engine)
  *
- * Verifies core architectural principles across 60 test scenarios:
+ * Verifies core architectural principles across 70 test scenarios:
  * 1-28. Universal scope, surface, and empty state assertions
  * 29 (Test A). Finans Kulesi 18. Kat -> 32. Kat transition consistency
  * 30 (Test B). Kampüs Blok A -> Blok B transition consistency
@@ -14,6 +14,7 @@
  * 37-47. Stage, ancestor, XSS, decision, and immutability regressions
  * 48-53. Deterministic demo parser and chat regressions
  * 54-60. Project-scoped visual preference regressions
+ * 61-70. Visual preference click, state, round, and stage regressions
  */
 
 class TestScopeGuard {
@@ -680,6 +681,163 @@ class TestScopeGuard {
       visualContainer.getAttribute("data-project-id") === "proj_tower_50floor" &&
       visualContainer.querySelector(".visual-preferences-empty") !== null;
     results.push({ name: "Test 60: Visual Stage Preserves Active Tower Context", pass: test60Pass });
+
+    const interactionState = new ContextStateMachine(this.hierarchy);
+    interactionState.subscribe(snapshot => {
+      visualPresenter.renderVisualPreferences(snapshot);
+    });
+    const firstBinding = visualPresenter.bindVisualPreferenceInteractions({
+      stateMachine: interactionState,
+      onStageChange: stage => {
+        interactionState.dispatch({
+          type: "STAGE_CHANGED",
+          payload: { activeStage: stage }
+        });
+      }
+    });
+    const duplicateBinding = visualPresenter.bindVisualPreferenceInteractions({
+      stateMachine: interactionState
+    });
+    visualPresenter.renderVisualPreferences(interactionState.getSnapshot());
+    const clickVisualControl = element => {
+      element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    };
+
+    // Test 61: Primary preference click produces visible selected state
+    const primary61 = visualContainer.querySelector(
+      '[data-card-id="work_separate"] .pref-btn-primary'
+    );
+    clickVisualControl(primary61);
+    const selectedCard61 = visualContainer.querySelector(
+      '[data-card-id="work_separate"]'
+    );
+    const test61Pass = selectedCard61.classList.contains("preference-selected") &&
+      selectedCard61.getAttribute("data-preference-status") === "like" &&
+      selectedCard61.querySelector(".pref-selection-status").textContent === "Seçildi" &&
+      selectedCard61.querySelector(".pref-btn-primary").getAttribute("aria-pressed") === "true";
+    results.push({ name: "Test 61: Primary Click Shows Selected State", pass: test61Pass });
+
+    // Test 62: Preference selection is persisted in the immutable snapshot
+    const snapshot62 = interactionState.getSnapshot();
+    const savedSelection62 = snapshot62.visualPreferencesByProject.proj_house_2story.rounds["1"];
+    const test62Pass = savedSelection62.cardId === "work_separate" &&
+      savedSelection62.preference === "like";
+    results.push({ name: "Test 62: Primary Selection Persists In Snapshot", pass: test62Pass });
+
+    // Test 63: A second selection in the same round clears the previous card
+    const secondPrimary63 = visualContainer.querySelector(
+      '[data-card-id="work_connected"] .pref-btn-primary'
+    );
+    clickVisualControl(secondPrimary63);
+    const selectedCards63 = visualContainer.querySelectorAll(".preference-selected");
+    const test63Pass = selectedCards63.length === 1 &&
+      selectedCards63[0].dataset.cardId === "work_connected" &&
+      visualContainer.querySelector('[data-card-id="work_separate"]')
+        .getAttribute("data-preference-status") === null;
+    results.push({ name: "Test 63: Same Round Keeps One Active Selection", pass: test63Pass });
+
+    // Test 64: Secondary click replaces like with visible neutral state
+    const secondary64 = visualContainer.querySelector(
+      '[data-card-id="work_connected"] .pref-btn-secondary'
+    );
+    clickVisualControl(secondary64);
+    const neutralCard64 = visualContainer.querySelector(
+      '[data-card-id="work_connected"]'
+    );
+    const snapshot64 = interactionState.getSnapshot();
+    const test64Pass = neutralCard64.classList.contains("preference-neutral") &&
+      visualContainer.querySelectorAll(".preference-selected").length === 0 &&
+      neutralCard64.querySelector(".pref-selection-status").textContent === "Kararsız" &&
+      snapshot64.visualPreferencesByProject.proj_house_2story.rounds["1"].preference === "neutral";
+    results.push({ name: "Test 64: Secondary Click Produces Neutral State", pass: test64Pass });
+
+    // Test 65: House -> Tower -> House restores selection and live interaction
+    clickVisualControl(visualContainer.querySelector(
+      '[data-card-id="work_separate"] .pref-btn-primary'
+    ));
+    interactionState.dispatch({
+      type: "PROJECT_SELECTED",
+      payload: towerVisualContext
+    });
+    const towerEmpty65 = visualContainer.querySelector(".visual-preferences-empty") !== null &&
+      visualContainer.querySelector(".pref-btn-primary") === null;
+    interactionState.dispatch({
+      type: "PROJECT_SELECTED",
+      payload: houseVisualContext
+    });
+    const restoredCard65 = visualContainer.querySelector(
+      '[data-card-id="work_separate"]'
+    );
+    const restoredBeforeClick65 = restoredCard65.classList.contains("preference-selected");
+    clickVisualControl(visualContainer.querySelector(
+      '[data-card-id="work_connected"] .pref-btn-primary'
+    ));
+    const snapshot65 = interactionState.getSnapshot();
+    const test65Pass = towerEmpty65 &&
+      restoredBeforeClick65 &&
+      snapshot65.visualPreferencesByProject.proj_house_2story.rounds["1"].cardId === "work_connected" &&
+      snapshot65.visualPreferencesByProject.proj_tower_50floor === undefined;
+    results.push({ name: "Test 65: House Tower House Restores Live Selection", pass: test65Pass });
+
+    // Test 66: Binding twice does not duplicate click dispatch
+    const before66 = interactionState.getSnapshot().generationId;
+    clickVisualControl(visualContainer.querySelector(
+      '[data-card-id="work_connected"] .pref-btn-secondary'
+    ));
+    const after66 = interactionState.getSnapshot().generationId;
+    const test66Pass = firstBinding === true &&
+      duplicateBinding === false &&
+      after66 === before66 + 1;
+    results.push({ name: "Test 66: Delegated Listener Is Not Duplicated", pass: test66Pass });
+
+    // Test 67: Missing round click activates its tab and shows explicit empty state
+    clickVisualControl(visualContainer.querySelector('[data-round="2"].round-tab'));
+    const snapshot67 = interactionState.getSnapshot();
+    const activeTab67 = visualContainer.querySelector(".round-tab.active");
+    const test67Pass = activeTab67 &&
+      activeTab67.dataset.round === "2" &&
+      snapshot67.visualPreferencesByProject.proj_house_2story.activeRoundId === "2" &&
+      visualContainer.textContent.includes("Bu tur henüz tanımlanmadı.") &&
+      visualContainer.querySelector(".pref-round-container.active") === null;
+    results.push({ name: "Test 67: Missing Round Shows Explicit State", pass: test67Pass });
+
+    // Test 68: Returning to round 1 shows only its defined content
+    clickVisualControl(visualContainer.querySelector('[data-round="1"].round-tab'));
+    const activeRound68 = visualContainer.querySelector(".pref-round-container.active");
+    const test68Pass = activeRound68 &&
+      activeRound68.dataset.round === "1" &&
+      !activeRound68.classList.contains("hidden") &&
+      visualContainer.querySelectorAll(".pref-round-container:not(.hidden)").length === 1 &&
+      visualContainer.querySelector(".preference-round-empty") === null;
+    results.push({ name: "Test 68: Round Tab Shows Only Defined Round", pass: test68Pass });
+
+    // Test 69: Next button enters stage 3 without changing spatial context
+    const before69 = interactionState.getSnapshot();
+    clickVisualControl(visualContainer.querySelector("#btnNextToProgram"));
+    const after69 = interactionState.getSnapshot();
+    const test69Pass = after69.activeStage === 3 &&
+      after69.projectId === before69.projectId &&
+      after69.buildingId === before69.buildingId &&
+      after69.levelId === before69.levelId;
+    results.push({ name: "Test 69: Next Button Preserves Context At Stage 3", pass: test69Pass });
+
+    // Test 70: Tower and campus empty states do not invoke house handlers
+    const emptyProjects70 = [towerVisualContext, campusVisualContext];
+    const test70Pass = emptyProjects70.every(projectContext => {
+      interactionState.dispatch({
+        type: "PROJECT_SELECTED",
+        payload: projectContext
+      });
+      const beforeClick = interactionState.getSnapshot();
+      const emptyState = visualContainer.querySelector(".visual-preferences-empty");
+      if (!emptyState) return false;
+      clickVisualControl(emptyState);
+      const afterClick = interactionState.getSnapshot();
+      return visualContainer.querySelector(".pref-btn-primary, .pref-btn-secondary") === null &&
+        afterClick.generationId === beforeClick.generationId &&
+        afterClick.visualPreferencesByProject[projectContext.projectId] === undefined;
+    });
+    results.push({ name: "Test 70: Empty Projects Ignore House Preference Handlers", pass: test70Pass });
 
     visualContainer.remove();
 

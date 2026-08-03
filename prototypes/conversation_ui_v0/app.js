@@ -199,6 +199,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  visualPreferencesPresenter.bindVisualPreferenceInteractions({
+    stateMachine,
+    onStageChange: switchStage
+  });
+
   // Toggle Architect View
   const toggleViewBtn = document.getElementById('toggleViewBtn');
   const toggleBtnText = document.getElementById('toggleBtnText');

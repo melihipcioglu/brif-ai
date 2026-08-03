@@ -44,6 +44,7 @@ class ContextStateMachine {
       decisionId: null,
       selectedOption: null,
       decisionStatus: null,
+      visualPreferencesByProject: {},
       workspaceScope: { levelId: "lvl_ground", buildingId: "bldg_main", projectId: "proj_house_2story" },
       conversationScope: { entityId: "space_study", levelId: "lvl_ground" },
       suspendedContext: null
@@ -102,6 +103,7 @@ class ContextStateMachine {
       decisionId: normalized.decisionId || null,
       selectedOption: normalized.selectedOption ?? null,
       decisionStatus: normalized.decisionStatus || null,
+      visualPreferencesByProject: cloneContextState(normalized.visualPreferencesByProject || {}),
       workspaceScope: {
         projectId: normalized.projectId,
         buildingId: normalized.buildingId || (ancestors.building ? ancestors.building.id : null),
@@ -212,6 +214,9 @@ class ContextStateMachine {
     if (partial.decisionId !== undefined) current.decisionId = partial.decisionId;
     if (partial.selectedOption !== undefined) current.selectedOption = partial.selectedOption;
     if (partial.decisionStatus !== undefined) current.decisionStatus = partial.decisionStatus;
+    if (partial.visualPreferencesByProject !== undefined) {
+      current.visualPreferencesByProject = cloneContextState(partial.visualPreferencesByProject);
+    }
     if (partial.suspendedContext !== undefined) {
       current.suspendedContext = cloneContextState(partial.suspendedContext);
     }
@@ -323,6 +328,60 @@ class ContextStateMachine {
           decisionStatus: payload.decisionStatus
         });
         break;
+
+      case "VISUAL_PREFERENCE_RECORDED": {
+        const projectId = payload.projectId;
+        const roundId = payload.roundId;
+        const cardId = payload.cardId;
+        const preference = payload.preference;
+        const validKey = value => typeof value === 'string' &&
+          /^[a-z0-9][a-z0-9_-]{0,63}$/i.test(value);
+
+        if (
+          projectId !== this.activeSnapshot.projectId ||
+          !validKey(roundId) ||
+          !validKey(cardId) ||
+          !['like', 'neutral'].includes(preference)
+        ) {
+          break;
+        }
+
+        const preferencesByProject = cloneContextState(
+          this.activeSnapshot.visualPreferencesByProject || {}
+        );
+        const projectPreferences = cloneContextState(preferencesByProject[projectId] || {});
+        const rounds = cloneContextState(projectPreferences.rounds || {});
+        rounds[roundId] = { cardId, preference };
+        preferencesByProject[projectId] = {
+          ...projectPreferences,
+          rounds
+        };
+
+        this.transitionToContext({ visualPreferencesByProject: preferencesByProject });
+        break;
+      }
+
+      case "VISUAL_PREFERENCE_ROUND_SELECTED": {
+        const projectId = payload.projectId;
+        const roundId = payload.roundId;
+        if (
+          projectId !== this.activeSnapshot.projectId ||
+          typeof roundId !== 'string' ||
+          !/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(roundId)
+        ) {
+          break;
+        }
+
+        const preferencesByProject = cloneContextState(
+          this.activeSnapshot.visualPreferencesByProject || {}
+        );
+        preferencesByProject[projectId] = {
+          ...cloneContextState(preferencesByProject[projectId] || {}),
+          activeRoundId: roundId
+        };
+        this.transitionToContext({ visualPreferencesByProject: preferencesByProject });
+        break;
+      }
 
       case "ARCHITECT_VIEW_OPENED":
         this.transitionToContext({

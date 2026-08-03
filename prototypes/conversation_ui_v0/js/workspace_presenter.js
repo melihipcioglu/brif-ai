@@ -142,6 +142,7 @@ class WorkspacePresenter {
     }
 
     this.container.appendChild(template.content.cloneNode(true));
+    this.applyVisualPreferenceSnapshot(activeContext);
     this.container.setAttribute('data-document-id', doc.documentId);
     this.container.setAttribute('data-project-id', doc.projectId);
     this.container.setAttribute('data-scope-fingerprint', token.fingerprint);
@@ -157,6 +158,158 @@ class WorkspacePresenter {
     });
 
     return doc;
+  }
+
+  bindVisualPreferenceInteractions(options = {}) {
+    if (!this.container || this.visualPreferenceClickHandler) return false;
+    if (!options.stateMachine || typeof options.stateMachine.dispatch !== 'function') return false;
+
+    this.visualPreferenceStateMachine = options.stateMachine;
+    this.visualPreferenceStageChange = options.onStageChange || null;
+    this.visualPreferenceClickHandler = event => {
+      this.handleVisualPreferenceInteraction(event);
+    };
+    this.container.addEventListener('click', this.visualPreferenceClickHandler);
+    return true;
+  }
+
+  handleVisualPreferenceInteraction(event) {
+    const target = event && event.target;
+    if (!target || typeof target.closest !== 'function') return false;
+
+    const stateMachine = this.visualPreferenceStateMachine;
+    if (!stateMachine) return false;
+
+    const activeContext = stateMachine.getSnapshot();
+    const renderedProjectId = this.container.getAttribute('data-project-id');
+    const doc = this.resolver.resolveDocument(activeContext, 'visual_preferences');
+    if (
+      renderedProjectId !== activeContext.projectId ||
+      !doc ||
+      !this.guard.isDocumentCompatible(doc, activeContext)
+    ) {
+      return false;
+    }
+
+    const preferenceButton = target.closest('.pref-btn-primary, .pref-btn-secondary');
+    if (preferenceButton && this.container.contains(preferenceButton)) {
+      const card = preferenceButton.closest('.pref-card-large');
+      const roundContainer = card ? card.closest('.pref-round-container') : null;
+      const roundId = roundContainer ? roundContainer.dataset.round : null;
+      const cardId = card ? card.dataset.cardId : null;
+      const preference = preferenceButton.dataset.action;
+      if (!roundId || !cardId || !['like', 'neutral'].includes(preference)) return false;
+
+      stateMachine.dispatch({
+        type: 'VISUAL_PREFERENCE_RECORDED',
+        payload: {
+          projectId: activeContext.projectId,
+          roundId,
+          cardId,
+          preference
+        }
+      });
+      return true;
+    }
+
+    const roundTab = target.closest('.round-tab');
+    if (roundTab && this.container.contains(roundTab)) {
+      const roundId = roundTab.dataset.round;
+      if (!roundId) return false;
+      stateMachine.dispatch({
+        type: 'VISUAL_PREFERENCE_ROUND_SELECTED',
+        payload: {
+          projectId: activeContext.projectId,
+          roundId
+        }
+      });
+      return true;
+    }
+
+    const nextButton = target.closest('#btnNextToProgram');
+    if (nextButton && this.container.contains(nextButton)) {
+      if (typeof this.visualPreferenceStageChange === 'function') {
+        this.visualPreferenceStageChange(3);
+      } else {
+        stateMachine.dispatch({
+          type: 'STAGE_CHANGED',
+          payload: { activeStage: 3 }
+        });
+      }
+      return true;
+    }
+
+    return false;
+  }
+
+  applyVisualPreferenceSnapshot(activeContext) {
+    if (!this.container || !activeContext) return;
+
+    const preferencesByProject = activeContext.visualPreferencesByProject || {};
+    const projectPreferences = preferencesByProject[activeContext.projectId] || {};
+    const roundTabs = Array.from(this.container.querySelectorAll('.round-tab'));
+    const roundContainers = Array.from(
+      this.container.querySelectorAll('.pref-round-container')
+    );
+    const activeRoundId = projectPreferences.activeRoundId ||
+      (roundTabs[0] ? roundTabs[0].dataset.round : null);
+
+    roundTabs.forEach(tab => {
+      const isActive = tab.dataset.round === activeRoundId;
+      tab.classList.toggle('active', isActive);
+      tab.setAttribute('aria-selected', String(isActive));
+    });
+
+    let activeRoundExists = false;
+    roundContainers.forEach(roundContainer => {
+      const isActive = roundContainer.dataset.round === activeRoundId;
+      activeRoundExists = activeRoundExists || isActive;
+      roundContainer.classList.toggle('active', isActive);
+      roundContainer.classList.toggle('hidden', !isActive);
+    });
+
+    const roundContent = this.container.querySelector('[data-pref-round-content]');
+    if (roundContent) {
+      roundContent.querySelectorAll('.preference-round-empty').forEach(element => element.remove());
+      if (activeRoundId && !activeRoundExists) {
+        const emptyState = document.createElement('div');
+        emptyState.className = 'empty-state-workspace-card preference-round-empty';
+        const title = document.createElement('h3');
+        title.className = 'empty-state-title';
+        title.textContent = 'Bu tur henüz tanımlanmadı.';
+        emptyState.appendChild(title);
+        roundContent.appendChild(emptyState);
+      }
+    }
+
+    const roundSelections = projectPreferences.rounds || {};
+    this.container.querySelectorAll('.pref-card-large').forEach(card => {
+      const roundContainer = card.closest('.pref-round-container');
+      const roundId = roundContainer ? roundContainer.dataset.round : null;
+      const selection = roundId ? roundSelections[roundId] : null;
+      const isSelected = Boolean(selection && selection.cardId === card.dataset.cardId);
+      const preference = isSelected ? selection.preference : null;
+
+      card.classList.toggle('preference-selected', preference === 'like');
+      card.classList.toggle('preference-neutral', preference === 'neutral');
+      card.removeAttribute('data-preference-status');
+      card.querySelectorAll('.pref-selection-status').forEach(element => element.remove());
+
+      card.querySelectorAll('.pref-btn-primary, .pref-btn-secondary').forEach(button => {
+        button.setAttribute(
+          'aria-pressed',
+          String(isSelected && button.dataset.action === preference)
+        );
+      });
+
+      if (preference) {
+        card.setAttribute('data-preference-status', preference);
+        const status = document.createElement('div');
+        status.className = 'pref-selection-status';
+        status.textContent = preference === 'like' ? 'Seçildi' : 'Kararsız';
+        card.appendChild(status);
+      }
+    });
   }
 
   renderVisualPreferencesEmptyState(activeContext, token) {
