@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+from dataclasses import dataclass
 from typing import Any, cast
 
 import httpx
@@ -23,6 +25,55 @@ from brif_ai.llm.provider import (
 )
 from brif_ai.llm.settings import LocalLLMSettings
 
+_NANOSECONDS_PER_SECOND = 1_000_000_000
+
+
+def _duration_seconds(payload: dict[str, Any], field: str) -> float | None:
+    value = payload.get(field)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    seconds = float(value) / _NANOSECONDS_PER_SECOND
+    return seconds if seconds >= 0 and math.isfinite(seconds) else None
+
+
+def _token_count(payload: dict[str, Any], field: str) -> int | None:
+    value = payload.get(field)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
+
+
+@dataclass(frozen=True, slots=True)
+class OllamaPerformanceMetrics:
+    """Non-sensitive timing and token counters returned by Ollama."""
+
+    total_seconds: float | None
+    load_seconds: float | None
+    prompt_tokens: int | None
+    prompt_eval_seconds: float | None
+    generated_tokens: int | None
+    eval_seconds: float | None
+    tokens_per_second: float | None
+
+    @classmethod
+    def from_response(cls, payload: dict[str, Any]) -> OllamaPerformanceMetrics:
+        eval_seconds = _duration_seconds(payload, "eval_duration")
+        generated_tokens = _token_count(payload, "eval_count")
+        tokens_per_second = (
+            generated_tokens / eval_seconds
+            if generated_tokens is not None and eval_seconds is not None and eval_seconds > 0
+            else None
+        )
+        return cls(
+            total_seconds=_duration_seconds(payload, "total_duration"),
+            load_seconds=_duration_seconds(payload, "load_duration"),
+            prompt_tokens=_token_count(payload, "prompt_eval_count"),
+            prompt_eval_seconds=_duration_seconds(payload, "prompt_eval_duration"),
+            generated_tokens=generated_tokens,
+            eval_seconds=eval_seconds,
+            tokens_per_second=tokens_per_second,
+        )
+
 
 class OllamaProvider:
     """Use Ollama's local HTTP API without exposing it to the service layer."""
@@ -34,6 +85,7 @@ class OllamaProvider:
     ) -> None:
         self.settings = settings
         self._client = client
+        self.last_performance_metrics: OllamaPerformanceMetrics | None = None
 
     async def health(self) -> ProviderHealth:
         try:
@@ -74,6 +126,7 @@ class OllamaProvider:
         request: ConversationRequest,
         output_schema: dict[str, object],
     ) -> ArchitecturalIntentResult:
+        self.last_performance_metrics = None
         if not self.settings.model:
             raise ModelNotSelectedError(
                 "Yerel model seçilmedi. Önce bilgisayarınızda kurulu bir model seçin."
@@ -90,13 +143,24 @@ class OllamaProvider:
                 {"role": "user", "content": build_user_prompt(request)},
             ],
             "stream": False,
+            "think": self.settings.think,
             "format": output_schema,
-            "options": {"temperature": self.settings.temperature},
+            "keep_alive": self.settings.keep_alive,
+            "options": {
+                "temperature": self.settings.temperature,
+                "num_predict": self.settings.num_predict,
+            },
         }
         response = await self._request("POST", "/api/chat", json=payload)
 
         try:
-            response_payload = cast(dict[str, Any], response.json())
+            raw_payload = response.json()
+            if not isinstance(raw_payload, dict):
+                raise TypeError("response payload must be an object")
+            response_payload = cast(dict[str, Any], raw_payload)
+            self.last_performance_metrics = OllamaPerformanceMetrics.from_response(
+                response_payload
+            )
             message = response_payload["message"]
             if not isinstance(message, dict):
                 raise TypeError("message must be an object")

@@ -7,7 +7,7 @@ import httpx
 import pytest
 
 from brif_ai.llm.contracts import ArchitecturalIntentResult
-from brif_ai.llm.ollama_provider import OllamaProvider
+from brif_ai.llm.ollama_provider import OllamaPerformanceMetrics, OllamaProvider
 from brif_ai.llm.provider import (
     ModelNotAvailableError,
     ModelNotSelectedError,
@@ -23,6 +23,35 @@ from .test_policy_validator import conversation_request
 
 def settings(model: str = "local-model:latest") -> LocalLLMSettings:
     return LocalLLMSettings(enabled=True, model=model)
+
+
+def test_inference_performance_settings_defaults_and_environment() -> None:
+    defaults = LocalLLMSettings.from_env({})
+    configured = LocalLLMSettings.from_env(
+        {
+            "BRIF_AI_LLM_THINK": "false",
+            "BRIF_AI_LLM_KEEP_ALIVE": "15m",
+            "BRIF_AI_LLM_NUM_PREDICT": "512",
+        }
+    )
+
+    assert defaults.think is False
+    assert defaults.keep_alive == "30m"
+    assert defaults.num_predict == 768
+    assert configured.think is False
+    assert configured.keep_alive == "15m"
+    assert configured.num_predict == 512
+
+
+def test_thinking_mode_cannot_be_enabled_for_mvp() -> None:
+    with pytest.raises(ValueError, match="BRIF_AI_LLM_THINK"):
+        LocalLLMSettings(think=True)
+
+
+@pytest.mark.parametrize("num_predict", [0, 4097])
+def test_num_predict_must_stay_within_safe_bounds(num_predict: int) -> None:
+    with pytest.raises(ValueError, match="BRIF_AI_LLM_NUM_PREDICT"):
+        LocalLLMSettings(num_predict=num_predict)
 
 
 def test_structured_schema_is_sent_in_ollama_format_field() -> None:
@@ -50,7 +79,84 @@ def test_structured_schema_is_sent_in_ollama_format_field() -> None:
     asyncio.run(run())
     assert requests[0]["format"] == ArchitecturalIntentResult.model_json_schema()
     assert requests[0]["stream"] is False
-    assert requests[0]["options"] == {"temperature": 0.0}
+    assert requests[0]["think"] is False
+    assert requests[0]["keep_alive"] == "30m"
+    assert requests[0]["options"] == {"temperature": 0.0, "num_predict": 768}
+
+
+def test_performance_metrics_are_calculated_from_ollama_response() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
+        return httpx.Response(
+            200,
+            json={
+                "message": {"content": json.dumps(valid_result_data())},
+                "total_duration": 2_500_000_000,
+                "load_duration": 500_000_000,
+                "prompt_eval_count": 120,
+                "prompt_eval_duration": 600_000_000,
+                "eval_count": 40,
+                "eval_duration": 2_000_000_000,
+            },
+        )
+
+    async def run() -> OllamaPerformanceMetrics:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:11434"
+        ) as client:
+            provider = OllamaProvider(settings(), client)
+            await provider.interpret(
+                conversation_request(), ArchitecturalIntentResult.model_json_schema()
+            )
+            assert provider.last_performance_metrics is not None
+            return provider.last_performance_metrics
+
+    metrics = asyncio.run(run())
+
+    assert metrics == OllamaPerformanceMetrics(
+        total_seconds=2.5,
+        load_seconds=0.5,
+        prompt_tokens=120,
+        prompt_eval_seconds=0.6,
+        generated_tokens=40,
+        eval_seconds=2.0,
+        tokens_per_second=20.0,
+    )
+
+
+def test_missing_performance_metrics_do_not_reject_valid_response() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
+        return httpx.Response(
+            200,
+            json={"message": {"content": json.dumps(valid_result_data())}},
+        )
+
+    async def run() -> tuple[ArchitecturalIntentResult, OllamaPerformanceMetrics]:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:11434"
+        ) as client:
+            provider = OllamaProvider(settings(), client)
+            result = await provider.interpret(
+                conversation_request(), ArchitecturalIntentResult.model_json_schema()
+            )
+            assert provider.last_performance_metrics is not None
+            return result, provider.last_performance_metrics
+
+    result, metrics = asyncio.run(run())
+
+    assert result.intent.value == "modify_space"
+    assert metrics == OllamaPerformanceMetrics(
+        total_seconds=None,
+        load_seconds=None,
+        prompt_tokens=None,
+        prompt_eval_seconds=None,
+        generated_tokens=None,
+        eval_seconds=None,
+        tokens_per_second=None,
+    )
 
 
 def test_invalid_model_json_is_rejected() -> None:
