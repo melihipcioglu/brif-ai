@@ -1,7 +1,7 @@
 /**
  * BRIF.AI — Automated Scope, Surface & Payload Unit Tests (v6.2 Engine)
  *
- * Verifies core architectural principles across 112 test scenarios:
+ * Verifies core architectural principles across 113 test scenarios:
  * 1-28. Universal scope, surface, and empty state assertions
  * 29 (Test A). Finans Kulesi 18. Kat -> 32. Kat transition consistency
  * 30 (Test B). Kampüs Blok A -> Blok B transition consistency
@@ -17,7 +17,7 @@
  * 61-75. Visual preference click, state, round, layout, and stage regressions
  * 76-91. Workspace mode renderers and atomic scenario regressions
  * 92-107. Structured scenario quick-reply and preference-state regressions
- * 108-112. Browser assertion isolation and repeat-run regressions
+ * 108-113. Browser assertion isolation and repeat-run regressions
  */
 
 class TestScopeGuard {
@@ -66,11 +66,55 @@ class TestScopeGuard {
     });
   }
 
-  captureProductionState(stateMachine = window.appStateMachine) {
-    const captureElement = id => {
+
+  captureProductionElements() {
+    const captureElement = (id) => {
       const element = document.getElementById(id);
       return element ? element.outerHTML : null;
     };
+    const captureSelector = (selector) => {
+      const element = document.querySelector(selector);
+      return element ? element.outerHTML : null;
+    };
+    const input = document.getElementById("assistantUserInput");
+    const badge = document.getElementById("assistantContextBadge");
+
+    return {
+      assistantContextBadge: badge ? {
+        outerHTML: badge.outerHTML,
+        textContent: badge.textContent
+      } : null,
+      chatHeaderRoomInfo: captureElement("chatHeaderRoomInfo"),
+      syntheticProjectSelect: captureElement("syntheticProjectSelect"),
+      assistantUserInput: input ? {
+        outerHTML: input.outerHTML,
+        value: input.value,
+        placeholder: input.placeholder
+      } : null,
+      dynamicNavigationTabs: {
+        planFloorTabs: captureElement("planFloorTabs"),
+        programFloorTabs: captureElement("programFloorTabs")
+      },
+      alternativeSelectors: captureSelector(".alternative-selector-bar"),
+      scopedActionsContainer: captureElement("demoScenariosBar"),
+      chatMessagesContainer: captureElement("chatMessagesContainer"),
+      architectDecisionHistory: captureElement("architectDecisionHistory"),
+      planEditorContainer: captureElement("planEditorContainer"),
+      visualPreferencesContent: captureElement("visualPreferencesContent")
+    };
+  }
+
+  compareProductionElements(before, after, bodyChanged = false) {
+    const changedIds = Object.keys(before).filter(id =>
+      JSON.stringify(before[id]) !== JSON.stringify(after[id])
+    );
+    if (bodyChanged && changedIds.length === 0) {
+      changedIds.push("document.body");
+    }
+    return { changedIds, before, after };
+  }
+
+  captureProductionState(stateMachine = window.appStateMachine) {
     const chat = document.getElementById("chatMessagesContainer");
     const activeSnapshot = stateMachine && typeof stateMachine.getSnapshot === "function"
       ? stateMachine.getSnapshot()
@@ -88,9 +132,7 @@ class TestScopeGuard {
       },
       workspace: {
         bodyHtml: document.body.innerHTML,
-        architectDecisionHistory: captureElement("architectDecisionHistory"),
-        planEditorContainer: captureElement("planEditorContainer"),
-        visualPreferencesContent: captureElement("visualPreferencesContent")
+        elements: this.captureProductionElements()
       }
     };
   }
@@ -129,6 +171,39 @@ class TestScopeGuard {
     }
     this.testNodes.push(element);
     return element;
+  }
+
+  createIsolatedPresenter(container, options = {}) {
+    const element = typeof container === "string"
+      ? document.getElementById(container)
+      : container;
+    const testIdPrefix = `test-scope-guard-${this.runId}-`;
+    if (!element || !element.id.startsWith(testIdPrefix) || !this.testNodes.includes(element)) {
+      throw new Error("Isolated presenters require a registered test container ID.");
+    }
+
+    const stateMachine = options.stateMachine || new ContextStateMachine(this.hierarchy);
+    const registry = options.registry || new DOMSurfaceRegistry();
+    return new WorkspacePresenter(element.id, {
+      ...options,
+      hierarchy: options.hierarchy || this.hierarchy,
+      store: options.store || this.store,
+      resolver: options.resolver || this.resolver,
+      guard: options.guard || this.guard,
+      registry,
+      stateMachine,
+      syncGlobalUI: false
+    });
+  }
+
+  createIsolatedAssistant(stateMachine, options = {}) {
+    const testStateMachine = stateMachine || new ContextStateMachine(this.hierarchy);
+    return new ContextualAssistant({
+      ...options,
+      hierarchy: options.hierarchy || this.hierarchy,
+      stateMachine: testStateMachine,
+      syncGlobalUI: false
+    });
   }
 
   cleanupTestNodes() {
@@ -279,8 +354,8 @@ class TestScopeGuard {
     results.push({ name: "Test 22: Campus Positive Plan Empty State Assertion", pass: campusPositivePass === true });
 
     const regTest = new DOMSurfaceRegistry();
-    const presenterTest = new WorkspacePresenter("dummy", { hierarchy: this.hierarchy, guard: this.guard, registry: regTest, syncGlobalUI: false });
-    presenterTest.container = this.createTestElement("presenter-empty-23", "div", false);
+    const presenterContainer = this.createTestElement("presenter-empty-23");
+    const presenterTest = this.createIsolatedPresenter(presenterContainer, { registry: regTest });
     presenterTest.renderWorkspaceEmptyState({ activeContext: ctxTower });
     const mountedEmptySurfaces = regTest.getMountedSurfacesForProject("proj_tower_50floor");
     const emptyMountedPass = mountedEmptySurfaces.length > 0 && mountedEmptySurfaces[0].documentType === "empty_state";
@@ -603,10 +678,7 @@ class TestScopeGuard {
 
     // Test 49: Generic messages return a complete assistant result
     const sm49 = new ContextStateMachine(this.hierarchy);
-    const assistant49 = new ContextualAssistant({
-      hierarchy: this.hierarchy,
-      stateMachine: sm49
-    });
+    const assistant49 = this.createIsolatedAssistant(sm49);
     let genericResult49 = null;
     let genericError49 = null;
     try {
@@ -631,10 +703,7 @@ class TestScopeGuard {
 
     // Test 51: The master-bath orchestrator flow still starts its scenario
     const sm51 = new ContextStateMachine(this.hierarchy);
-    const assistant51 = new ContextualAssistant({
-      hierarchy: this.hierarchy,
-      stateMachine: sm51
-    });
+    const assistant51 = this.createIsolatedAssistant(sm51);
     const chat51 = this.createTestElement("chat-51");
     const orchestrator51 = new ConversationOrchestrator({
       hierarchy: this.hierarchy,
@@ -670,10 +739,7 @@ class TestScopeGuard {
     // Test 53: HTML remains inert through the complete generic chat path
     const chat53 = this.createTestElement("chat-53");
     const sm53 = new ContextStateMachine(this.hierarchy);
-    const assistant53 = new ContextualAssistant({
-      hierarchy: this.hierarchy,
-      stateMachine: sm53
-    });
+    const assistant53 = this.createIsolatedAssistant(sm53);
     const orchestrator53 = new ConversationOrchestrator({
       hierarchy: this.hierarchy,
       stateMachine: sm53,
@@ -695,12 +761,8 @@ class TestScopeGuard {
 
     const visualContainer = this.createTestElement("visual-preferences");
     const visualRegistry = new DOMSurfaceRegistry();
-    const visualPresenter = new WorkspacePresenter(visualContainer.id, {
-      hierarchy: this.hierarchy,
-      store: this.store,
-      resolver: this.resolver,
-      guard: this.guard,
-      registry: visualRegistry, syncGlobalUI: false
+    const visualPresenter = this.createIsolatedPresenter(visualContainer, {
+      registry: visualRegistry
     });
     const towerVisualContext = {
       projectId: "proj_tower_50floor",
@@ -1022,13 +1084,8 @@ class TestScopeGuard {
 
     const modeContainer = this.createTestElement("workspace-modes");
     const modeState = new ContextStateMachine(this.hierarchy);
-    const modePresenter = new WorkspacePresenter(modeContainer.id, {
-      hierarchy: this.hierarchy,
-      store: this.store,
-      resolver: this.resolver,
-      guard: this.guard,
-      registry: new DOMSurfaceRegistry(),
-      stateMachine: modeState, syncGlobalUI: false
+    const modePresenter = this.createIsolatedPresenter(modeContainer, {
+      stateMachine: modeState
     });
 
     // Test 76: Every declared custom workspace mode has its renderer contract
@@ -1133,18 +1190,10 @@ class TestScopeGuard {
       guard: this.guard,
       reportContainerId: reportContainer88.id
     });
-    const scenarioPresenter82 = new WorkspacePresenter(scenarioContainer82.id, {
-      hierarchy: this.hierarchy,
-      store: this.store,
-      resolver: this.resolver,
-      guard: this.guard,
-      registry: new DOMSurfaceRegistry(),
-      stateMachine: scenarioState82, syncGlobalUI: false
-    });
-    const scenarioAssistant82 = new ContextualAssistant({
-      hierarchy: this.hierarchy,
+    const scenarioPresenter82 = this.createIsolatedPresenter(scenarioContainer82, {
       stateMachine: scenarioState82
     });
+    const scenarioAssistant82 = this.createIsolatedAssistant(scenarioState82);
     const scenarioOrchestrator82 = new ConversationOrchestrator({
       hierarchy: this.hierarchy,
       stateMachine: scenarioState82,
@@ -1176,18 +1225,13 @@ class TestScopeGuard {
     const orientationContainer83 = this.createTestElement("orientation-workspace-83");
     const orientationChat83 = this.createTestElement("orientation-chat-83");
     const orientationState83 = new ContextStateMachine(this.hierarchy);
-    const orientationPresenter83 = new WorkspacePresenter(orientationContainer83.id, {
-      hierarchy: this.hierarchy,
-      store: this.store,
-      resolver: this.resolver,
-      guard: this.guard,
-      registry: new DOMSurfaceRegistry(),
-      stateMachine: orientationState83, syncGlobalUI: false
+    const orientationPresenter83 = this.createIsolatedPresenter(orientationContainer83, {
+      stateMachine: orientationState83
     });
     const orientationOrchestrator83 = new ConversationOrchestrator({
       hierarchy: this.hierarchy,
       stateMachine: orientationState83,
-      assistant: new ContextualAssistant({ hierarchy: this.hierarchy, stateMachine: orientationState83 }),
+      assistant: this.createIsolatedAssistant(orientationState83),
       presenter: orientationPresenter83,
       chatContainerId: orientationChat83.id
     });
@@ -1265,7 +1309,7 @@ class TestScopeGuard {
     const formOrchestrator89 = new ConversationOrchestrator({
       hierarchy: this.hierarchy,
       stateMachine: formState89,
-      assistant: new ContextualAssistant({ hierarchy: this.hierarchy, stateMachine: formState89 }),
+      assistant: this.createIsolatedAssistant(formState89),
       chatContainerId: chat89.id
     });
     form89.addEventListener("submit", event => {
@@ -1320,21 +1364,13 @@ class TestScopeGuard {
     const structuredChat92 = this.createTestElement("structured-chat-92");
     const planContainer92 = this.createTestElement("plan-geometry-92");
     const structuredState92 = new ContextStateMachine(this.hierarchy);
-    const structuredPresenter92 = new WorkspacePresenter(structuredWorkspace92.id, {
-      hierarchy: this.hierarchy,
-      store: this.store,
-      resolver: this.resolver,
-      guard: this.guard,
-      registry: new DOMSurfaceRegistry(),
-      stateMachine: structuredState92, syncGlobalUI: false
+    const structuredPresenter92 = this.createIsolatedPresenter(structuredWorkspace92, {
+      stateMachine: structuredState92
     });
     const structuredOrchestrator92 = new ConversationOrchestrator({
       hierarchy: this.hierarchy,
       stateMachine: structuredState92,
-      assistant: new ContextualAssistant({
-        hierarchy: this.hierarchy,
-        stateMachine: structuredState92
-      }),
+      assistant: this.createIsolatedAssistant(structuredState92),
       presenter: structuredPresenter92,
       chatContainerId: structuredChat92.id
     });
@@ -1467,10 +1503,7 @@ class TestScopeGuard {
     const foreignOrchestrator102 = new ConversationOrchestrator({
       hierarchy: this.hierarchy,
       stateMachine: foreignState102,
-      assistant: new ContextualAssistant({
-        hierarchy: this.hierarchy,
-        stateMachine: foreignState102
-      }),
+      assistant: this.createIsolatedAssistant(foreignState102),
       chatContainerId: foreignChat102.id
     });
     foreignOrchestrator102.selectProject("proj_tower_50floor");
@@ -1496,10 +1529,7 @@ class TestScopeGuard {
     const freeTextOrchestrator104 = new ConversationOrchestrator({
       hierarchy: this.hierarchy,
       stateMachine: freeTextState104,
-      assistant: new ContextualAssistant({
-        hierarchy: this.hierarchy,
-        stateMachine: freeTextState104
-      }),
+      assistant: this.createIsolatedAssistant(freeTextState104),
       chatContainerId: freeTextChat104.id
     });
     freeTextOrchestrator104.triggerMasterBathScenario("Ebeveyn banyosunu kuzey tarafına alalım.");
@@ -1517,10 +1547,7 @@ class TestScopeGuard {
     const genericOrchestrator105 = new ConversationOrchestrator({
       hierarchy: this.hierarchy,
       stateMachine: genericState105,
-      assistant: new ContextualAssistant({
-        hierarchy: this.hierarchy,
-        stateMachine: genericState105
-      }),
+      assistant: this.createIsolatedAssistant(genericState105),
       chatContainerId: genericChat105.id
     });
     genericOrchestrator105.appendUserMessage(replyRegistry92[1].label);
@@ -1573,7 +1600,7 @@ class TestScopeGuard {
       const orchestrator = new ConversationOrchestrator({
         hierarchy: this.hierarchy,
         stateMachine,
-        assistant: new ContextualAssistant({ hierarchy: this.hierarchy, stateMachine }),
+        assistant: this.createIsolatedAssistant(stateMachine),
         chatContainerId: chat.id
       });
       let listenerInvocations = 0;
@@ -1614,6 +1641,73 @@ class TestScopeGuard {
         run.acknowledgementCount === 1
       );
 
+    const isolatedContainer113 = this.createTestElement("isolated-presenter-113");
+    const isolatedState113 = new ContextStateMachine(this.hierarchy);
+    isolatedState113.dispatch({
+      type: "SCENARIO_CONTEXT_STARTED",
+      payload: {
+        projectId: "proj_house_2story",
+        buildingId: "bldg_main",
+        levelId: "lvl_upper",
+        entityId: "space_master_bath",
+        entityType: "space",
+        scenarioId: "master_bath_relocation",
+        decisionId: "dec_master_bath",
+        targetEntityId: "space_master_bath",
+        workspaceMode: "options_side_by_side"
+      }
+    });
+    const isolatedSnapshot113 = isolatedState113.getSnapshot();
+    const productionElementsBefore113 = this.captureProductionElements();
+    const isolatedPresenter113 = this.createIsolatedPresenter(isolatedContainer113, {
+      stateMachine: isolatedState113
+    });
+    const globalSyncMethods113 = [
+      "assertUIContextConsistency",
+      "renderContextualChatPlaceholder",
+      "renderDynamicNavigationTabs",
+      "renderAlternativeSelectors",
+      "renderScopedActions"
+    ];
+    const globalSyncCallCounts113 = Object.fromEntries(
+      globalSyncMethods113.map(methodName => [methodName, 0])
+    );
+    globalSyncMethods113.forEach(methodName => {
+      const originalMethod = isolatedPresenter113[methodName].bind(isolatedPresenter113);
+      isolatedPresenter113[methodName] = (...args) => {
+        globalSyncCallCounts113[methodName] += 1;
+        return originalMethod(...args);
+      };
+    });
+    isolatedPresenter113.render({
+      activeContext: isolatedSnapshot113,
+      workspaceMode: "options_side_by_side"
+    });
+    const productionElementsAfter113 = this.captureProductionElements();
+    const workspaceDiff113 = this.compareProductionElements(
+      productionElementsBefore113,
+      productionElementsAfter113
+    );
+    const protectedGlobalIds113 = [
+      "assistantContextBadge",
+      "assistantUserInput",
+      "scopedActionsContainer"
+    ];
+    const protectedGlobalUIUnchanged113 = protectedGlobalIds113.every(id =>
+      JSON.stringify(productionElementsBefore113[id]) ===
+        JSON.stringify(productionElementsAfter113[id])
+    );
+    const test113Pass = isolatedPresenter113.syncGlobalUI === false &&
+      isolatedPresenter113.registry instanceof DOMSurfaceRegistry &&
+      isolatedPresenter113.stateMachine instanceof ContextStateMachine &&
+      isolatedSnapshot113.levelId === "lvl_upper" &&
+      isolatedSnapshot113.entityId === "space_master_bath" &&
+      isolatedContainer113.dataset.projectId === "proj_house_2story" &&
+      isolatedContainer113.querySelector(".options-side-by-side-container") !== null &&
+      Object.values(globalSyncCallCounts113).every(count => count === 0) &&
+      protectedGlobalUIUnchanged113 &&
+      workspaceDiff113.changedIds.length === 0;
+
     this.cleanupTestNodes();
     this.restoreGlobals(productionGlobals);
 
@@ -1644,17 +1738,38 @@ class TestScopeGuard {
         productionAfter.activeSnapshot === productionBefore.activeSnapshot
     });
 
-    const productionWorkspaceUnchanged111 = JSON.stringify(productionAfter.workspace) ===
-      JSON.stringify(productionBefore.workspace);
+    const productionBodyChanged111 = productionAfter.workspace.bodyHtml !==
+      productionBefore.workspace.bodyHtml;
+    const workspaceDiff111 = this.compareProductionElements(
+      productionBefore.workspace.elements,
+      productionAfter.workspace.elements,
+      productionBodyChanged111
+    );
+    const productionContextBadgeUnchanged111 = JSON.stringify(
+      productionBefore.workspace.elements.assistantContextBadge
+    ) === JSON.stringify(productionAfter.workspace.elements.assistantContextBadge);
+    const productionWorkspaceUnchanged111 = !productionBodyChanged111 &&
+      productionContextBadgeUnchanged111 &&
+      workspaceDiff111.changedIds.length === 0;
     results.push({
       name: "Test 111: Production Workspace DOM Unchanged After Test Suite",
-      pass: productionWorkspaceUnchanged111
+      pass: productionWorkspaceUnchanged111,
+      details: workspaceDiff111.changedIds.length > 0
+        ? `Changed production DOM: ${workspaceDiff111.changedIds.join(", ")}`
+        : ""
     });
 
     const noTestRoots112 = document.querySelectorAll("[data-test-scope-guard-root]").length === 0;
     results.push({
       name: "Test 112: Repeated Test Run Does Not Duplicate Messages Or Listeners",
       pass: repeatedRunPass112 && noTestRoots112 && productionChatUnchanged108
+    });
+
+    results.push({
+      name: "Test 113: Isolated Workspace Presenters Never Sync Global UI",
+      pass: test113Pass,
+      details: test113Pass ? "" :
+        `calls=${JSON.stringify(globalSyncCallCounts113)}, changed=${workspaceDiff113.changedIds.join(", ")}`
     });
 
     window.scopeGuardLastRun = {
@@ -1668,11 +1783,25 @@ class TestScopeGuard {
       },
       activeSnapshotUnchanged:
         productionAfter.activeSnapshot === productionBefore.activeSnapshot,
-      workspaceDomUnchanged: productionWorkspaceUnchanged111
+      workspaceDomUnchanged: productionWorkspaceUnchanged111,
+      workspaceDiff: workspaceDiff111,
+      productionContextBadge: {
+        before: productionBefore.workspace.elements.assistantContextBadge?.textContent || null,
+        after: productionAfter.workspace.elements.assistantContextBadge?.textContent || null,
+        unchanged: productionContextBadgeUnchanged111
+      },
+      isolatedPresenter: {
+        syncGlobalUICallCounts: globalSyncCallCounts113,
+        productionGlobalUIUnchanged: protectedGlobalUIUnchanged113,
+        workspaceDiff: workspaceDiff113
+      }
     };
 
     console.log(`=== Scope, Surface & Payload Guard Unit Test Results (${results.length} total) ===`);
     results.forEach(r => console.log(`${r.pass ? '✅ PASS' : '❌ FAIL'}: ${r.name}`));
+    results
+      .filter(result => !result.pass && result.details)
+      .forEach(result => console.error(`DETAIL: ${result.name} | ${result.details}`));
 
     return results;
     } finally {

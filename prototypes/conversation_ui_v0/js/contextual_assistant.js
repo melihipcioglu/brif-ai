@@ -11,14 +11,17 @@ class ContextualAssistant {
 
     this.hierarchy = options.hierarchy || new EntityHierarchy();
     this.stateMachine = options.stateMachine || new ContextStateMachine(this.hierarchy);
+    this.syncGlobalUI = options.syncGlobalUI !== false;
 
     this.intentParser = new DemoIntentParser();
     this.ruleEvaluator = new RuleEvaluator();
 
-    // Subscribe to state machine updates
-    this.stateMachine.subscribe((ctx) => {
-      this.updateContextBadge(ctx);
-    });
+    // Test and embedded assistants can remain scoped to their own surfaces.
+    if (this.syncGlobalUI) {
+      this.stateMachine.subscribe((ctx) => {
+        this.updateContextBadge(ctx);
+      });
+    }
   }
 
   updateContextBadge(ctx) {
