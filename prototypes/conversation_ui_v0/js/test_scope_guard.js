@@ -1,7 +1,7 @@
 /**
  * BRIF.AI — Automated Scope, Surface & Payload Unit Tests (v6.2 Engine)
  *
- * Verifies core architectural principles across 70 test scenarios:
+ * Verifies core architectural principles across 75 test scenarios:
  * 1-28. Universal scope, surface, and empty state assertions
  * 29 (Test A). Finans Kulesi 18. Kat -> 32. Kat transition consistency
  * 30 (Test B). Kampüs Blok A -> Blok B transition consistency
@@ -14,7 +14,7 @@
  * 37-47. Stage, ancestor, XSS, decision, and immutability regressions
  * 48-53. Deterministic demo parser and chat regressions
  * 54-60. Project-scoped visual preference regressions
- * 61-70. Visual preference click, state, round, and stage regressions
+ * 61-75. Visual preference click, state, round, layout, and stage regressions
  */
 
 class TestScopeGuard {
@@ -246,7 +246,11 @@ class TestScopeGuard {
     const snapG = smA.getSnapshot();
     const titleG = this.hierarchy.getScopeTitle(snapG);
     const sibsG = this.hierarchy.getNavigableSiblings(snapG);
-    const testGPass = titleG.includes("Finans Kulesi") && sibsG.some(s => s.displayName === "32. Kat");
+    const testGPass = snapG.projectId === "proj_tower_50floor" &&
+      snapG.levelId === "lvl_18" &&
+      titleG.includes("A Kulesi") &&
+      titleG.includes("18. Kat") &&
+      sibsG.some(s => s.displayName === "32. Kat");
     results.push({ name: "Test 35 (Test G): Single Snapshot Cross-Surface Consistency", pass: testGPass === true });
 
     // Test 36: Atomic transitionToContext execution assertion
@@ -838,6 +842,66 @@ class TestScopeGuard {
         afterClick.visualPreferencesByProject[projectContext.projectId] === undefined;
     });
     results.push({ name: "Test 70: Empty Projects Ignore House Preference Handlers", pass: test70Pass });
+
+    interactionState.dispatch({
+      type: "PROJECT_SELECTED",
+      payload: houseVisualContext
+    });
+    clickVisualControl(visualContainer.querySelector(
+      '[data-card-id="work_separate"] .pref-btn-primary'
+    ));
+
+    // Test 71: Loaded stylesheet removes inactive round 1 from layout
+    clickVisualControl(visualContainer.querySelector('[data-round="2"].round-tab'));
+    const hiddenRound71 = visualContainer.querySelector('#prefRound1');
+    const test71Pass = hiddenRound71 &&
+      window.getComputedStyle(hiddenRound71).display === "none";
+    results.push({ name: "Test 71: Inactive Round Computed Display Is None", pass: test71Pass });
+
+    // Test 72: Hidden round has no rendered box or layout height
+    const test72Pass = hiddenRound71 &&
+      hiddenRound71.getClientRects().length === 0 &&
+      hiddenRound71.offsetHeight === 0;
+    results.push({ name: "Test 72: Inactive Round Leaves No Layout Box", pass: test72Pass });
+
+    // Test 73: Missing round empty state is the visible content and starts at the top
+    const emptyState73 = visualContainer.querySelector('.preference-round-empty');
+    const scrollArea73 = visualContainer.querySelector('.pref-scroll-area');
+    const test73Pass = emptyState73 &&
+      window.getComputedStyle(emptyState73).display === "flex" &&
+      emptyState73.getClientRects().length > 0 &&
+      visualContainer.querySelectorAll('.pref-round-container:not(.hidden)').length === 0 &&
+      scrollArea73 &&
+      scrollArea73.scrollTop === 0;
+    results.push({ name: "Test 73: Missing Round Empty State Is Visible At Top", pass: test73Pass });
+
+    // Test 74: Round 3 also hides defined content and shows only the empty state
+    clickVisualControl(visualContainer.querySelector('[data-round="3"].round-tab'));
+    const hiddenRound74 = visualContainer.querySelector('#prefRound1');
+    const emptyState74 = visualContainer.querySelector('.preference-round-empty');
+    const test74Pass = hiddenRound74 &&
+      window.getComputedStyle(hiddenRound74).display === "none" &&
+      hiddenRound74.getClientRects().length === 0 &&
+      emptyState74 &&
+      window.getComputedStyle(emptyState74).display === "flex" &&
+      emptyState74.getClientRects().length > 0;
+    results.push({ name: "Test 74: Round 3 Shows Only Visible Empty State", pass: test74Pass });
+
+    // Test 75: Returning to round 1 restores layout and the persisted selection
+    clickVisualControl(visualContainer.querySelector('[data-round="1"].round-tab'));
+    const restoredRound75 = visualContainer.querySelector('#prefRound1');
+    const restoredSelection75 = visualContainer.querySelector(
+      '[data-card-id="work_separate"]'
+    );
+    const snapshot75 = interactionState.getSnapshot();
+    const test75Pass = restoredRound75 &&
+      window.getComputedStyle(restoredRound75).display !== "none" &&
+      restoredRound75.getClientRects().length > 0 &&
+      visualContainer.querySelector('.preference-round-empty') === null &&
+      restoredSelection75.classList.contains('preference-selected') &&
+      snapshot75.visualPreferencesByProject.proj_house_2story.rounds["1"].cardId ===
+        "work_separate";
+    results.push({ name: "Test 75: Round 1 Restores Layout And Selection", pass: test75Pass });
 
     visualContainer.remove();
 

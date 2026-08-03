@@ -223,6 +223,8 @@ class WorkspacePresenter {
           roundId
         }
       });
+      const scrollArea = this.container.querySelector('.pref-scroll-area');
+      if (scrollArea) scrollArea.scrollTop = 0;
       return true;
     }
 
