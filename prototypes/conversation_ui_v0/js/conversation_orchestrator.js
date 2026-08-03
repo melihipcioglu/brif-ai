@@ -167,8 +167,15 @@ class ConversationOrchestrator {
         msg.quickReplies.forEach(reply => {
           const button = document.createElement('button');
           button.className = 'chip-btn followup-chip';
-          button.dataset.reply = String(reply);
-          button.textContent = String(reply);
+          button.dataset.reply = reply.label;
+          button.dataset.action = reply.action;
+          button.dataset.value = reply.value;
+          button.dataset.optionId = reply.optionId;
+          button.dataset.scenarioId = reply.scenarioId;
+          button.dataset.decisionId = reply.decisionId;
+          button.dataset.preferenceKey = reply.preferenceKey;
+          button.dataset.preferenceValue = reply.preferenceValue;
+          button.textContent = reply.label;
           chips.appendChild(button);
         });
         content.appendChild(chips);
@@ -189,8 +196,112 @@ class ConversationOrchestrator {
       return;
     }
 
+    const activeSnapshot = this.stateMachine.getSnapshot();
+    const parsedPreference = this.intentParser.parseMasterBathPreference(messageText);
+    if (this.isActiveMasterBathContext(activeSnapshot) && parsedPreference) {
+      const registeredReply = (window.ScenarioQuickReplyRegistry?.master_bath_relocation || [])
+        .find(reply => reply.optionId === parsedPreference.optionId);
+      if (registeredReply) {
+        this.recordMasterBathPreference({ ...registeredReply }, { appendUserMessage: false });
+        return;
+      }
+    }
+
     const result = this.assistant.processUserMessage(messageText);
     this.appendAssistantMessage(result.aiResponseText);
+  }
+
+  normalizeQuickReply(reply, scopeSnapshot = null) {
+    const isStructured = reply && typeof reply === 'object' && !Array.isArray(reply);
+    const label = isStructured ? reply.label : reply;
+    const scope = scopeSnapshot || {};
+    return {
+      label: label === undefined || label === null ? '' : String(label),
+      action: isStructured && reply.action ? String(reply.action) : 'SEND_MESSAGE',
+      value: isStructured && reply.value !== undefined ? String(reply.value) : String(label || ''),
+      optionId: isStructured && reply.optionId ? String(reply.optionId) : '',
+      scenarioId: isStructured && reply.scenarioId
+        ? String(reply.scenarioId)
+        : String(scope.scenarioId || ''),
+      decisionId: isStructured && reply.decisionId
+        ? String(reply.decisionId)
+        : String(scope.decisionId || ''),
+      preferenceKey: isStructured && reply.preferenceKey ? String(reply.preferenceKey) : '',
+      preferenceValue: isStructured && reply.preferenceValue
+        ? String(reply.preferenceValue)
+        : ''
+    };
+  }
+
+  isActiveMasterBathContext(snapshot) {
+    if (!snapshot) return false;
+    return snapshot.projectId === 'proj_house_2story' &&
+      snapshot.scenarioId === 'master_bath_relocation' &&
+      snapshot.decisionId === 'dec_master_bath' &&
+      (snapshot.entityId === 'space_master_bath' ||
+        snapshot.targetEntityId === 'space_master_bath');
+  }
+
+  handleQuickReply(replyPayload) {
+    const reply = this.normalizeQuickReply(replyPayload);
+    if (!reply.label) return false;
+
+    if (reply.action === 'RECORD_MASTER_BATH_PREFERENCE') {
+      return this.recordMasterBathPreference(reply, { appendUserMessage: true });
+    }
+
+    this.appendUserMessage(reply.label);
+    this.handleUserMessage(reply.label);
+    return true;
+  }
+
+  recordMasterBathPreference(replyPayload, options = {}) {
+    const reply = this.normalizeQuickReply(replyPayload);
+    const activeSnapshot = this.stateMachine.getSnapshot();
+    const registeredReply = (window.ScenarioQuickReplyRegistry?.master_bath_relocation || [])
+      .find(candidate =>
+        candidate.optionId === reply.optionId &&
+        candidate.preferenceKey === reply.preferenceKey &&
+        candidate.preferenceValue === reply.preferenceValue
+      );
+
+    if (
+      !registeredReply ||
+      !this.isActiveMasterBathContext(activeSnapshot) ||
+      reply.scenarioId !== activeSnapshot.scenarioId ||
+      reply.decisionId !== activeSnapshot.decisionId
+    ) {
+      return false;
+    }
+
+    if (options.appendUserMessage) {
+      this.appendUserMessage(registeredReply.label);
+    }
+
+    const updated = this.stateMachine.dispatch({
+      type: 'SCENARIO_RESPONSE_RECORDED',
+      payload: {
+        projectId: activeSnapshot.projectId,
+        scenarioId: activeSnapshot.scenarioId,
+        decisionId: activeSnapshot.decisionId,
+        optionId: registeredReply.optionId,
+        preferenceKey: registeredReply.preferenceKey,
+        preferenceValue: registeredReply.preferenceValue
+      }
+    });
+    const savedResponse = updated.scenarioResponses[activeSnapshot.scenarioId];
+    if (!savedResponse || savedResponse.optionId !== registeredReply.optionId) return false;
+
+    const responsePrefix = {
+      bed_visibility: 'Yataktan görünmeme önceliğini kaydettim.',
+      access_route: 'Giyinme alanından erişim önceliğini kaydettim.',
+      privacy: 'Artırılmış mahremiyet önceliğini kaydettim.'
+    }[registeredReply.preferenceKey];
+    this.appendAssistantMessage(
+      `${responsePrefix} Bu yalnızca karar girdisidir; plan otomatik değiştirilmedi. ` +
+      'Şimdi bu önceliğe göre iki yerleşim seçeneğini karşılaştırabilirsiniz.'
+    );
+    return true;
   }
 
   triggerMasterBathScenario(userRequestText) {
@@ -211,7 +322,8 @@ class ConversationOrchestrator {
 
     this.appendAssistantMessage(
       "Banyoyu kuzey kenarına almak istiyorsunuz. Buradaki önceliğiniz yataktan görünmemesi mi, giyinme alanından erişilmesi mi, yoksa daha mahrem bir kullanım mı?",
-      ["Yataktan görünmesini istemiyorum", "Giyinme alanından geçilsin", "Daha mahrem olsun"]
+      (window.ScenarioQuickReplyRegistry?.master_bath_relocation || [])
+        .map(reply => ({ ...reply }))
     );
 
     this.syncStateWithHistory();
@@ -310,7 +422,9 @@ class ConversationOrchestrator {
     this.allChatMessages.push({
       role: 'assistant',
       text: text,
-      quickReplies: quickReplies,
+      quickReplies: quickReplies
+        .map(reply => this.normalizeQuickReply(reply, ctx))
+        .filter(reply => reply.label),
       snapshot: { ...ctx, timestamp: new Date().toISOString() }
     });
     this.renderFilteredChatMessages();

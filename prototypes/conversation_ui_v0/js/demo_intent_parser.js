@@ -111,6 +111,36 @@ class DemoIntentParser {
     // Default reason fallback if reason matched generally
     return 'privacy';
   }
+
+  parseMasterBathPreference(text) {
+    const norm = this.normalizeText(text);
+    const matchesAny = patterns => patterns.some(pattern =>
+      pattern.test(text) || pattern.test(norm)
+    );
+
+    if (matchesAny(this.masterBathReasonPatterns.visibility)) {
+      return {
+        optionId: 'master_bath_bed_visibility',
+        preferenceKey: 'bed_visibility',
+        preferenceValue: 'hidden_from_bed'
+      };
+    }
+    if (matchesAny(this.masterBathReasonPatterns.dressing)) {
+      return {
+        optionId: 'master_bath_dressing_access',
+        preferenceKey: 'access_route',
+        preferenceValue: 'through_dressing'
+      };
+    }
+    if (matchesAny(this.masterBathReasonPatterns.privacy)) {
+      return {
+        optionId: 'master_bath_increased_privacy',
+        preferenceKey: 'privacy',
+        preferenceValue: 'increased_privacy'
+      };
+    }
+    return null;
+  }
 }
 
 // Global Export

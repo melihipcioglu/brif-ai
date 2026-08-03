@@ -1,7 +1,7 @@
 /**
  * BRIF.AI — Automated Scope, Surface & Payload Unit Tests (v6.2 Engine)
  *
- * Verifies core architectural principles across 91 test scenarios:
+ * Verifies core architectural principles across 107 test scenarios:
  * 1-28. Universal scope, surface, and empty state assertions
  * 29 (Test A). Finans Kulesi 18. Kat -> 32. Kat transition consistency
  * 30 (Test B). Kampüs Blok A -> Blok B transition consistency
@@ -16,6 +16,7 @@
  * 54-60. Project-scoped visual preference regressions
  * 61-75. Visual preference click, state, round, layout, and stage regressions
  * 76-91. Workspace mode renderers and atomic scenario regressions
+ * 92-107. Structured scenario quick-reply and preference-state regressions
  */
 
 class TestScopeGuard {
@@ -1183,8 +1184,16 @@ class TestScopeGuard {
     chat89.addEventListener("click", event => {
       const chip = event.target.closest(".followup-chip");
       if (!chip) return;
-      formOrchestrator89.appendUserMessage(chip.dataset.reply);
-      formOrchestrator89.handleUserMessage(chip.dataset.reply);
+      formOrchestrator89.handleQuickReply({
+        label: chip.textContent || chip.dataset.reply || "",
+        action: chip.dataset.action,
+        value: chip.dataset.value,
+        optionId: chip.dataset.optionId,
+        scenarioId: chip.dataset.scenarioId,
+        decisionId: chip.dataset.decisionId,
+        preferenceKey: chip.dataset.preferenceKey,
+        preferenceValue: chip.dataset.preferenceValue
+      });
     });
     const replyButton90 = chat89.querySelector(".followup-chip");
     replyButton90.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -1206,12 +1215,271 @@ class TestScopeGuard {
     delete window.__scenarioXss;
     results.push({ name: "Test 91: Master Bath Scenario HTML Is Inert", pass: test91Pass });
 
+    const structuredWorkspace92 = document.createElement("div");
+    structuredWorkspace92.id = "test-scope-guard-structured-workspace";
+    const structuredChat92 = document.createElement("div");
+    structuredChat92.id = "test-scope-guard-structured-chat";
+    const planContainer92 = document.createElement("div");
+    planContainer92.id = "test-scope-guard-plan-geometry";
+    document.body.append(structuredWorkspace92, structuredChat92, planContainer92);
+    const structuredState92 = new ContextStateMachine(this.hierarchy);
+    const structuredPresenter92 = new WorkspacePresenter(structuredWorkspace92.id, {
+      hierarchy: this.hierarchy,
+      store: this.store,
+      resolver: this.resolver,
+      guard: this.guard,
+      registry: new DOMSurfaceRegistry(),
+      stateMachine: structuredState92
+    });
+    const structuredOrchestrator92 = new ConversationOrchestrator({
+      hierarchy: this.hierarchy,
+      stateMachine: structuredState92,
+      assistant: new ContextualAssistant({
+        hierarchy: this.hierarchy,
+        stateMachine: structuredState92
+      }),
+      presenter: structuredPresenter92
+    });
+    structuredOrchestrator92.chatContainerId = structuredChat92.id;
+    structuredOrchestrator92.triggerMasterBathScenario(
+      "Ebeveyn banyosunu kuzey tarafına alalım."
+    );
+
+    const planEditor92 = new PlanEditor(planContainer92.id);
+    planEditor92.loadData({
+      alternatives: {
+        a: {
+          floors: {
+            ground: [{ id: "study", name: "Çalışma Odası", x: 10, y: 20, width: 30, height: 40 }]
+          }
+        }
+      }
+    });
+    const planGeometryBefore92 = JSON.stringify(planEditor92.planData);
+    const dressingReply92 = Array.from(structuredChat92.querySelectorAll(".followup-chip"))
+      .find(button => button.dataset.optionId === "master_bath_dressing_access");
+    const replyRegistry92 = window.ScenarioQuickReplyRegistry.master_bath_relocation;
+
+    // Test 92: Quick replies expose canonical, structured and scenario-scoped DOM data
+    const test92Pass = Boolean(dressingReply92) &&
+      dressingReply92.dataset.action === "RECORD_MASTER_BATH_PREFERENCE" &&
+      dressingReply92.dataset.value === "through_dressing" &&
+      dressingReply92.dataset.optionId === "master_bath_dressing_access" &&
+      dressingReply92.dataset.scenarioId === "master_bath_relocation" &&
+      dressingReply92.dataset.decisionId === "dec_master_bath" &&
+      replyRegistry92[0].preferenceKey === "bed_visibility" &&
+      replyRegistry92[0].preferenceValue === "hidden_from_bed" &&
+      replyRegistry92[1].preferenceKey === "access_route" &&
+      replyRegistry92[1].preferenceValue === "through_dressing" &&
+      replyRegistry92[2].preferenceKey === "privacy" &&
+      replyRegistry92[2].preferenceValue === "increased_privacy";
+    results.push({ name: "Test 92: Scenario Quick Replies Have Structured DOM Contract", pass: test92Pass });
+
+    let delegatedInvocations92 = 0;
+    structuredChat92.addEventListener("click", event => {
+      const chip = event.target.closest(".followup-chip");
+      if (!chip) return;
+      delegatedInvocations92 += 1;
+      structuredOrchestrator92.handleQuickReply({
+        label: chip.textContent || chip.dataset.reply || "",
+        action: chip.dataset.action,
+        value: chip.dataset.value,
+        optionId: chip.dataset.optionId,
+        scenarioId: chip.dataset.scenarioId,
+        decisionId: chip.dataset.decisionId,
+        preferenceKey: chip.dataset.preferenceKey,
+        preferenceValue: chip.dataset.preferenceValue
+      });
+    });
+    const userCountBefore93 = structuredChat92.querySelectorAll(".chat-message.user").length;
+    const assistantCountBefore93 = structuredChat92.querySelectorAll(".chat-message.assistant").length;
+    dressingReply92.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    const structuredSnapshot93 = structuredState92.getSnapshot();
+
+    // Test 93: Dressing-access MouseEvent records exactly one user message
+    const test93Pass = structuredChat92.querySelectorAll(".chat-message.user").length ===
+      userCountBefore93 + 1 &&
+      Array.from(structuredChat92.querySelectorAll(".chat-message.user .message-text"))
+        .filter(element => element.textContent === replyRegistry92[1].label).length === 1;
+    results.push({ name: "Test 93: Dressing Access MouseEvent Adds One User Message", pass: test93Pass });
+
+    // Test 94: Preference acknowledgement appears exactly once
+    const assistantMessages94 = Array.from(
+      structuredChat92.querySelectorAll(".chat-message.assistant .message-text")
+    ).map(element => element.textContent);
+    const acknowledgement94 = assistantMessages94.filter(text =>
+      text.includes("Giyinme alanından erişim önceliğini kaydettim") &&
+      text.includes("plan otomatik değiştirilmedi")
+    );
+    const test94Pass = structuredChat92.querySelectorAll(".chat-message.assistant").length ===
+      assistantCountBefore93 + 1 && acknowledgement94.length === 1;
+    results.push({ name: "Test 94: Scenario Preference Adds One Assistant Acknowledgement", pass: test94Pass });
+
+    // Test 95: The scenario response is stored as structured snapshot state
+    const savedResponse95 = structuredSnapshot93.scenarioResponses.master_bath_relocation;
+    const test95Pass = savedResponse95 &&
+      savedResponse95.optionId === "master_bath_dressing_access" &&
+      savedResponse95.preferenceKey === "access_route" &&
+      savedResponse95.preferenceValue === "through_dressing" &&
+      savedResponse95.label === replyRegistry92[1].label;
+    results.push({ name: "Test 95: Scenario Response Is Stored In Snapshot", pass: test95Pass });
+
+    // Test 96: Preference recording atomically opens the options workspace
+    const test96Pass = structuredSnapshot93.workspaceMode === "options_side_by_side" &&
+      structuredWorkspace92.dataset.workspaceMode === "options_side_by_side" &&
+      structuredWorkspace92.querySelector(".options-side-by-side-container") !== null;
+    results.push({ name: "Test 96: Preference Opens Options Workspace", pass: test96Pass });
+
+    // Test 97: Project, building, level, and entity remain in the master-bath scope
+    const test97Pass = structuredSnapshot93.projectId === "proj_house_2story" &&
+      structuredSnapshot93.buildingId === "bldg_main" &&
+      structuredSnapshot93.levelId === "lvl_upper" &&
+      structuredSnapshot93.entityId === "space_master_bath";
+    results.push({ name: "Test 97: Preference Preserves Architectural Scope", pass: test97Pass });
+
+    // Test 98: Scenario and decision identifiers survive preference recording
+    const test98Pass = structuredSnapshot93.scenarioId === "master_bath_relocation" &&
+      structuredSnapshot93.decisionId === "dec_master_bath" &&
+      structuredSnapshot93.targetEntityId === "space_master_bath";
+    results.push({ name: "Test 98: Preference Preserves Scenario And Decision", pass: test98Pass });
+
+    // Test 99: A preference is not a placement-option decision
+    const test99Pass = structuredSnapshot93.selectedOption === null &&
+      structuredSnapshot93.decisionStatus === null;
+    results.push({ name: "Test 99: Preference Does Not Select A Plan Option", pass: test99Pass });
+
+    // Test 100: The preference action does not mutate plan geometry
+    const test100Pass = JSON.stringify(planEditor92.planData) === planGeometryBefore92;
+    results.push({ name: "Test 100: Preference Does Not Mutate Plan Geometry", pass: test100Pass });
+
+    // Test 101: A stale reply cannot alter state or append chat messages
+    const generationBefore101 = structuredSnapshot93.generationId;
+    const messageCountBefore101 = structuredOrchestrator92.allChatMessages.length;
+    const staleAccepted101 = structuredOrchestrator92.handleQuickReply({
+      ...replyRegistry92[1],
+      decisionId: "dec_stale"
+    });
+    const test101Pass = staleAccepted101 === false &&
+      structuredState92.getSnapshot().generationId === generationBefore101 &&
+      structuredOrchestrator92.allChatMessages.length === messageCountBefore101;
+    results.push({ name: "Test 101: Stale Scenario Quick Reply Is Ignored", pass: test101Pass });
+
+    // Test 102: A house reply cannot alter another project's state
+    const foreignState102 = new ContextStateMachine(this.hierarchy);
+    const foreignOrchestrator102 = new ConversationOrchestrator({
+      hierarchy: this.hierarchy,
+      stateMachine: foreignState102,
+      assistant: new ContextualAssistant({
+        hierarchy: this.hierarchy,
+        stateMachine: foreignState102
+      })
+    });
+    foreignOrchestrator102.selectProject("proj_tower_50floor");
+    const foreignMessagesBefore102 = foreignOrchestrator102.allChatMessages.length;
+    const foreignAccepted102 = foreignOrchestrator102.handleQuickReply({ ...replyRegistry92[1] });
+    const foreignSnapshot102 = foreignState102.getSnapshot();
+    const test102Pass = foreignAccepted102 === false &&
+      foreignSnapshot102.projectId === "proj_tower_50floor" &&
+      Object.keys(foreignSnapshot102.scenarioResponses).length === 0 &&
+      foreignOrchestrator102.allChatMessages.length === foreignMessagesBefore102;
+    results.push({ name: "Test 102: Cross Project Scenario Quick Reply Is Ignored", pass: test102Pass });
+
+    // Test 103: One delegated MouseEvent invokes the handler exactly once
+    const test103Pass = delegatedInvocations92 === 1;
+    results.push({ name: "Test 103: Quick Reply Listener Does Not Duplicate", pass: test103Pass });
+
+    // Test 104: Free text records the same preference inside the active scenario
+    const freeTextChat104 = document.createElement("div");
+    freeTextChat104.id = "test-scope-guard-free-text-chat";
+    document.body.appendChild(freeTextChat104);
+    const freeTextState104 = new ContextStateMachine(this.hierarchy);
+    const freeTextOrchestrator104 = new ConversationOrchestrator({
+      hierarchy: this.hierarchy,
+      stateMachine: freeTextState104,
+      assistant: new ContextualAssistant({
+        hierarchy: this.hierarchy,
+        stateMachine: freeTextState104
+      })
+    });
+    freeTextOrchestrator104.chatContainerId = freeTextChat104.id;
+    freeTextOrchestrator104.triggerMasterBathScenario("Ebeveyn banyosunu kuzey tarafına alalım.");
+    freeTextOrchestrator104.appendUserMessage(replyRegistry92[1].label);
+    freeTextOrchestrator104.handleUserMessage(replyRegistry92[1].label);
+    const freeTextSnapshot104 = freeTextState104.getSnapshot();
+    const test104Pass = freeTextSnapshot104.scenarioResponses.master_bath_relocation
+      ?.preferenceValue === "through_dressing" &&
+      freeTextSnapshot104.workspaceMode === "options_side_by_side";
+    results.push({ name: "Test 104: Active Scenario Free Text Records Preference", pass: test104Pass });
+
+    // Test 105: The same free text remains generic outside the scenario
+    const genericChat105 = document.createElement("div");
+    genericChat105.id = "test-scope-guard-generic-preference-chat";
+    document.body.appendChild(genericChat105);
+    const genericState105 = new ContextStateMachine(this.hierarchy);
+    const genericOrchestrator105 = new ConversationOrchestrator({
+      hierarchy: this.hierarchy,
+      stateMachine: genericState105,
+      assistant: new ContextualAssistant({
+        hierarchy: this.hierarchy,
+        stateMachine: genericState105
+      })
+    });
+    genericOrchestrator105.chatContainerId = genericChat105.id;
+    genericOrchestrator105.appendUserMessage(replyRegistry92[1].label);
+    genericOrchestrator105.handleUserMessage(replyRegistry92[1].label);
+    const genericSnapshot105 = genericState105.getSnapshot();
+    const genericAssistant105 = genericChat105.querySelector(
+      ".chat-message.assistant .message-text"
+    );
+    const test105Pass = Object.keys(genericSnapshot105.scenarioResponses).length === 0 &&
+      genericSnapshot105.workspaceMode === "plan" &&
+      genericAssistant105?.textContent.includes("Talebinizi not aldım");
+    results.push({ name: "Test 105: Preference Text Is Generic Outside Scenario", pass: test105Pass });
+
+    // Test 106: Scenario response snapshots are immutable and project scoped
+    const exportedSnapshot106 = structuredState92.getSnapshot();
+    exportedSnapshot106.scenarioResponses.master_bath_relocation.label = "mutated";
+    const internalLabel106 = structuredState92.getSnapshot()
+      .scenarioResponses.master_bath_relocation.label;
+    structuredState92.dispatch({
+      type: "PROJECT_SELECTED",
+      payload: {
+        projectId: "proj_tower_50floor",
+        buildingId: "tower_a",
+        levelId: "lvl_18",
+        entityId: "space_meeting_18a"
+      }
+    });
+    const test106Pass = internalLabel106 === replyRegistry92[1].label &&
+      Object.keys(structuredState92.getSnapshot().scenarioResponses).length === 0;
+    results.push({ name: "Test 106: Scenario Responses Are Immutable And Project Scoped", pass: test106Pass });
+
+    // Test 107: Structured quick-reply labels remain inert text
+    delete window.__quickReplyXss;
+    const xssReply107 = '<img src=x onerror="window.__quickReplyXss=true"><script>window.__quickReplyXss=true</script>';
+    genericOrchestrator105.appendAssistantMessage("Safe structured reply", [{
+      label: xssReply107,
+      action: "SEND_MESSAGE",
+      value: xssReply107
+    }]);
+    const renderedXssReply107 = genericChat105.querySelector(".followup-chip");
+    const test107Pass = renderedXssReply107?.textContent === xssReply107 &&
+      genericChat105.querySelector("img, script, svg") === null &&
+      window.__quickReplyXss === undefined;
+    delete window.__quickReplyXss;
+    results.push({ name: "Test 107: Structured Quick Reply HTML Is Inert", pass: test107Pass });
+
     scenarioContainer82.remove();
     scenarioChat82.remove();
     orientationContainer83.remove();
     orientationChat83.remove();
     form89.remove();
     chat89.remove();
+    structuredWorkspace92.remove();
+    structuredChat92.remove();
+    planContainer92.remove();
+    freeTextChat104.remove();
+    genericChat105.remove();
 
     console.log(`=== Scope, Surface & Payload Guard Unit Test Results (${results.length} total) ===`);
     results.forEach(r => console.log(`${r.pass ? '✅ PASS' : '❌ FAIL'}: ${r.name}`));

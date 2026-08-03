@@ -635,7 +635,11 @@ class WorkspacePresenter {
     const heading = document.createElement('h3');
     heading.textContent = 'Ebeveyn Banyosu Karar Seçenekleri';
     const note = document.createElement('p');
-    note.textContent = 'Bu prototip karşılaştırması yalnız karar kaydı içindir; plan otomatik değiştirilmez.';
+    const scenarioResponse = activeContext.scenarioResponses?.master_bath_relocation;
+    note.textContent = scenarioResponse
+      ? `Kaydedilen kullanıcı önceliği: ${scenarioResponse.label}. ` +
+        'Bu prototip karşılaştırması yalnız karar kaydı içindir; plan otomatik değiştirilmez.'
+      : 'Bu prototip karşılaştırması yalnız karar kaydı içindir; plan otomatik değiştirilmez.';
     banner.append(heading, note);
 
     const grid = document.createElement('div');

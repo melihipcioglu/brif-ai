@@ -267,12 +267,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Quick Reply Chips
     const chipBtn = e.target.closest('.chip-btn');
-    if (chipBtn && chipBtn.dataset.reply) {
-      const replyText = chipBtn.dataset.reply;
-      orchestrator.appendUserMessage(replyText);
-      setTimeout(() => {
-        orchestrator.handleUserMessage(replyText);
-      }, 300);
+    if (chipBtn && chipBtn.dataset.action) {
+      orchestrator.handleQuickReply({
+        label: chipBtn.textContent || chipBtn.dataset.reply || '',
+        action: chipBtn.dataset.action,
+        value: chipBtn.dataset.value || '',
+        optionId: chipBtn.dataset.optionId || '',
+        scenarioId: chipBtn.dataset.scenarioId || '',
+        decisionId: chipBtn.dataset.decisionId || '',
+        preferenceKey: chipBtn.dataset.preferenceKey || '',
+        preferenceValue: chipBtn.dataset.preferenceValue || ''
+      });
       return;
     }
 

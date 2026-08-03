@@ -34,6 +34,41 @@ const WorkspaceModeRegistry = Object.freeze({
   orientation: 'renderOrientationMode'
 });
 
+const ScenarioQuickReplyRegistry = Object.freeze({
+  master_bath_relocation: Object.freeze([
+    Object.freeze({
+      label: 'Yataktan görünmesini istemiyorum',
+      action: 'RECORD_MASTER_BATH_PREFERENCE',
+      value: 'hidden_from_bed',
+      optionId: 'master_bath_bed_visibility',
+      preferenceKey: 'bed_visibility',
+      preferenceValue: 'hidden_from_bed',
+      scenarioId: 'master_bath_relocation',
+      decisionId: 'dec_master_bath'
+    }),
+    Object.freeze({
+      label: 'Giyinme alanından geçilsin',
+      action: 'RECORD_MASTER_BATH_PREFERENCE',
+      value: 'through_dressing',
+      optionId: 'master_bath_dressing_access',
+      preferenceKey: 'access_route',
+      preferenceValue: 'through_dressing',
+      scenarioId: 'master_bath_relocation',
+      decisionId: 'dec_master_bath'
+    }),
+    Object.freeze({
+      label: 'Daha mahrem olsun',
+      action: 'RECORD_MASTER_BATH_PREFERENCE',
+      value: 'increased_privacy',
+      optionId: 'master_bath_increased_privacy',
+      preferenceKey: 'privacy',
+      preferenceValue: 'increased_privacy',
+      scenarioId: 'master_bath_relocation',
+      decisionId: 'dec_master_bath'
+    })
+  ])
+});
+
 class ContextStateMachine {
   constructor(hierarchy) {
     this.hierarchy = hierarchy || new EntityHierarchy();
@@ -56,6 +91,7 @@ class ContextStateMachine {
       targetEntityId: null,
       selectedOption: null,
       decisionStatus: null,
+      scenarioResponses: {},
       visualPreferencesByProject: {},
       workspaceScope: { levelId: "lvl_ground", buildingId: "bldg_main", projectId: "proj_house_2story" },
       conversationScope: { entityId: "space_study", levelId: "lvl_ground" },
@@ -117,6 +153,7 @@ class ContextStateMachine {
       targetEntityId: normalized.targetEntityId || null,
       selectedOption: normalized.selectedOption ?? null,
       decisionStatus: normalized.decisionStatus || null,
+      scenarioResponses: cloneContextState(normalized.scenarioResponses || {}),
       visualPreferencesByProject: cloneContextState(normalized.visualPreferencesByProject || {}),
       workspaceScope: {
         projectId: normalized.projectId,
@@ -242,6 +279,9 @@ class ContextStateMachine {
     if (partial.targetEntityId !== undefined) current.targetEntityId = partial.targetEntityId;
     if (partial.selectedOption !== undefined) current.selectedOption = partial.selectedOption;
     if (partial.decisionStatus !== undefined) current.decisionStatus = partial.decisionStatus;
+    if (partial.scenarioResponses !== undefined) {
+      current.scenarioResponses = cloneContextState(partial.scenarioResponses);
+    }
     if (partial.visualPreferencesByProject !== undefined) {
       current.visualPreferencesByProject = cloneContextState(partial.visualPreferencesByProject);
     }
@@ -286,7 +326,10 @@ class ContextStateMachine {
           workspaceMode: payload.workspaceMode || "plan",
           scenarioId: null,
           decisionId: null,
-          targetEntityId: null
+          targetEntityId: null,
+          selectedOption: null,
+          decisionStatus: null,
+          scenarioResponses: {}
         });
         break;
 
@@ -338,7 +381,9 @@ class ContextStateMachine {
         });
         break;
 
-      case "SCENARIO_CONTEXT_STARTED":
+      case "SCENARIO_CONTEXT_STARTED": {
+        const scenarioResponses = cloneContextState(this.activeSnapshot.scenarioResponses || {});
+        if (payload.scenarioId) delete scenarioResponses[payload.scenarioId];
         this.transitionToContext({
           projectId: payload.projectId,
           buildingId: payload.buildingId,
@@ -348,9 +393,13 @@ class ContextStateMachine {
           scenarioId: payload.scenarioId,
           decisionId: payload.decisionId || null,
           targetEntityId: payload.targetEntityId || payload.entityId || null,
-          workspaceMode: payload.workspaceMode || "plan"
+          workspaceMode: payload.workspaceMode || "plan",
+          selectedOption: null,
+          decisionStatus: null,
+          scenarioResponses
         });
         break;
+      }
 
       case "SCENARIO_SUSPENDED":
         this.transitionToContext({
@@ -384,6 +433,47 @@ class ContextStateMachine {
           workspaceMode: payload.workspaceMode
         });
         break;
+
+      case "SCENARIO_RESPONSE_RECORDED": {
+        const active = this.activeSnapshot;
+        const scenarioReplies = ScenarioQuickReplyRegistry[payload.scenarioId] || [];
+        const registeredReply = scenarioReplies.find(reply =>
+          reply.optionId === payload.optionId &&
+          reply.preferenceKey === payload.preferenceKey &&
+          reply.preferenceValue === payload.preferenceValue
+        );
+        const hasMasterBathEntity = active.entityId === "space_master_bath" ||
+          active.targetEntityId === "space_master_bath";
+
+        if (
+          !registeredReply ||
+          payload.projectId !== active.projectId ||
+          payload.scenarioId !== active.scenarioId ||
+          payload.decisionId !== active.decisionId ||
+          active.projectId !== "proj_house_2story" ||
+          active.scenarioId !== "master_bath_relocation" ||
+          active.decisionId !== "dec_master_bath" ||
+          !hasMasterBathEntity
+        ) {
+          break;
+        }
+
+        const scenarioResponses = cloneContextState(active.scenarioResponses || {});
+        scenarioResponses[active.scenarioId] = {
+          projectId: active.projectId,
+          decisionId: active.decisionId,
+          entityId: "space_master_bath",
+          optionId: registeredReply.optionId,
+          preferenceKey: registeredReply.preferenceKey,
+          preferenceValue: registeredReply.preferenceValue,
+          label: registeredReply.label
+        };
+        this.transitionToContext({
+          scenarioResponses,
+          workspaceMode: "options_side_by_side"
+        });
+        break;
+      }
 
       case "VISUAL_PREFERENCE_RECORDED": {
         const projectId = payload.projectId;
@@ -455,4 +545,5 @@ class ContextStateMachine {
 
 // Global Export
 window.WorkspaceModeRegistry = WorkspaceModeRegistry;
+window.ScenarioQuickReplyRegistry = ScenarioQuickReplyRegistry;
 window.ContextStateMachine = ContextStateMachine;
