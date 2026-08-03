@@ -1,7 +1,7 @@
 /**
  * BRIF.AI — Automated Scope, Surface & Payload Unit Tests (v6.2 Engine)
  *
- * Verifies core architectural principles across 53 test scenarios:
+ * Verifies core architectural principles across 60 test scenarios:
  * 1-28. Universal scope, surface, and empty state assertions
  * 29 (Test A). Finans Kulesi 18. Kat -> 32. Kat transition consistency
  * 30 (Test B). Kampüs Blok A -> Blok B transition consistency
@@ -13,6 +13,7 @@
  * 36. Atomic transitionToContext execution assertion
  * 37-47. Stage, ancestor, XSS, decision, and immutability regressions
  * 48-53. Deterministic demo parser and chat regressions
+ * 54-60. Project-scoped visual preference regressions
  */
 
 class TestScopeGuard {
@@ -570,6 +571,117 @@ class TestScopeGuard {
     chat53.remove();
     delete window.__parserXss;
     results.push({ name: "Test 53: Generic Chat HTML Is Inert", pass: test53Pass });
+
+    const visualContainer = document.createElement("div");
+    visualContainer.id = "test-scope-guard-visual-preferences";
+    document.body.appendChild(visualContainer);
+    const visualRegistry = new DOMSurfaceRegistry();
+    const visualPresenter = new WorkspacePresenter(visualContainer.id, {
+      hierarchy: this.hierarchy,
+      store: this.store,
+      resolver: this.resolver,
+      guard: this.guard,
+      registry: visualRegistry
+    });
+    const towerVisualContext = {
+      projectId: "proj_tower_50floor",
+      buildingId: "tower_a",
+      levelId: "lvl_18",
+      entityId: "space_meeting_18a"
+    };
+    const campusVisualContext = {
+      projectId: "proj_campus_multiblock",
+      buildingId: "block_a_r_d",
+      levelId: "lvl_2_block_a",
+      entityId: "space_robotics_lab"
+    };
+    const houseVisualContext = {
+      projectId: "proj_house_2story",
+      buildingId: "bldg_main",
+      levelId: "lvl_ground",
+      entityId: "space_study"
+    };
+
+    // Test 54: Tower visual preferences never show the house kitchen round
+    visualPresenter.renderVisualPreferences(towerVisualContext);
+    const test54Pass = !visualContainer.textContent.includes("Mutfak İlişkisi");
+    results.push({ name: "Test 54: Tower Visual Stage Excludes House Kitchen Content", pass: test54Pass });
+
+    // Test 55: Tower visual preferences never mount house preference assets
+    const test55Pass = visualContainer.querySelector('img[src^="assets/preferences/"]') === null;
+    results.push({ name: "Test 55: Tower Visual Stage Excludes House Assets", pass: test55Pass });
+
+    // Test 56: Campus visual preferences contain no house copy or assets
+    visualPresenter.renderVisualPreferences(campusVisualContext);
+    const campusText56 = visualContainer.textContent;
+    const test56Pass = !campusText56.includes("Tamamen Ayrı Çalışma Odası") &&
+      !campusText56.includes("Ortak Yaşama Bağlı Çalışma Alanı") &&
+      !campusText56.includes("Mutfak İlişkisi") &&
+      visualContainer.querySelector('img[src^="assets/preferences/"]') === null;
+    results.push({ name: "Test 56: Campus Visual Stage Excludes House Content", pass: test56Pass });
+
+    // Test 57: Projects without verified preference data show an explicit empty state
+    const test57Pass = campusText56.includes("Bu proje türü için görsel tercih seti henüz tanımlanmadı.") &&
+      campusText56.includes("Konut projesine ait tercihler bu kapsamda gösterilmez.") &&
+      visualContainer.querySelector(".visual-preferences-empty") !== null;
+    results.push({ name: "Test 57: Missing Visual Preferences Show Explicit Empty State", pass: test57Pass });
+
+    // Test 58: The house preference document resolves only for the house project
+    const houseVisualDoc58 = this.resolver.resolveDocument(houseVisualContext, "visual_preferences");
+    const towerVisualDoc58 = this.resolver.resolveDocument(towerVisualContext, "visual_preferences");
+    const campusVisualDoc58 = this.resolver.resolveDocument(campusVisualContext, "visual_preferences");
+    visualPresenter.renderVisualPreferences(houseVisualContext);
+    const test58Pass = houseVisualDoc58 &&
+      houseVisualDoc58.projectId === "proj_house_2story" &&
+      towerVisualDoc58 === null &&
+      campusVisualDoc58 === null &&
+      visualContainer.getAttribute("data-project-id") === "proj_house_2story" &&
+      visualContainer.textContent.includes("Tamamen Ayrı Çalışma Odası");
+    results.push({ name: "Test 58: House Preferences Resolve Only In House Scope", pass: test58Pass });
+
+    // Test 59: House -> Tower -> House restores a fresh scoped preference surface
+    const firstHouseTitles59 = Array.from(visualContainer.querySelectorAll(".pref-card-title"))
+      .map(element => element.textContent);
+    visualPresenter.renderVisualPreferences(towerVisualContext);
+    const towerWasClean59 = visualContainer.querySelector(".pref-card-large") === null &&
+      visualContainer.querySelector(".visual-preferences-empty") !== null;
+    visualPresenter.renderVisualPreferences(houseVisualContext);
+    const restoredHouseTitles59 = Array.from(visualContainer.querySelectorAll(".pref-card-title"))
+      .map(element => element.textContent);
+    const test59Pass = towerWasClean59 &&
+      firstHouseTitles59.length === 2 &&
+      JSON.stringify(restoredHouseTitles59) === JSON.stringify(firstHouseTitles59) &&
+      visualContainer.querySelector(".visual-preferences-empty") === null;
+    results.push({ name: "Test 59: House Tower House Restores Scoped Preferences", pass: test59Pass });
+
+    // Test 60: Entering stage 2 preserves the complete active tower context
+    const sm60 = new ContextStateMachine(this.hierarchy);
+    sm60.dispatch({
+      type: "PROJECT_SELECTED",
+      payload: {
+        projectId: "proj_tower_50floor",
+        buildingId: "tower_a",
+        levelId: "lvl_18",
+        entityId: "space_meeting_18a"
+      }
+    });
+    const orchestrator60 = new ConversationOrchestrator({
+      hierarchy: this.hierarchy,
+      stateMachine: sm60
+    });
+    orchestrator60.chatContainerId = "test-scope-guard-missing-60";
+    orchestrator60.setStage(2);
+    const snap60 = sm60.getSnapshot();
+    visualPresenter.renderVisualPreferences(snap60);
+    const test60Pass = snap60.projectId === "proj_tower_50floor" &&
+      snap60.buildingId === "tower_a" &&
+      snap60.levelId === "lvl_18" &&
+      snap60.activeStage === 2 &&
+      visualContainer.getAttribute("data-project-id") === "proj_tower_50floor" &&
+      visualContainer.querySelector(".visual-preferences-empty") !== null;
+    results.push({ name: "Test 60: Visual Stage Preserves Active Tower Context", pass: test60Pass });
+
+    visualContainer.remove();
 
     console.log(`=== Scope, Surface & Payload Guard Unit Test Results (${results.length} total) ===`);
     results.forEach(r => console.log(`${r.pass ? '✅ PASS' : '❌ FAIL'}: ${r.name}`));

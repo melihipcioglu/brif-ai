@@ -111,6 +111,100 @@ class WorkspacePresenter {
     this.renderScopedActions(ctx);
   }
 
+  renderVisualPreferences(activeContext) {
+    if (!this.container || !activeContext) return null;
+
+    const token = this.registry.nextGeneration(activeContext);
+    this.registry.unmountIncompatibleSurfaces(activeContext);
+    this.container.replaceChildren();
+    this.container.removeAttribute('data-document-id');
+    this.container.removeAttribute('data-project-id');
+    this.container.removeAttribute('data-scope-fingerprint');
+    this.container.removeAttribute('data-render-generation');
+
+    const doc = this.resolver.resolveDocument(activeContext, 'visual_preferences');
+    const templateId = doc && doc.data ? doc.data.templateId : null;
+    const template = templateId ? document.getElementById(templateId) : null;
+
+    if (
+      !doc ||
+      !this.guard.isDocumentCompatible(doc, activeContext) ||
+      !template ||
+      !template.content
+    ) {
+      this.renderVisualPreferencesEmptyState(activeContext, token);
+      return null;
+    }
+
+    if (!this.registry.isValidGeneration(token.generationId, activeContext)) {
+      console.warn(`[BRIF Generation Reject] Stale visual preference render ${token.generationId} rejected.`);
+      return null;
+    }
+
+    this.container.appendChild(template.content.cloneNode(true));
+    this.container.setAttribute('data-document-id', doc.documentId);
+    this.container.setAttribute('data-project-id', doc.projectId);
+    this.container.setAttribute('data-scope-fingerprint', token.fingerprint);
+    this.container.setAttribute('data-render-generation', token.generationId);
+
+    this.registry.mountSurface({
+      surfaceId: `surf_${doc.documentId}`,
+      documentId: doc.documentId,
+      documentType: 'visual_preferences',
+      projectId: doc.projectId,
+      scopeFingerprint: token.fingerprint,
+      containerId: this.container.id
+    });
+
+    return doc;
+  }
+
+  renderVisualPreferencesEmptyState(activeContext, token) {
+    if (!this.container || !activeContext) return;
+
+    this.container.replaceChildren();
+
+    const scrollArea = document.createElement('div');
+    scrollArea.className = 'pref-scroll-area';
+
+    const emptyState = document.createElement('div');
+    emptyState.className = 'empty-state-workspace-card visual-preferences-empty';
+
+    const icon = document.createElement('div');
+    icon.className = 'empty-state-icon';
+    icon.textContent = '🖼️';
+
+    const title = document.createElement('h3');
+    title.className = 'empty-state-title';
+    title.textContent = 'Bu proje türü için görsel tercih seti henüz tanımlanmadı.';
+
+    const description = document.createElement('p');
+    description.className = 'empty-state-desc';
+    description.textContent = 'Konut projesine ait tercihler bu kapsamda gösterilmez.';
+
+    emptyState.append(icon, title, description);
+    scrollArea.appendChild(emptyState);
+    this.container.appendChild(scrollArea);
+
+    const fingerprint = token ? token.fingerprint : this.registry.getScopeFingerprint(activeContext);
+    const generationId = token ? token.generationId : this.registry.currentGenerationId;
+    const documentId = `doc_visual_preferences_empty_${activeContext.projectId}`;
+
+    this.container.setAttribute('data-document-id', documentId);
+    this.container.setAttribute('data-project-id', activeContext.projectId);
+    this.container.setAttribute('data-scope-fingerprint', fingerprint);
+    this.container.setAttribute('data-render-generation', generationId);
+
+    this.registry.mountSurface({
+      surfaceId: `surf_${documentId}`,
+      documentId: documentId,
+      documentType: 'empty_state',
+      projectId: activeContext.projectId,
+      scopeFingerprint: fingerprint,
+      containerId: this.container.id
+    });
+  }
+
   // Unified Workspace Empty State Surface Renderer (Requirements 1, 2 & 6)
   renderWorkspaceEmptyState(params = {}) {
     const activeContext = params.activeContext;

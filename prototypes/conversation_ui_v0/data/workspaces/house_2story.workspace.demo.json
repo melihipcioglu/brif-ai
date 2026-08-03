@@ -70,6 +70,22 @@
       }
     },
     {
+      "documentId": "doc_house_visual_preferences",
+      "documentType": "visual_preferences",
+      "projectId": "proj_house_2story",
+      "buildingId": null,
+      "levelId": null,
+      "zoneId": null,
+      "entityId": null,
+      "scopeType": "project",
+      "status": "available",
+      "displayName": "Konut Görsel Tercih Seti",
+      "sourceType": "demo",
+      "data": {
+        "templateId": "houseVisualPreferencesTemplate"
+      }
+    },
+    {
       "documentId": "doc_house_study_report",
       "documentType": "architect_report",
       "projectId": "proj_house_2story",

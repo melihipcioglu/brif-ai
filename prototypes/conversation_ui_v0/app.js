@@ -30,6 +30,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const presenter = new WorkspacePresenter('planEditorContainer', {
     hierarchy, store, resolver, guard, registry
   });
+  const visualPreferencesPresenter = new WorkspacePresenter('visualPreferencesContent', {
+    hierarchy, store, resolver, guard, registry
+  });
 
   const orchestrator = new ConversationOrchestrator({
     hierarchy, stateMachine, store, resolver, assistant, presenter, historyManager: changeHistory
@@ -84,6 +87,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Subscribe state transitions to atomically clear stale space program cards & update decision report
   stateMachine.subscribe((snapshot) => {
+    visualPreferencesPresenter.renderVisualPreferences(snapshot);
     populateSpaceGrids();
     updateArchitectDecisionReport();
   });
