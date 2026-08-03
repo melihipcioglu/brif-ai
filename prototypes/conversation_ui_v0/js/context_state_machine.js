@@ -24,6 +24,16 @@ function freezeContextState(value) {
   return Object.freeze(value);
 }
 
+const WorkspaceModeRegistry = Object.freeze({
+  plan: null,
+  stage1_dashboard: 'renderStage1Dashboard',
+  stage3_program: null,
+  progress: 'renderAnalysisProgress',
+  options_side_by_side: 'renderMasterBathOptionsSideBySide',
+  overlay: 'renderFloorOverlayMode',
+  orientation: 'renderOrientationMode'
+});
+
 class ContextStateMachine {
   constructor(hierarchy) {
     this.hierarchy = hierarchy || new EntityHierarchy();
@@ -39,9 +49,11 @@ class ContextStateMachine {
       entityId: "space_study",
       entityType: "space",
       viewMode: "plan",
+      workspaceMode: "plan",
       activeStage: 4,
       scenarioId: null,
       decisionId: null,
+      targetEntityId: null,
       selectedOption: null,
       decisionStatus: null,
       visualPreferencesByProject: {},
@@ -98,9 +110,11 @@ class ContextStateMachine {
       entityId: normalized.entityId || (ancestors.entity ? ancestors.entity.id : null),
       entityType: normalized.entityType || 'space',
       viewMode: normalized.viewMode || 'plan',
+      workspaceMode: normalized.workspaceMode || 'plan',
       activeStage: normalized.activeStage ?? 4,
       scenarioId: normalized.scenarioId || null,
       decisionId: normalized.decisionId || null,
+      targetEntityId: normalized.targetEntityId || null,
       selectedOption: normalized.selectedOption ?? null,
       decisionStatus: normalized.decisionStatus || null,
       visualPreferencesByProject: cloneContextState(normalized.visualPreferencesByProject || {}),
@@ -123,6 +137,13 @@ class ContextStateMachine {
   }
 
   referencesAreValid(partialContext) {
+    if (
+      partialContext.workspaceMode !== undefined &&
+      !Object.prototype.hasOwnProperty.call(WorkspaceModeRegistry, partialContext.workspaceMode)
+    ) {
+      return false;
+    }
+
     const expectedTypes = {
       projectId: 'project',
       buildingId: 'building',
@@ -143,6 +164,11 @@ class ContextStateMachine {
       if (!entity) return false;
       const expectedEntityType = partialContext.entityType || 'space';
       if (entity.type !== expectedEntityType) return false;
+    }
+
+    if (partialContext.targetEntityId !== undefined && partialContext.targetEntityId !== null) {
+      const targetEntity = this.hierarchy.findEntity(partialContext.targetEntityId);
+      if (!targetEntity) return false;
     }
 
     return true;
@@ -210,8 +236,10 @@ class ContextStateMachine {
     // 5. Stage / View / Scenario / Decision transition
     if (partial.activeStage !== undefined) current.activeStage = partial.activeStage;
     if (partial.viewMode !== undefined) current.viewMode = partial.viewMode;
+    if (partial.workspaceMode !== undefined) current.workspaceMode = partial.workspaceMode;
     if (partial.scenarioId !== undefined) current.scenarioId = partial.scenarioId;
     if (partial.decisionId !== undefined) current.decisionId = partial.decisionId;
+    if (partial.targetEntityId !== undefined) current.targetEntityId = partial.targetEntityId;
     if (partial.selectedOption !== undefined) current.selectedOption = partial.selectedOption;
     if (partial.decisionStatus !== undefined) current.decisionStatus = partial.decisionStatus;
     if (partial.visualPreferencesByProject !== undefined) {
@@ -254,7 +282,11 @@ class ContextStateMachine {
           projectId: payload.projectId,
           buildingId: payload.buildingId,
           levelId: payload.levelId,
-          entityId: payload.entityId
+          entityId: payload.entityId,
+          workspaceMode: payload.workspaceMode || "plan",
+          scenarioId: null,
+          decisionId: null,
+          targetEntityId: null
         });
         break;
 
@@ -284,6 +316,12 @@ class ContextStateMachine {
         });
         break;
 
+      case "WORKSPACE_MODE_CHANGED":
+        this.transitionToContext({
+          workspaceMode: payload.workspaceMode
+        });
+        break;
+
       case "STAGE_CHANGED":
         this.transitionToContext({
           activeStage: payload.activeStage
@@ -294,7 +332,23 @@ class ContextStateMachine {
         this.transitionToContext({
           scenarioId: payload.scenarioId,
           decisionId: payload.decisionId || null,
-          entityId: payload.targetEntityId || this.activeContext.entityId
+          entityId: payload.targetEntityId || this.activeContext.entityId,
+          targetEntityId: payload.targetEntityId || this.activeContext.targetEntityId,
+          workspaceMode: payload.workspaceMode
+        });
+        break;
+
+      case "SCENARIO_CONTEXT_STARTED":
+        this.transitionToContext({
+          projectId: payload.projectId,
+          buildingId: payload.buildingId,
+          levelId: payload.levelId,
+          entityId: payload.entityId || payload.targetEntityId,
+          entityType: payload.entityType || "space",
+          scenarioId: payload.scenarioId,
+          decisionId: payload.decisionId || null,
+          targetEntityId: payload.targetEntityId || payload.entityId || null,
+          workspaceMode: payload.workspaceMode || "plan"
         });
         break;
 
@@ -317,7 +371,8 @@ class ContextStateMachine {
             scenarioId: suspended.scenarioId,
             entityId: suspended.entityId,
             levelId: suspended.levelId,
-            suspendedContext: null
+            suspendedContext: null,
+            workspaceMode: payload.workspaceMode
           });
         }
         break;
@@ -325,7 +380,8 @@ class ContextStateMachine {
       case "DECISION_RECORDED":
         this.transitionToContext({
           selectedOption: payload.selectedOption,
-          decisionStatus: payload.decisionStatus
+          decisionStatus: payload.decisionStatus,
+          workspaceMode: payload.workspaceMode
         });
         break;
 
@@ -392,8 +448,11 @@ class ContextStateMachine {
       default:
         break;
     }
+
+    return this.getSnapshot();
   }
 }
 
 // Global Export
+window.WorkspaceModeRegistry = WorkspaceModeRegistry;
 window.ContextStateMachine = ContextStateMachine;

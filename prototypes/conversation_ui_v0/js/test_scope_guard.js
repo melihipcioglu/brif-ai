@@ -1,7 +1,7 @@
 /**
  * BRIF.AI — Automated Scope, Surface & Payload Unit Tests (v6.2 Engine)
  *
- * Verifies core architectural principles across 75 test scenarios:
+ * Verifies core architectural principles across 91 test scenarios:
  * 1-28. Universal scope, surface, and empty state assertions
  * 29 (Test A). Finans Kulesi 18. Kat -> 32. Kat transition consistency
  * 30 (Test B). Kampüs Blok A -> Blok B transition consistency
@@ -15,6 +15,7 @@
  * 48-53. Deterministic demo parser and chat regressions
  * 54-60. Project-scoped visual preference regressions
  * 61-75. Visual preference click, state, round, layout, and stage regressions
+ * 76-91. Workspace mode renderers and atomic scenario regressions
  */
 
 class TestScopeGuard {
@@ -904,6 +905,313 @@ class TestScopeGuard {
     results.push({ name: "Test 75: Round 1 Restores Layout And Selection", pass: test75Pass });
 
     visualContainer.remove();
+
+    const modeContainer = document.createElement("div");
+    modeContainer.id = "test-scope-guard-workspace-modes";
+    document.body.appendChild(modeContainer);
+    const modeState = new ContextStateMachine(this.hierarchy);
+    const modePresenter = new WorkspacePresenter(modeContainer.id, {
+      hierarchy: this.hierarchy,
+      store: this.store,
+      resolver: this.resolver,
+      guard: this.guard,
+      registry: new DOMSurfaceRegistry(),
+      stateMachine: modeState
+    });
+
+    // Test 76: Every declared custom workspace mode has its renderer contract
+    const test76Pass = Object.entries(window.WorkspaceModeRegistry).every(([, renderer]) =>
+      renderer === null || typeof modePresenter[renderer] === "function"
+    );
+    results.push({ name: "Test 76: Workspace Mode Renderer Contract Is Complete", pass: test76Pass });
+
+    // Test 77: Overlay mode renders without an uncaught method error
+    let modeError77 = null;
+    try {
+      modePresenter.setMode("overlay");
+    } catch (error) {
+      modeError77 = error;
+    }
+    const test77Pass = modeError77 === null &&
+      modeState.getSnapshot().workspaceMode === "overlay" &&
+      modeContainer.querySelector(".floor-overlay-surface") !== null;
+    results.push({ name: "Test 77: Overlay Mode Renders Safely", pass: test77Pass });
+
+    // Test 78: Orientation mode renders without an uncaught method error
+    let modeError78 = null;
+    try {
+      modePresenter.setMode("orientation");
+    } catch (error) {
+      modeError78 = error;
+    }
+    const test78Pass = modeError78 === null &&
+      modeState.getSnapshot().workspaceMode === "orientation" &&
+      modeContainer.querySelector(".orientation-mode-surface") !== null;
+    results.push({ name: "Test 78: Orientation Mode Renders Safely", pass: test78Pass });
+
+    // Test 79: Progress mode renders a deterministic prototype status
+    let modeError79 = null;
+    try {
+      modePresenter.setMode("progress");
+    } catch (error) {
+      modeError79 = error;
+    }
+    const test79Pass = modeError79 === null &&
+      modeState.getSnapshot().workspaceMode === "progress" &&
+      modeContainer.querySelector(".analysis-progress-surface") !== null &&
+      modeContainer.textContent.includes("Plan veya proje verisi");
+    results.push({ name: "Test 79: Progress Mode Renders Prototype Status", pass: test79Pass });
+
+    modeState.dispatch({
+      type: "SCENARIO_CONTEXT_STARTED",
+      payload: {
+        projectId: "proj_house_2story",
+        buildingId: "bldg_main",
+        levelId: "lvl_upper",
+        entityId: "space_master_bath",
+        entityType: "space",
+        scenarioId: "master_bath_relocation",
+        decisionId: "dec_master_bath",
+        targetEntityId: "space_master_bath",
+        workspaceMode: "plan"
+      }
+    });
+
+    // Test 80: Master-bath options renderer is live and does not alter the plan
+    let modeError80 = null;
+    try {
+      modePresenter.setMode("options_side_by_side");
+    } catch (error) {
+      modeError80 = error;
+    }
+    const test80Pass = modeError80 === null &&
+      modeContainer.querySelector(".options-side-by-side-container") !== null &&
+      modeContainer.querySelectorAll(".option-card").length === 2 &&
+      modeContainer.textContent.includes("plan otomatik değiştirilmez");
+    results.push({ name: "Test 80: Options Mode Renders Decision-Only Comparison", pass: test80Pass });
+
+    // Test 81: Unknown modes produce a scoped safe fallback without leaking the mode ID
+    const beforeUnknown81 = modeState.getSnapshot();
+    const originalConsoleError81 = console.error;
+    const capturedErrors81 = [];
+    console.error = (...args) => capturedErrors81.push(args);
+    let unknownResult81 = null;
+    try {
+      unknownResult81 = modePresenter.setMode("unknown_internal_mode");
+    } finally {
+      console.error = originalConsoleError81;
+    }
+    const afterUnknown81 = modeState.getSnapshot();
+    const test81Pass = unknownResult81 === false &&
+      capturedErrors81.length === 1 &&
+      modeContainer.querySelector(".workspace-mode-fallback") !== null &&
+      !modeContainer.textContent.includes("unknown_internal_mode") &&
+      afterUnknown81.workspaceMode === beforeUnknown81.workspaceMode;
+    results.push({ name: "Test 81: Unknown Mode Shows Safe Fallback", pass: test81Pass });
+    modeContainer.remove();
+
+    const scenarioContainer82 = document.createElement("div");
+    scenarioContainer82.id = "test-scope-guard-master-bath-workspace";
+    document.body.appendChild(scenarioContainer82);
+    const scenarioChat82 = document.createElement("div");
+    scenarioChat82.id = "test-scope-guard-master-bath-chat";
+    document.body.appendChild(scenarioChat82);
+    const scenarioState82 = new ContextStateMachine(this.hierarchy);
+    const scenarioHistory82 = new ChangeHistory({
+      hierarchy: this.hierarchy,
+      store: this.store,
+      resolver: this.resolver,
+      guard: this.guard
+    });
+    const scenarioPresenter82 = new WorkspacePresenter(scenarioContainer82.id, {
+      hierarchy: this.hierarchy,
+      store: this.store,
+      resolver: this.resolver,
+      guard: this.guard,
+      registry: new DOMSurfaceRegistry(),
+      stateMachine: scenarioState82
+    });
+    const scenarioAssistant82 = new ContextualAssistant({
+      hierarchy: this.hierarchy,
+      stateMachine: scenarioState82
+    });
+    const scenarioOrchestrator82 = new ConversationOrchestrator({
+      hierarchy: this.hierarchy,
+      stateMachine: scenarioState82,
+      store: this.store,
+      resolver: this.resolver,
+      assistant: scenarioAssistant82,
+      presenter: scenarioPresenter82,
+      historyManager: scenarioHistory82
+    });
+    scenarioOrchestrator82.chatContainerId = scenarioChat82.id;
+    scenarioOrchestrator82.triggerFloorOverlayScenario();
+    const publishedSnapshots82 = [];
+    scenarioState82.subscribe(snapshot => publishedSnapshots82.push(snapshot));
+    let scenarioError82 = null;
+    try {
+      scenarioOrchestrator82.handleUserMessage("Ebeveyn banyosunu kuzey tarafına alalım.");
+    } catch (error) {
+      scenarioError82 = error;
+    }
+    const finalSnapshot82 = scenarioState82.getSnapshot();
+
+    // Test 82: Overlay does not crash or leak into the master-bath scenario
+    const test82Pass = scenarioError82 === null &&
+      finalSnapshot82.workspaceMode === "plan" &&
+      scenarioContainer82.querySelector(".floor-overlay-surface") === null;
+    results.push({ name: "Test 82: Overlay To Master Bath Is Safe", pass: test82Pass });
+
+    // Test 83: Orientation does not crash or leak into the master-bath scenario
+    const orientationContainer83 = document.createElement("div");
+    orientationContainer83.id = "test-scope-guard-orientation-workspace";
+    document.body.appendChild(orientationContainer83);
+    const orientationChat83 = document.createElement("div");
+    orientationChat83.id = "test-scope-guard-orientation-chat";
+    document.body.appendChild(orientationChat83);
+    const orientationState83 = new ContextStateMachine(this.hierarchy);
+    const orientationPresenter83 = new WorkspacePresenter(orientationContainer83.id, {
+      hierarchy: this.hierarchy,
+      store: this.store,
+      resolver: this.resolver,
+      guard: this.guard,
+      registry: new DOMSurfaceRegistry(),
+      stateMachine: orientationState83
+    });
+    const orientationOrchestrator83 = new ConversationOrchestrator({
+      hierarchy: this.hierarchy,
+      stateMachine: orientationState83,
+      assistant: new ContextualAssistant({ hierarchy: this.hierarchy, stateMachine: orientationState83 }),
+      presenter: orientationPresenter83
+    });
+    orientationOrchestrator83.chatContainerId = orientationChat83.id;
+    orientationOrchestrator83.triggerOrientationScenario();
+    let orientationError83 = null;
+    try {
+      orientationOrchestrator83.handleUserMessage("Ebeveyn banyosunu kuzey tarafına alalım.");
+    } catch (error) {
+      orientationError83 = error;
+    }
+    const orientationSnapshot83 = orientationState83.getSnapshot();
+    const test83Pass = orientationError83 === null &&
+      orientationSnapshot83.workspaceMode === "plan" &&
+      orientationSnapshot83.scenarioId === "master_bath_relocation" &&
+      orientationContainer83.querySelector(".orientation-mode-surface") === null;
+    results.push({ name: "Test 83: Orientation To Master Bath Is Safe", pass: test83Pass });
+
+    // Test 84: Master-bath scenario start publishes exactly one snapshot
+    const test84Pass = publishedSnapshots82.length === 1;
+    results.push({ name: "Test 84: Master Bath Starts With One Atomic Snapshot", pass: test84Pass });
+
+    // Test 85: The final scenario snapshot contains the complete intended scope
+    const test85Pass = finalSnapshot82.projectId === "proj_house_2story" &&
+      finalSnapshot82.buildingId === "bldg_main" &&
+      finalSnapshot82.levelId === "lvl_upper" &&
+      finalSnapshot82.entityId === "space_master_bath" &&
+      finalSnapshot82.scenarioId === "master_bath_relocation" &&
+      finalSnapshot82.decisionId === "dec_master_bath" &&
+      finalSnapshot82.targetEntityId === "space_master_bath";
+    results.push({ name: "Test 85: Master Bath Final Snapshot Is Complete", pass: test85Pass });
+
+    // Test 86: No ground-floor/master-bath hybrid snapshot is ever published
+    const test86Pass = !publishedSnapshots82.some(snapshot =>
+      snapshot.levelId === "lvl_ground" && snapshot.entityId === "space_master_bath"
+    );
+    results.push({ name: "Test 86: Master Bath Publishes No Hybrid Snapshot", pass: test86Pass });
+
+    // Test 87: The assistant question and all three quick replies reach the DOM
+    const assistantMessages87 = Array.from(
+      scenarioChat82.querySelectorAll(".chat-message.assistant .message-text")
+    ).map(element => element.textContent);
+    const quickReplies87 = Array.from(
+      scenarioChat82.querySelectorAll(".chat-message.assistant .followup-chip")
+    ).map(element => element.textContent);
+    const test87Pass = assistantMessages87.some(text =>
+      text.includes("Banyoyu kuzey kenarına almak istiyorsunuz") &&
+      text.includes("yataktan görünmemesi mi")
+    ) && JSON.stringify(quickReplies87.slice(-3)) === JSON.stringify([
+      "Yataktan görünmesini istemiyorum",
+      "Giyinme alanından geçilsin",
+      "Daha mahrem olsun"
+    ]);
+    results.push({ name: "Test 87: Master Bath Prompt And Quick Replies Render", pass: test87Pass });
+
+    // Test 88: ChangeHistory resolves the active snapshot and never falls back to lvl_ground
+    const reportContainer88 = document.getElementById("architectDecisionHistory");
+    const previousReport88 = reportContainer88 ? reportContainer88.innerHTML : "";
+    const originalConsoleWarn88 = console.warn;
+    const capturedWarnings88 = [];
+    console.warn = (...args) => capturedWarnings88.push(args.map(String).join(" "));
+    try {
+      scenarioHistory82.renderArchitectReport(finalSnapshot82);
+    } finally {
+      console.warn = originalConsoleWarn88;
+    }
+    const test88Pass = scenarioHistory82.sessionState.levelId === "lvl_upper" &&
+      capturedWarnings88.length === 0;
+    if (reportContainer88) reportContainer88.innerHTML = previousReport88;
+    results.push({ name: "Test 88: ChangeHistory Uses Current Scenario Snapshot", pass: test88Pass });
+
+    // Test 89: A real form submit runs the complete master-bath message path
+    const form89 = document.createElement("form");
+    const input89 = document.createElement("input");
+    const chat89 = document.createElement("div");
+    chat89.id = "test-scope-guard-form-chat";
+    form89.appendChild(input89);
+    document.body.append(form89, chat89);
+    const formState89 = new ContextStateMachine(this.hierarchy);
+    const formOrchestrator89 = new ConversationOrchestrator({
+      hierarchy: this.hierarchy,
+      stateMachine: formState89,
+      assistant: new ContextualAssistant({ hierarchy: this.hierarchy, stateMachine: formState89 })
+    });
+    formOrchestrator89.chatContainerId = chat89.id;
+    form89.addEventListener("submit", event => {
+      event.preventDefault();
+      const text = input89.value.trim();
+      formOrchestrator89.appendUserMessage(text);
+      formOrchestrator89.handleUserMessage(text);
+    });
+    input89.value = "Ebeveyn banyosunu kuzey tarafına alalım.";
+    form89.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    const test89Pass = formState89.getSnapshot().scenarioId === "master_bath_relocation" &&
+      chat89.querySelectorAll(".chat-message.user").length === 1 &&
+      chat89.querySelectorAll(".followup-chip").length === 3;
+    results.push({ name: "Test 89: Form Submit Completes Master Bath Flow", pass: test89Pass });
+
+    // Test 90: A real quick-reply MouseEvent stays interactive after the transition
+    chat89.addEventListener("click", event => {
+      const chip = event.target.closest(".followup-chip");
+      if (!chip) return;
+      formOrchestrator89.appendUserMessage(chip.dataset.reply);
+      formOrchestrator89.handleUserMessage(chip.dataset.reply);
+    });
+    const replyButton90 = chat89.querySelector(".followup-chip");
+    replyButton90.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    const userMessages90 = Array.from(chat89.querySelectorAll(".chat-message.user .message-text"))
+      .map(element => element.textContent);
+    const test90Pass = userMessages90.includes("Yataktan görünmesini istemiyorum") &&
+      chat89.querySelectorAll(".chat-message.assistant").length >= 2;
+    results.push({ name: "Test 90: Master Bath Quick Reply MouseEvent Works", pass: test90Pass });
+
+    // Test 91: Scenario-path user HTML remains inert text
+    delete window.__scenarioXss;
+    const xssPayload91 = 'Ebeveyn banyosunu kuzey tarafına alalım.<img src=x onerror="window.__scenarioXss=true">';
+    formOrchestrator89.appendUserMessage(xssPayload91);
+    formOrchestrator89.handleUserMessage(xssPayload91);
+    const test91Pass = Array.from(chat89.querySelectorAll(".chat-message.user .message-text"))
+      .some(element => element.textContent === xssPayload91) &&
+      chat89.querySelector("img, script, svg") === null &&
+      window.__scenarioXss === undefined;
+    delete window.__scenarioXss;
+    results.push({ name: "Test 91: Master Bath Scenario HTML Is Inert", pass: test91Pass });
+
+    scenarioContainer82.remove();
+    scenarioChat82.remove();
+    orientationContainer83.remove();
+    orientationChat83.remove();
+    form89.remove();
+    chat89.remove();
 
     console.log(`=== Scope, Surface & Payload Guard Unit Test Results (${results.length} total) ===`);
     results.forEach(r => console.log(`${r.pass ? '✅ PASS' : '❌ FAIL'}: ${r.name}`));

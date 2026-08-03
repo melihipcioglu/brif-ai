@@ -23,12 +23,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.appStateMachine = stateMachine;
 
   const validator = new ContextValidator(hierarchy, stateMachine);
-  const changeHistory = new ChangeHistory();
+  const changeHistory = new ChangeHistory({ hierarchy, store, resolver, guard });
   const ruleEvaluator = new RuleEvaluator();
 
   const assistant = new ContextualAssistant({ hierarchy, stateMachine });
   const presenter = new WorkspacePresenter('planEditorContainer', {
-    hierarchy, store, resolver, guard, registry
+    hierarchy, store, resolver, guard, registry, stateMachine
   });
   const visualPreferencesPresenter = new WorkspacePresenter('visualPreferencesContent', {
     hierarchy, store, resolver, guard, registry
@@ -87,9 +87,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Subscribe state transitions to atomically clear stale space program cards & update decision report
   stateMachine.subscribe((snapshot) => {
+    changeHistory.setSessionState(snapshot);
     visualPreferencesPresenter.renderVisualPreferences(snapshot);
     populateSpaceGrids();
-    updateArchitectDecisionReport();
+    updateArchitectDecisionReport(snapshot);
   });
 
   // Synthetic Project Selector Dropdown
@@ -372,10 +373,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     `;
   }
 
-  function updateArchitectDecisionReport() {
+  function updateArchitectDecisionReport(activeSnapshot = stateMachine.getSnapshot()) {
     const container = document.getElementById('architectDecisionHistory');
     if (container) {
-      container.innerHTML = changeHistory.renderArchitectReport();
+      container.innerHTML = changeHistory.renderArchitectReport(activeSnapshot);
     }
   }
 

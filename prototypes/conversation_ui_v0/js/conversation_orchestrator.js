@@ -24,6 +24,7 @@ class ConversationOrchestrator {
 
     // Subscribe to StateMachine & automatically re-render Presenter surfaces
     this.stateMachine.subscribe((ctx) => {
+      this.syncStateWithHistory(ctx);
       this.validateAndSyncUI(ctx);
       if (this.presenter) {
         this.presenter.render({ activeContext: ctx });
@@ -193,11 +194,19 @@ class ConversationOrchestrator {
   }
 
   triggerMasterBathScenario(userRequestText) {
-    this.stateMachine.dispatch({ type: "LEVEL_SELECTED", payload: { levelId: "lvl_upper" } });
-    this.stateMachine.dispatch({ type: "ENTITY_SELECTED", payload: { entityId: "space_master_bath", entityType: "space" } });
     this.stateMachine.dispatch({
-      type: "SCENARIO_STARTED",
-      payload: { scenarioId: "master_bath_relocation", decisionId: "dec_master_bath", targetEntityId: "space_master_bath" }
+      type: "SCENARIO_CONTEXT_STARTED",
+      payload: {
+        projectId: "proj_house_2story",
+        buildingId: "bldg_main",
+        levelId: "lvl_upper",
+        entityId: "space_master_bath",
+        entityType: "space",
+        scenarioId: "master_bath_relocation",
+        decisionId: "dec_master_bath",
+        targetEntityId: "space_master_bath",
+        workspaceMode: "plan"
+      }
     });
 
     this.appendAssistantMessage(
@@ -214,7 +223,8 @@ class ConversationOrchestrator {
       type: "DECISION_RECORDED",
       payload: {
         selectedOption: optionNum,
-        decisionStatus: decisionStatus
+        decisionStatus: decisionStatus,
+        workspaceMode: "options_side_by_side"
       }
     });
 
@@ -226,34 +236,34 @@ class ConversationOrchestrator {
       return false;
     }
 
-    if (this.presenter) {
-      this.presenter.setMode('options_side_by_side', { selectedOption: optionNum });
-    }
-
     this.syncStateWithHistory();
-    this.appendAssistantMessage(`✅ Seçenek ${optionNum} onaylandı ve plan kararlarına işlendi.`);
+    this.appendAssistantMessage(`✅ Seçenek ${optionNum} karar olarak kaydedildi; plan otomatik değiştirilmedi.`);
     return true;
   }
 
   resumeSuspendedContext() {
-    this.stateMachine.dispatch({ type: "SCENARIO_RESUMED" });
+    this.stateMachine.dispatch({
+      type: "SCENARIO_RESUMED",
+      payload: { workspaceMode: "options_side_by_side" }
+    });
     const ctx = this.stateMachine.getContext();
     this.appendAssistantMessage(`↩ Önceki bağlama dönüldü: ${this.hierarchy.getScopeTitle(ctx)}.`);
 
-    if (this.presenter) {
-      this.presenter.setMode('options_side_by_side');
-    }
   }
 
   triggerFloorOverlayScenario() {
-    this.stateMachine.dispatch({ type: "SCENARIO_STARTED", payload: { scenarioId: "floor_overlay" } });
-    if (this.presenter) this.presenter.setMode('overlay');
+    this.stateMachine.dispatch({
+      type: "SCENARIO_STARTED",
+      payload: { scenarioId: "floor_overlay", workspaceMode: "overlay" }
+    });
     this.appendAssistantMessage("Kat ilişkisini okunabilir kodlarla gösteriyorum.", ["Sadece üst katı göster", "Alt katı saydam göster", "Normal plana dön"]);
   }
 
   triggerOrientationScenario() {
-    this.stateMachine.dispatch({ type: "SCENARIO_STARTED", payload: { scenarioId: "orientation" } });
-    if (this.presenter) this.presenter.setMode('orientation');
+    this.stateMachine.dispatch({
+      type: "SCENARIO_STARTED",
+      payload: { scenarioId: "orientation", workspaceMode: "orientation" }
+    });
     this.appendAssistantMessage("Cephe yönlenmesini kat planı üzerinde gösteriyorum.", ["Kuzey cephesini göster", "Güney salon ilişkisini göster", "Normal plana dön"]);
   }
 
@@ -279,9 +289,9 @@ class ConversationOrchestrator {
     this.appendAssistantMessage("⚡ Kampüs merkezi yüksek gerilim ve teknik destek zonu erişimleri inceleniyor.");
   }
 
-  syncStateWithHistory() {
+  syncStateWithHistory(activeSnapshot = null) {
     if (this.historyManager) {
-      this.historyManager.setSessionState(this.stateMachine.getContext());
+      this.historyManager.setSessionState(activeSnapshot || this.stateMachine.getSnapshot());
     }
   }
 

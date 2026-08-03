@@ -7,39 +7,47 @@
  */
 
 class ChangeHistory {
-  constructor() {
-    this.hierarchy = new EntityHierarchy();
-    this.store = new ScopedDocumentStore();
-    this.resolver = new WorkspaceScopeResolver(this.hierarchy, this.store);
-    this.guard = new RenderCompatibilityGuard(this.hierarchy);
-
-    this.sessionState = {
-      projectId: 'proj_house_2story',
-      buildingId: 'bldg_main',
-      levelId: 'lvl_ground',
-      selectedSpaceId: 'space_study',
-      activeScenario: null,
-      decisionStatus: 'Karar bekleniyor'
-    };
+  constructor(options = {}) {
+    this.hierarchy = options.hierarchy || new EntityHierarchy();
+    this.store = options.store || new ScopedDocumentStore();
+    this.resolver = options.resolver || new WorkspaceScopeResolver(this.hierarchy, this.store);
+    this.guard = options.guard || new RenderCompatibilityGuard(this.hierarchy);
+    this.sessionState = null;
   }
 
   setSessionState(state) {
-    this.sessionState = { ...this.sessionState, ...state };
+    this.sessionState = state ? {
+      ...state,
+      workspaceScope: state.workspaceScope ? { ...state.workspaceScope } : null,
+      conversationScope: state.conversationScope ? { ...state.conversationScope } : null
+    } : null;
   }
 
   // Scoped Decision Report Renderer (Requirements 3, 9, 11 & 12)
-  renderArchitectReport() {
-    const st = this.sessionState;
+  renderArchitectReport(activeSnapshot = null) {
+    const st = activeSnapshot || this.sessionState;
     const container = document.getElementById('architectDecisionHistory');
+
+    if (!st) {
+      if (container) {
+        container.replaceChildren();
+        const empty = document.createElement('div');
+        empty.className = 'empty-state-workspace-card report-empty';
+        empty.textContent = 'Karar raporu için aktif bir proje kapsamı bulunmuyor.';
+        container.appendChild(empty);
+        return container.innerHTML;
+      }
+      return '';
+    }
 
     const doc = this.resolver.resolveDocument(st, 'architect_report');
 
     // If report is missing or incompatible with activeContext (Requirement 3: NO BLANK REPORT AREA)
     if (!doc || !this.guard.isDocumentCompatible(doc, st)) {
-      console.warn(`[BRIF Görünüm Uyum Kontrolü] Karar raporu kapsam uyumsuzluğu: ${st.levelId || st.projectId}`);
-
       if (container) {
-        this.guard.renderReportEmptyState(container, st, "Çalışma Odası Kararı");
+        const entity = this.hierarchy.findEntity(st.entityId);
+        const reportTitle = entity ? `${entity.name} Kararı` : 'Aktif Kapsam Kararı';
+        this.guard.renderReportEmptyState(container, st, reportTitle);
         return container.innerHTML;
       }
       return '';

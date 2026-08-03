@@ -17,13 +17,35 @@ class WorkspacePresenter {
     this.resolver = options.resolver || new WorkspaceScopeResolver(this.hierarchy, this.store);
     this.guard = options.guard || new RenderCompatibilityGuard(this.hierarchy);
     this.registry = options.registry || (window.appDOMRegistry || new DOMSurfaceRegistry());
-
-    this.currentMode = 'plan';
+    this.stateMachine = options.stateMachine || null;
   }
 
   setMode(mode, data = {}) {
-    this.currentMode = mode;
-    this.render(data);
+    const registry = window.WorkspaceModeRegistry || {};
+    const hasMode = Object.prototype.hasOwnProperty.call(registry, mode);
+    const rendererName = hasMode ? registry[mode] : null;
+    const hasRenderer = !rendererName || typeof this[rendererName] === 'function';
+
+    if (!hasMode || !hasRenderer) {
+      console.error('[BRIF Workspace Mode] Desteklenmeyen çalışma görünümü:', mode);
+      const activeContext = data.activeContext ||
+        (this.stateMachine ? this.stateMachine.getSnapshot() : null) ||
+        (window.appStateMachine ? window.appStateMachine.getSnapshot() : null);
+      this.renderUnsupportedWorkspaceMode(activeContext);
+      return false;
+    }
+
+    if (this.stateMachine) {
+      const activeContext = this.stateMachine.dispatch({
+        type: 'WORKSPACE_MODE_CHANGED',
+        payload: { workspaceMode: mode }
+      });
+      this.render({ ...data, activeContext });
+      return true;
+    }
+
+    this.render({ ...data, workspaceMode: mode });
+    return true;
   }
 
   render(data = {}) {
@@ -31,6 +53,16 @@ class WorkspacePresenter {
 
     const ctx = data.activeContext || (window.appStateMachine ? window.appStateMachine.getContext() : null);
     if (!ctx) return;
+
+    const registry = window.WorkspaceModeRegistry || {};
+    const workspaceMode = data.workspaceMode || ctx.workspaceMode || 'plan';
+    const hasMode = Object.prototype.hasOwnProperty.call(registry, workspaceMode);
+    const rendererName = hasMode ? registry[workspaceMode] : null;
+    if (!hasMode || (rendererName && typeof this[rendererName] !== 'function')) {
+      console.error('[BRIF Workspace Mode] Renderer sözleşmesi karşılanmadı:', workspaceMode);
+      this.renderUnsupportedWorkspaceMode(ctx);
+      return;
+    }
 
     // 1. Next Generation Token & Fingerprint
     const token = this.registry.nextGeneration(ctx);
@@ -51,8 +83,13 @@ class WorkspacePresenter {
     this.renderAlternativeSelectors(ctx);
 
     // 7. Workspace Document Pipeline & Explicit Empty State (Requirements 1, 2 & 6)
-    if (this.currentMode === 'plan' || this.currentMode === 'stage3_program') {
-      const docType = this.currentMode === 'stage3_program' ? 'space_program' : 'plan';
+    if (workspaceMode === 'plan' || workspaceMode === 'stage3_program') {
+      const renderedMode = this.container.getAttribute('data-workspace-mode');
+      if (renderedMode && renderedMode !== workspaceMode) {
+        this.container.replaceChildren();
+      }
+      this.container.setAttribute('data-workspace-mode', workspaceMode);
+      const docType = workspaceMode === 'stage3_program' ? 'space_program' : 'plan';
       const doc = this.resolver.resolveDocument(ctx, docType);
 
       // Verify token freshness and fingerprint match before committing to DOM (Requirement 3)
@@ -95,16 +132,8 @@ class WorkspacePresenter {
       });
     }
 
-    if (this.currentMode === 'stage1_dashboard') {
-      this.renderStage1Dashboard(data);
-    } else if (this.currentMode === 'progress') {
-      this.renderAnalysisProgress(data);
-    } else if (this.currentMode === 'options_side_by_side') {
-      this.renderMasterBathOptionsSideBySide(data);
-    } else if (this.currentMode === 'overlay') {
-      this.renderFloorOverlayMode(data);
-    } else if (this.currentMode === 'orientation') {
-      this.renderOrientationMode(data);
+    if (rendererName) {
+      this[rendererName]({ ...data, activeContext: ctx });
     }
 
     // 8. Render Capability-Based Scoped Actions Bar (Requirement 4)
@@ -517,6 +546,192 @@ class WorkspacePresenter {
     const existing = this.container.querySelector('.suspended-context-line');
     if (existing) existing.remove();
     this.container.insertAdjacentHTML('afterbegin', bannerHtml);
+  }
+
+  renderPrototypeModeSurface(params = {}) {
+    const activeContext = params.activeContext;
+    if (!this.container || !activeContext) return;
+
+    this.container.replaceChildren();
+    this.container.setAttribute('data-workspace-mode', params.mode || 'safe_fallback');
+    this.container.setAttribute('data-project-id', activeContext.projectId || '');
+
+    const surface = document.createElement('div');
+    surface.className = `empty-state-workspace-card ${params.className || 'workspace-mode-surface'}`;
+
+    const title = document.createElement('h3');
+    title.className = 'empty-state-title';
+    title.textContent = params.title || 'Çalışma görünümü';
+
+    const description = document.createElement('p');
+    description.className = 'empty-state-desc';
+    description.textContent = params.description || '';
+
+    const scope = document.createElement('p');
+    scope.className = 'empty-state-desc workspace-mode-scope';
+    scope.textContent = `Aktif kapsam: ${this.hierarchy.getScopeTitle(activeContext)}.`;
+
+    surface.append(title, description, scope);
+    (params.details || []).forEach(detailText => {
+      const detail = document.createElement('p');
+      detail.className = 'empty-state-desc workspace-mode-detail';
+      detail.textContent = detailText;
+      surface.appendChild(detail);
+    });
+    this.container.appendChild(surface);
+  }
+
+  renderUnsupportedWorkspaceMode(activeContext) {
+    if (!activeContext) return;
+    this.renderPrototypeModeSurface({
+      activeContext,
+      mode: 'safe_fallback',
+      className: 'workspace-mode-fallback',
+      title: 'Bu çalışma görünümü kullanılamıyor.',
+      description: 'Aktif proje kapsamı korunarak güvenli bir boş görünüm gösteriliyor.'
+    });
+  }
+
+  renderAnalysisProgress(data = {}) {
+    const activeContext = data.activeContext;
+    this.renderPrototypeModeSurface({
+      activeContext,
+      mode: 'progress',
+      className: 'analysis-progress-surface',
+      title: 'Mimari değerlendirme hazırlanıyor',
+      description: 'Bu prototip görünümü yalnız değerlendirme adımlarının durumunu gösterir.',
+      details: ['Plan veya proje verisi bu aşamada otomatik olarak değiştirilmez.']
+    });
+  }
+
+  renderMasterBathOptionsSideBySide(data = {}) {
+    const activeContext = data.activeContext;
+    if (!this.container || !activeContext) return;
+
+    if (
+      activeContext.projectId !== 'proj_house_2story' ||
+      activeContext.scenarioId !== 'master_bath_relocation'
+    ) {
+      this.renderPrototypeModeSurface({
+        activeContext,
+        mode: 'options_side_by_side',
+        className: 'workspace-mode-fallback',
+        title: 'Karşılaştırma görünümü bu kapsamda kullanılamıyor.',
+        description: 'Bu proje ve senaryo için doğrulanmış seçenek seti bulunmuyor.'
+      });
+      return;
+    }
+
+    const selectedOption = activeContext.selectedOption;
+    this.container.replaceChildren();
+    this.container.setAttribute('data-workspace-mode', 'options_side_by_side');
+    this.container.setAttribute('data-project-id', activeContext.projectId);
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'options-side-by-side-container';
+
+    const banner = document.createElement('div');
+    banner.className = 'options-banner';
+    const heading = document.createElement('h3');
+    heading.textContent = 'Ebeveyn Banyosu Karar Seçenekleri';
+    const note = document.createElement('p');
+    note.textContent = 'Bu prototip karşılaştırması yalnız karar kaydı içindir; plan otomatik değiştirilmez.';
+    banner.append(heading, note);
+
+    const grid = document.createElement('div');
+    grid.className = 'options-grid';
+    [
+      {
+        number: 1,
+        title: 'Kuzey kenarı ve mahrem görüş ilişkisi',
+        detail: 'Yataktan doğrudan görünmeme ve giyinme alanı üzerinden erişim birlikte değerlendirilir.'
+      },
+      {
+        number: 2,
+        title: 'Mevcut konum ve kontrollü giriş ilişkisi',
+        detail: 'Mevcut yer korunur; giriş yönü ve mahremiyet ilişkisi karar olarak kaydedilir.'
+      }
+    ].forEach(option => {
+      const card = document.createElement('div');
+      card.className = `option-card${selectedOption === option.number ? ' selected' : ''}`;
+      card.id = `optionCard${option.number}`;
+      card.setAttribute('data-option-number', String(option.number));
+
+      const badge = document.createElement('div');
+      badge.className = `opt-badge${option.number === 2 ? ' secondary' : ''}`;
+      badge.textContent = `Seçenek ${option.number}`;
+      const optionTitle = document.createElement('h4');
+      optionTitle.textContent = option.title;
+      const detail = document.createElement('div');
+      detail.className = 'opt-section';
+      detail.textContent = option.detail;
+      const button = document.createElement('button');
+      button.className = `opt-btn ${option.number === 1 ? 'primary' : 'secondary'}`;
+      button.id = `btnApplyOpt${option.number}`;
+      button.textContent = selectedOption === option.number
+        ? 'Karar Kaydedildi'
+        : `Seçenek ${option.number}'i Karar Olarak Kaydet`;
+
+      card.append(badge, optionTitle, detail, button);
+      grid.appendChild(card);
+    });
+
+    wrapper.append(banner, grid);
+    this.container.appendChild(wrapper);
+  }
+
+  renderFloorOverlayMode(data = {}) {
+    const activeContext = data.activeContext;
+    if (!activeContext) return;
+    if (activeContext.projectId !== 'proj_house_2story') {
+      this.renderPrototypeModeSurface({
+        activeContext,
+        mode: 'overlay',
+        className: 'workspace-mode-fallback',
+        title: 'Kat ilişkisi görünümü bu kapsamda tanımlı değil.',
+        description: 'Başka bir projeye ait kat anlatımı bu yüzeyde gösterilmez.'
+      });
+      return;
+    }
+
+    this.renderPrototypeModeSurface({
+      activeContext,
+      mode: 'overlay',
+      className: 'floor-overlay-surface',
+      title: 'Kat İlişkisi — Prototip Görünümü',
+      description: 'Zemin Kat ile Üst Kat arasındaki ilişki yalnız anlatım amaçlı gösteriliyor.',
+      details: [
+        'Bu görünüm plan geometrisini veya mekân kararlarını değiştirmez.',
+        'Ruhsat ya da uygulama projesi niteliğinde teknik analiz üretmez.'
+      ]
+    });
+  }
+
+  renderOrientationMode(data = {}) {
+    const activeContext = data.activeContext;
+    if (!activeContext) return;
+    if (activeContext.projectId !== 'proj_house_2story') {
+      this.renderPrototypeModeSurface({
+        activeContext,
+        mode: 'orientation',
+        className: 'workspace-mode-fallback',
+        title: 'Yönlenme görünümü bu kapsamda tanımlı değil.',
+        description: 'Başka bir projeye ait yönlenme içeriği bu yüzeyde gösterilmez.'
+      });
+      return;
+    }
+
+    this.renderPrototypeModeSurface({
+      activeContext,
+      mode: 'orientation',
+      className: 'orientation-mode-surface',
+      title: 'Yönlenme — Prototip Görünümü',
+      description: 'Kuzey ve güney kenarları aktif proje kapsamı içinde referans olarak gösteriliyor.',
+      details: [
+        'Bu yüzey doğrulanmış güneş, enerji veya mevzuat analizi iddiası taşımaz.',
+        'Plan ve kayıtlı kararlar otomatik olarak değiştirilmez.'
+      ]
+    });
   }
 
   renderStage1Dashboard(data = {}) {
