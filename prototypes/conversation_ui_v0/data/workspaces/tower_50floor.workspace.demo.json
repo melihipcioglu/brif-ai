@@ -1,0 +1,100 @@
+{
+  "projectId": "proj_tower_50floor",
+  "documents": [
+    {
+      "documentId": "doc_tower_18_plan",
+      "documentType": "plan",
+      "projectId": "proj_tower_50floor",
+      "buildingId": "tower_a",
+      "levelId": "lvl_18",
+      "zoneId": "zone_exec_18",
+      "entityId": null,
+      "scopeType": "level",
+      "status": "available",
+      "displayName": "18. Kat Yönetim Katı Şematik Planı",
+      "sourceType": "demo",
+      "data": {
+        "svgType": "commercial_tower_exec",
+        "spaces": [
+          { "id": "space_meeting_18a", "name": "18A Yönetim Toplantı Odası", "area": 45, "color": "#FEF3C7" },
+          { "id": "space_exec_office_18", "name": "Yönetici Ofisi", "area": 30, "color": "#EFF6FF" },
+          { "id": "space_core_18", "name": "Asansör & Servis Çekirdeği", "area": 50, "color": "#E2E8F0" }
+        ]
+      }
+    },
+    {
+      "documentId": "doc_tower_32_plan",
+      "documentType": "plan",
+      "projectId": "proj_tower_50floor",
+      "buildingId": "tower_a",
+      "levelId": "lvl_32",
+      "zoneId": "zone_ops_32",
+      "entityId": null,
+      "scopeType": "level",
+      "status": "available",
+      "displayName": "32. Kat Operasyon Katı Şematik Planı",
+      "sourceType": "demo",
+      "data": {
+        "svgType": "commercial_tower_ops",
+        "spaces": [
+          { "id": "space_open_office_32", "name": "32B Açık Ofis Alanı", "area": 180, "color": "#ECFDF5" },
+          { "id": "space_breakroom_32", "name": "Dinlenme & Mutfak Alanı", "area": 25, "color": "#FEF3C7" },
+          { "id": "space_core_32", "name": "Asansör & Servis Çekirdeği", "area": 50, "color": "#E2E8F0" }
+        ]
+      }
+    },
+    {
+      "documentId": "doc_tower_program",
+      "documentType": "space_program",
+      "projectId": "proj_tower_50floor",
+      "buildingId": "tower_a",
+      "levelId": null,
+      "zoneId": null,
+      "entityId": null,
+      "scopeType": "project",
+      "status": "available",
+      "displayName": "Finans Kulesi Mekân Programı",
+      "sourceType": "demo",
+      "data": {
+        "summary": { "netArea": "1.250 m² Net", "circArea": "350 m² Çekirdek", "grossArea": "1.600 m² Brüt" },
+        "groundSpaces": [
+          { "id": "space_meeting_18a", "name": "18A Yönetim Toplantı Odası", "area": 45, "floor": "18. Kat", "source": "Kurumsal standart" },
+          { "id": "space_exec_office_18", "name": "Yönetici Ofisi", "area": 30, "floor": "18. Kat", "source": "Yönetim kararı" }
+        ],
+        "upperSpaces": [
+          { "id": "space_open_office_32", "name": "32B Açık Ofis Alanı", "area": 180, "floor": "32. Kat", "source": "Kapasite ihtiyacı" },
+          { "id": "space_breakroom_32", "name": "Dinlenme & Mutfak Alanı", "area": 25, "floor": "32. Kat", "source": "Ergonomi standardı" }
+        ]
+      }
+    },
+    {
+      "documentId": "doc_tower_18_report",
+      "documentType": "architect_report",
+      "projectId": "proj_tower_50floor",
+      "buildingId": "tower_a",
+      "levelId": "lvl_18",
+      "zoneId": "zone_exec_18",
+      "entityId": "space_meeting_18a",
+      "scenarioId": null,
+      "decisionId": "dec_meeting_18a",
+      "scopeType": "entity",
+      "status": "available",
+      "displayName": "18A Toplantı Odası Yerleşim Raporu",
+      "sourceType": "demo",
+      "payload": {
+        "title": "Karar #101 (Finans Kulesi Toplantı Odası)",
+        "status": "Uygulandı",
+        "userRequest": "Yönetim katında 20 kişilik prestijli toplantı odası ihtiyacı.",
+        "clarifiedNeed": "Asansör çekirdeğine doğrudan erişim ve akustik yalıtım.",
+        "interpretation": "Kurumsal yönetim alanında çekirdeğe yakın, protokol erişimli toplantı düzeni.",
+        "decision": "18A Toplantı Odası Yerleşimi Onaylandı",
+        "meta": { "source": "Kurumsal alan standardı", "confidence": "Yüksek" }
+      }
+    }
+  ],
+  "scopedActions": [
+    { "actionId": "act_tower_meeting", "displayName": "👥 Toplantı Odası İlişkisini İncele", "requiredCapabilities": ["office_meeting_analysis"], "handler": "triggerTowerMeetingScenario" },
+    { "actionId": "act_tower_core", "displayName": "🛗 Dolaşım Çekirdeğini Göster", "requiredCapabilities": ["office_core_circulation"], "handler": "triggerTowerCoreScenario" },
+    { "actionId": "act_tower_floors", "displayName": "🏢 18. ve 32. Kat İlişkisini Açıkla", "requiredCapabilities": ["multi_level_overlay"], "handler": "triggerTowerFloorsScenario" }
+  ]
+}

@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 320" width="100%" height="100%">
+  <defs>
+    <linearGradient id="floorGradFlex" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F8F6F0"/>
+      <stop offset="100%" stop-color="#E5E0D4"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Container -->
+  <rect width="500" height="320" rx="14" fill="#FAFAF7" stroke="#E5E0D8" stroke-width="1.5"/>
+
+  <!-- Floor Grid -->
+  <polygon points="60,220 250,300 440,220 250,140" fill="url(#floorGradFlex)" stroke="#2C4035" stroke-width="2.5" stroke-linejoin="round"/>
+
+  <!-- Back Left Wall -->
+  <polygon points="60,220 60,100 250,20 250,140" fill="#EFECE6" stroke="#2C4035" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- Back Right Wall -->
+  <polygon points="250,140 250,20 440,100 440,220" fill="#DFDAD0" stroke="#2C4035" stroke-width="2.5" stroke-linejoin="round"/>
+
+  <!-- Ceiling / Top Rail Track for Sliding Panels -->
+  <line x1="160" y1="185" x2="250" y2="140" stroke="#059669" stroke-width="3.5" stroke-dasharray="6 3"/>
+  
+  <!-- Sliding Panel (Pos 1: Half Open, Sliding Arrow) -->
+  <polygon points="170,265 170,180 210,160 210,245" fill="#10B981" opacity="0.3" stroke="#059669" stroke-width="2"/>
+  <polygon points="210,245 210,160 240,145 240,230" fill="#10B981" opacity="0.75" stroke="#047857" stroke-width="2"/>
+
+  <!-- Movement Arrows -->
+  <g transform="translate(195, 140)">
+    <path d="M-15 0 L15 0" stroke="#047857" stroke-width="2.5"/>
+    <polygon points="-15,0 -8,-5 -8,5" fill="#047857"/>
+    <polygon points="15,0 8,-5 8,5" fill="#047857"/>
+    <text x="0" y="-8" font-family="'Inter', sans-serif" font-size="9" font-weight="700" fill="#047857" text-anchor="middle">KAYAR PANEL HAREKETİ</text>
+  </g>
+
+  <!-- Living Sofa -->
+  <polygon points="100,225 150,200 200,225 150,250" fill="#64748B" stroke="#334155" stroke-width="1.5"/>
+  <g transform="translate(130, 185)">
+    <circle cx="8" cy="5" r="7" fill="#1E293B"/>
+    <path d="M2 15 C2 10 14 10 14 15 L15 28 L1 28 Z" fill="#1E293B"/>
+  </g>
+
+  <!-- Study Desk inside flexible zone -->
+  <polygon points="310,190 380,155 410,170 340,205" fill="#2C4035" stroke="#1E2D25" stroke-width="1.5"/>
+  <g transform="translate(345, 145)">
+    <circle cx="10" cy="8" r="8" fill="#1E2D25"/>
+    <path d="M3 22 C3 16 17 16 17 22 L18 40 L2 40 Z" fill="#1E2D25"/>
+  </g>
+  <rect x="350" y="168" width="16" height="10" rx="1" fill="#FFFFFF" stroke="#1E2D25" stroke-width="1.5" transform="skewY(-15)"/>
+
+  <!-- Dual Mode Badge (Açık / Kapalı Modu) -->
+  <g transform="translate(380, 55)">
+    <rect x="-55" y="-14" width="110" height="28" rx="14" fill="#ECFDF5" stroke="#10B981" stroke-width="1.5"/>
+    <text x="0" y="4" font-family="'Inter', sans-serif" font-size="10" font-weight="700" fill="#047857" text-anchor="middle">🔄 Esnek Dönüşüm</text>
+  </g>
+
+  <!-- Title Label -->
+  <rect x="15" y="15" width="280" height="26" rx="6" fill="#FFFFFF" stroke="#2C4035" stroke-width="1.5"/>
+  <text x="155" y="32" font-family="'Inter', sans-serif" font-size="12" font-weight="700" fill="#2C4035" text-anchor="middle">Kayar Panelle Dönüşebilen Alan</text>
+</svg>

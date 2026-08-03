@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 320" width="100%" height="100%">
+  <defs>
+    <linearGradient id="floorGradKitOpen" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDFBF7"/>
+      <stop offset="100%" stop-color="#EAE5D9"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Container -->
+  <rect width="500" height="320" rx="14" fill="#FAFAF7" stroke="#E5E0D8" stroke-width="1.5"/>
+
+  <!-- Axonometric Floor Base -->
+  <polygon points="60,220 250,300 440,220 250,140" fill="url(#floorGradKitOpen)" stroke="#2C4035" stroke-width="2.5" stroke-linejoin="round"/>
+
+  <!-- Back Left Wall with Glass Window -->
+  <polygon points="60,220 60,100 250,20 250,140" fill="#EFECE6" stroke="#2C4035" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- Back Right Wall -->
+  <polygon points="250,140 250,20 440,100 440,220" fill="#DFDAD0" stroke="#2C4035" stroke-width="2.5" stroke-linejoin="round"/>
+
+  <!-- Kitchen Island & Counter Bar -->
+  <polygon points="120,210 190,175 240,200 170,235" fill="#D97706" opacity="0.85" stroke="#92400E" stroke-width="1.5"/>
+  <polygon points="120,210 120,230 170,255 170,235" fill="#B45309" stroke="#92400E" stroke-width="1.5"/>
+  <polygon points="170,235 170,255 240,220 240,200" fill="#92400E" stroke="#92400E" stroke-width="1.5"/>
+
+  <!-- Bar Stools & Silhouette Cooking/Preparing -->
+  <g transform="translate(155, 140)">
+    <circle cx="8" cy="6" r="7" fill="#78350F"/>
+    <path d="M2 17 C2 11 14 11 14 17 L15 35 L1 35 Z" fill="#78350F"/>
+  </g>
+
+  <!-- Dining Table & Living Sofa (Integrated Open Layout) -->
+  <polygon points="270,220 340,185 390,210 320,245" fill="#475569" stroke="#1E293B" stroke-width="1.5"/>
+  <!-- Seated Silhouette at Dining -->
+  <g transform="translate(320, 160)">
+    <circle cx="8" cy="6" r="7" fill="#1E293B"/>
+    <path d="M2 16 C2 11 14 11 14 16 L15 30 L1 30 Z" fill="#1E293B"/>
+  </g>
+
+  <!-- Open Flow Arrow / Continuous Space Sightline -->
+  <path d="M190 190 Q 260 170 330 195" fill="none" stroke="#D97706" stroke-width="2.5" stroke-dasharray="5 3"/>
+  <polygon points="330,195 320,190 322,198" fill="#D97706"/>
+
+  <g transform="translate(260, 140)">
+    <rect x="-65" y="-12" width="130" height="24" rx="12" fill="#FFFBEB" stroke="#F59E0B" stroke-width="1.5"/>
+    <text x="0" y="4" font-family="'Inter', sans-serif" font-size="10" font-weight="700" fill="#B45309" text-anchor="middle">✨ Açık Mutfak &amp; Sosyal Temas</text>
+  </g>
+
+  <!-- Title Label -->
+  <rect x="15" y="15" width="280" height="26" rx="6" fill="#FFFFFF" stroke="#2C4035" stroke-width="1.5"/>
+  <text x="155" y="32" font-family="'Inter', sans-serif" font-size="12" font-weight="700" fill="#2C4035" text-anchor="middle">Açık Mutfak ve Yaşam İlişkisi</text>
+</svg>

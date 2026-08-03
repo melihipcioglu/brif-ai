@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BRIF.AI — Scope-Safe Workspace Payloads v6.1.3</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-container">
+    
+    <!-- TOP HEADER BAR WITH SYNTHETIC PROJECT SELECTOR -->
+    <header class="app-header">
+      <div class="header-brand">
+        <span class="brand-logo">BRIF<span class="brand-dot">.</span>AI</span>
+        <span class="brand-subtitle">Kapsam Uyumlu Çalışma Alanı Verisi v6.1.3</span>
+      </div>
+
+      <!-- Synthetic Multi-Project Selector -->
+      <div class="header-project-selector">
+        <span class="project-tag">Aktif Kapsam:</span>
+        <select id="syntheticProjectSelect" class="project-dropdown">
+          <option value="proj_house_2story" selected>Test A — İki Katlı Müstakil Konut</option>
+          <option value="proj_tower_50floor">Test B — 50 Katlı Finans Kulesi</option>
+          <option value="proj_campus_multiblock">Test C — Çok Bloklu Teknoloji Kampüsü</option>
+        </select>
+        <span class="project-badge">v6.1.3 Kapsam Koruması</span>
+      </div>
+
+      <div class="header-actions">
+        <button type="button" class="mode-toggle-btn" id="toggleViewBtn" title="Görünüm Modunu Değiştir">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+          </svg>
+          <span id="toggleBtnText">Mimar Önizlemesine Geç</span>
+        </button>
+
+        <div class="user-avatar" title="Kullanıcı Profili: MK">
+          <span>MK</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- 4-STAGE PROCESS NAVIGATION STEPPER BAR -->
+    <nav class="process-stepper-bar" aria-label="Süreç Navigasyonu">
+      <div class="stepper-track">
+        <button class="step-node active" id="stepNode1" data-stage="1" aria-label="Aşama 1: Yaşamınızı Anlama">
+          <span class="step-number">1</span>
+          <span class="step-label">Yaşamınızı Anlama</span>
+          <span class="step-badge badge-active">Aktif</span>
+        </button>
+        <div class="step-connector"></div>
+
+        <button class="step-node" id="stepNode2" data-stage="2" aria-label="Aşama 2: Görsel Tercihler">
+          <span class="step-number">2</span>
+          <span class="step-label">Görsel Tercihler</span>
+          <span class="step-badge badge-pending">3 Tur</span>
+        </button>
+        <div class="step-connector"></div>
+
+        <button class="step-node" id="stepNode3" data-stage="3" aria-label="Aşama 3: Mekân Programı">
+          <span class="step-number">3</span>
+          <span class="step-label">Mekân Programı</span>
+          <span class="step-badge badge-pending">Kapsamlı Grid</span>
+        </button>
+        <div class="step-connector"></div>
+
+        <button class="step-node" id="stepNode4" data-stage="4" aria-label="Aşama 4: Taslak Plan">
+          <span class="step-number">4</span>
+          <span class="step-label">Taslak Plan</span>
+          <span class="step-badge badge-pending">Görünüm Uyumlu</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- GLOBAL DISCLAIMER BAR -->
+    <div class="global-disclaimer-bar">
+      <span>ℹ️ UX prototipi — gerçek LLM bağlı değildir.</span>
+      <span>•</span>
+      <span>Demo mimari değerlendirmesi — resmî mevzuat ve yerel idare verisi bağlı değildir.</span>
+      <span>•</span>
+      <span>Şematik çalışma alanları gerçek mimari proje, uygulama veya ruhsat çizimi değildir.</span>
+    </div>
+
+    <!-- MAIN CONVERSATION-FIRST WORKSPACE LAYOUT -->
+    <main class="main-workspace">
+      
+      <!-- LEFT MAIN WORKSPACE (~68% width) -->
+      <section class="stage-workspace">
+        
+        <!-- STAGE 1: YAŞAMINIZI ANLAMA -->
+        <div class="stage-view active" id="stageView1">
+          <div class="stage1-workspace-container" id="stage1WorkspaceContainer"></div>
+        </div>
+
+        <!-- STAGE 2: GÖRSEL TERCİHLER -->
+        <div class="stage-view hidden" id="stageView2">
+          <div id="visualPreferencesContent"></div>
+        </div>
+
+        <template id="houseVisualPreferencesTemplate">
+          <div class="pref-scroll-area">
+            <div class="stage-prompt-banner">
+              <div class="message-avatar brif">B</div>
+              <div class="prompt-text-group">
+                <div class="prompt-sender">BRIF.AI Mimari Asistan</div>
+                <div class="prompt-desc">3 karşılaştırmalı tur hâlinde mekânsal nitelik tercihlerini inceliyoruz.</div>
+              </div>
+            </div>
+
+            <div class="round-stepper">
+              <button class="round-tab active" data-round="1" id="roundTab1"><span class="round-num">1</span> Tur 1: Çalışma Alanı</button>
+              <button class="round-tab" data-round="2" id="roundTab2"><span class="round-num">2</span> Tur 2: Ayrışma Esnekliği</button>
+              <button class="round-tab" data-round="3" id="roundTab3"><span class="round-num">3</span> Tur 3: Mutfak İlişkisi</button>
+            </div>
+
+            <div class="preference-round-content" data-pref-round-content>
+              <div class="pref-round-container active" id="prefRound1" data-round="1">
+                <div class="pref-cards-comparison">
+                <div class="pref-card-large" data-card-id="work_separate">
+                  <div class="pref-image-wrapper"><img src="assets/preferences/work_separate.svg" alt="Tamamen ayrı çalışma odası" loading="lazy"></div>
+                  <div class="pref-card-body">
+                    <h3 class="pref-card-title">1A. Tamamen Ayrı Çalışma Odası</h3>
+                    <p class="pref-card-desc">Ana yaşam alanından duvar ve kapı ile tam izole kapalı çalışma mekânı.</p>
+                    <div class="pref-card-actions">
+                      <button class="pref-btn-primary" data-action="like">Bu yaklaşıma daha yakınım</button>
+                      <button class="pref-btn-secondary" data-action="neutral">Kararsızım</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="pref-card-large" data-card-id="work_connected">
+                  <div class="pref-image-wrapper"><img src="assets/preferences/work_connected.svg" alt="Ortak yaşama bağlı çalışma alanı" loading="lazy"></div>
+                  <div class="pref-card-body">
+                    <h3 class="pref-card-title">1B. Ortak Yaşama Bağlı Çalışma Alanı</h3>
+                    <p class="pref-card-desc">Yaşam alanına görsel olarak açık veya alçak bölücü ile bağlı çalışma alanı.</p>
+                    <div class="pref-card-actions">
+                      <button class="pref-btn-primary" data-action="like">Bu yaklaşıma daha yakınım</button>
+                      <button class="pref-btn-secondary" data-action="neutral">Kararsızım</button>
+                    </div>
+                  </div>
+                </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="stage-footer-actions">
+              <button type="button" class="primary-action-btn" id="btnNextToProgram">Mekân Programına Geç</button>
+            </div>
+          </div>
+        </template>
+
+        <!-- STAGE 3: MEKÂN PROGRAMI -->
+        <div class="stage-view hidden" id="stageView3">
+          <div class="program-scroll-area">
+            <div class="prototype-assumption-banner">
+              <span class="banner-badge">📌 Kapsam Uyumlu Mekân Programı</span>
+              <p class="banner-text">Program kartları seçili proje ve yapı türünün yeteneklerine göre çözümlenmektedir.</p>
+            </div>
+
+            <div class="area-summary-bar">
+              <div class="summary-item"><span class="summary-label">Tahmini Toplam Net Alan</span><span class="summary-value" id="summaryNetArea">148 – 168 m²</span></div>
+              <div class="summary-divider"></div>
+              <div class="summary-item"><span class="summary-label">Dolaşım &amp; Servis Payı</span><span class="summary-value" id="summaryCircArea">32 – 42 m²</span></div>
+              <div class="summary-divider"></div>
+              <div class="summary-item highlight"><span class="summary-label">Tahmini Brüt Kapalı Alan</span><span class="summary-value" id="summaryGrossArea">190 – 220 m²</span></div>
+            </div>
+
+            <div class="floor-tab-bar" id="programFloorTabs">
+              <!-- Dynamically generated from EntityHierarchy navigable siblings -->
+            </div>
+
+            <div class="space-cards-container active" id="spacesGround"><div class="space-cards-grid" id="spaceGridGround"></div></div>
+            <div class="space-cards-container hidden" id="spacesUpper"><div class="space-cards-grid" id="spaceGridUpper"></div></div>
+          </div>
+        </div>
+
+        <!-- STAGE 4: TASLAK PLAN -->
+        <div class="stage-view hidden" id="stageView4">
+          <div class="plan-scroll-area">
+            
+            <div class="plan-assumptions-compact-card">
+              <div class="compact-card-left">
+                <span class="card-icon">📐</span>
+                <div class="card-texts">
+                  <strong class="card-title">Kapsam Çözümleyici &amp; Yüzey Koruması</strong>
+                  <span class="card-summary">Uyumsuz yüzey gösterilmez • Eski içerik temizlenir</span>
+                </div>
+              </div>
+              <button class="edit-assumptions-btn" id="openAssumptionsBtn">Varsayımları Düzenle</button>
+            </div>
+
+            <div class="alternative-selector-bar">
+              <!-- Dynamically rendered by WorkspacePresenter.renderAlternativeSelectors -->
+            </div>
+
+            <div class="plan-controls-toolbar">
+              <!-- Dynamically generated level tabs from EntityHierarchy navigable siblings -->
+              <div class="plan-floor-tabs" id="planFloorTabs"></div>
+
+              <button class="advanced-tools-toggle-btn" id="toggleAdvancedToolsBtn">
+                <span>🛠️ Planı Elle Düzenle (Gelişmiş Araçlar)</span>
+              </button>
+            </div>
+
+            <div class="undo-redo-toolbar hidden" id="advancedToolsPanel">
+              <button class="tool-btn" id="undoBtn" title="Geri Al">↩ Geri Al</button>
+              <button class="tool-btn" id="redoBtn" title="İleri Al">↪ İleri Al</button>
+              <button class="tool-btn" id="lockToggleBtn" title="Seçili Mekânı Kilitle">🔒 Mekânı Kilitle</button>
+              <button class="tool-btn" id="swapBtn" title="İki Mekânın Yerini Değiştir">🔄 Yer Değiştir (Takas)</button>
+            </div>
+
+            <!-- DYNAMIC INTERACTIVE PLAN EDITOR / PRESENTATION CONTAINER -->
+            <div class="plan-svg-container" id="planEditorContainer">
+              <!-- Rendered dynamically by PlanEditor / WorkspacePresenter / RenderCompatibilityGuard -->
+            </div>
+
+            <!-- SCOPED DEMO SCENARIOS SHORTCUT BAR -->
+            <div class="demo-scenarios-bar" id="demoScenariosBar">
+              <!-- Dynamically rendered scoped actions -->
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ARCHITECT PREVIEW VIEW -->
+        <div class="stage-view hidden" id="architectStageView">
+          <div class="architect-scroll-area">
+            <div class="arch-banner">
+              <h2>Kapsam Uyumlu Mimar Karar Raporu (v6.1.3)</h2>
+              <p>Mimar raporu yalnız aktif projenin bileşik karar kapsamına uygunsa render edilir.</p>
+            </div>
+
+            <div class="arch-card full-width">
+              <h3>📜 Genelleştirilmiş Mimar Karar Raporu</h3>
+              <div id="architectDecisionHistory"></div>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- RIGHT CONVERSATION-FIRST SOHBET PANEL (~32% width) -->
+      <aside class="chat-panel">
+        
+        <!-- SOHBET PANEL HEADER WITH SCOPE BADGE & SCOPE FILTER -->
+        <div class="chat-header">
+          <div class="chat-header-main">
+            <div class="chat-header-title">
+              <span class="bot-avatar">🤖</span>
+              <div class="header-text-group">
+                <h3>BRIF.AI Asistan</h3>
+                <span class="online-status">● Çevrim İçi</span>
+              </div>
+            </div>
+
+            <div class="chat-scope-badge" id="assistantContextBadge">
+              Genel Proje Bağlamı
+            </div>
+          </div>
+
+          <!-- Scope Filter Selector -->
+          <div class="chat-scope-filter">
+            <label for="chatScopeFilterSelect">Sohbet Filtresi:</label>
+            <select id="chatScopeFilterSelect" class="filter-dropdown">
+              <option value="active_level" selected>Aktif Kat Sohbeti</option>
+              <option value="active_decision">Aktif Karar Sohbeti</option>
+              <option value="all">Tüm Proje Sohbeti</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- CHAT MESSAGES STREAM CONTAINER -->
+        <div class="chat-messages-container" id="chatMessagesContainer">
+          <!-- Dynamically populated by ConversationOrchestrator -->
+        </div>
+
+        <!-- CHAT INPUT FORM -->
+        <div class="chat-input-area">
+          <form id="assistantChatForm" class="chat-form">
+            <input type="text" id="assistantUserInput" placeholder="İsteğinizi yazın (ör. Ebeveyn banyosu kuzeyde olsun)..." autocomplete="off">
+            <button type="submit" class="send-btn" id="sendBtn">
+              <span>Gönder</span>
+            </button>
+          </form>
+          <div class="chat-footer-hint">Talebiniz mimari kontrol ve kapsam süzgecinden geçirilecektir.</div>
+        </div>
+
+      </aside>
+
+    </main>
+  </div>
+
+  <!-- FIXED MODAL DRAWER DIALOG -->
+  <div class="modal-backdrop hidden" id="assumptionsModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Plan Varsayımlarını Düzenle (Prototip Simülasyonu)</h3>
+        <button type="button" class="close-modal-btn" id="closeAssumptionsBtn" aria-label="Kapat">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="assumptionsForm">
+          <div class="form-group">
+            <label for="assumpFloors">Konut Kat Yapısı:</label>
+            <select id="assumpFloors">
+              <option value="two" selected>İki Katlı Konut (Mevcut Varsayım)</option>
+              <option value="single">Tek Katlı Konut</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="assumpStudy">Çalışma Odası Konumu:</label>
+            <select id="assumpStudy">
+              <option value="isolated" selected>Kapalı İzolasyon (Alt A)</option>
+              <option value="flexible">Esnek Dönüşüm (Alt B)</option>
+            </select>
+          </div>
+
+          <div class="modal-actions">
+            <button type="button" class="cancel-modal-btn" id="cancelAssumptionsBtn">Vazgeç</button>
+            <button type="submit" class="save-assump-btn">Varsayımları Uygula</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODULAR SCRIPTS (v6.1.3 Scope-Safe Workspace Architecture) -->
+  <script src="js/dom_surface_registry.js"></script>
+  <script src="js/entity_hierarchy.js"></script>
+  <script src="js/scoped_document_store.js"></script>
+  <script src="js/workspace_scope_resolver.js"></script>
+  <script src="js/render_compatibility_guard.js"></script>
+  <script src="js/context_state_machine.js"></script>
+  <script src="js/context_validator.js"></script>
+  <script src="js/rule_evaluator.js"></script>
+  <script src="js/change_history.js"></script>
+  <script src="js/demo_intent_parser.js"></script>
+  <script src="js/plan_editor.js"></script>
+  <script src="js/workspace_presenter.js"></script>
+  <script src="js/contextual_assistant.js"></script>
+  <script src="js/conversation_orchestrator.js"></script>
+  <script src="js/test_scope_guard.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

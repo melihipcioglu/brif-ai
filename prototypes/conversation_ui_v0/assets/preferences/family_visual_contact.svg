@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260" width="100%" height="100%">
+  <rect width="400" height="260" rx="12" fill="#FAF9F6" stroke="#E4E0D7" stroke-width="1"/>
+
+  <!-- Base Floor -->
+  <polygon points="60,170 200,230 340,170 200,110" fill="#F4F2EB" stroke="#3F5E4D" stroke-width="2"/>
+  
+  <!-- Back Wall -->
+  <polygon points="60,170 60,70 200,10 200,110" fill="#EFECE5" stroke="#3F5E4D" stroke-width="2"/>
+  <polygon points="200,110 200,10 340,70 340,170" fill="#EFECE5" stroke="#3F5E4D" stroke-width="2"/>
+
+  <!-- Half Wall / Low Partition -->
+  <polygon points="140,185 140,135 220,100 220,150" fill="#E4E0D7" stroke="#3F5E4D" stroke-width="2"/>
+
+  <!-- Parent Lounge Zone on Right -->
+  <polygon points="240,155 280,138 310,151 270,168" fill="#3F5E4D" stroke="#2A4034" stroke-width="1.5"/>
+  <text x="275" y="152" font-family="sans-serif" font-size="9" font-weight="600" fill="#FFFFFF">EBEVEYN</text>
+
+  <!-- Children Nook on Left (Lower floor level view) -->
+  <polygon points="80,165 110,152 130,161 100,174" fill="#B06000" opacity="0.8" stroke="#B06000" stroke-width="1.5"/>
+  <text x="105" y="163" font-family="sans-serif" font-size="8" font-weight="600" fill="#FFFFFF">ÇOCUK</text>
+
+  <!-- Visual Sightline Arrow -->
+  <path d="M260 140 C210 115 160 135 110 155" fill="none" stroke="#2563EB" stroke-width="2" stroke-dasharray="5 3"/>
+  <circle cx="260" cy="140" r="3" fill="#2563EB"/>
+  <circle cx="110" cy="155" r="3" fill="#2563EB"/>
+
+  <text x="200" y="248" font-family="sans-serif" font-size="12" font-weight="700" fill="#1C1C1E" text-anchor="middle">Ebeveyn &amp; Çocuk Görsel Görüş Hattı</text>
+</svg>

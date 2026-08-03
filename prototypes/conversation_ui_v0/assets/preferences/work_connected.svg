@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 320" width="100%" height="100%">
+  <defs>
+    <linearGradient id="floorGradConn" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F5F3EC"/>
+      <stop offset="100%" stop-color="#E2DDD2"/>
+    </linearGradient>
+    <linearGradient id="sunGradConn" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FEF3C7" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#FDE68A" stop-opacity="0.0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Canvas Container -->
+  <rect width="500" height="320" rx="14" fill="#FAFAF7" stroke="#E5E0D8" stroke-width="1.5"/>
+
+  <!-- Axonometric Floor Base -->
+  <polygon points="60,220 250,300 440,220 250,140" fill="url(#floorGradConn)" stroke="#2C4035" stroke-width="2.5" stroke-linejoin="round"/>
+
+  <!-- Back Left Wall with Window -->
+  <polygon points="60,220 60,100 250,20 250,140" fill="#EFECE6" stroke="#2C4035" stroke-width="2.5" stroke-linejoin="round"/>
+  
+  <!-- Back Right Low Partition / Half Wall -->
+  <polygon points="250,140 250,70 440,150 440,220" fill="#DFDAD0" stroke="#2C4035" stroke-width="2.5" stroke-linejoin="round"/>
+
+  <!-- Window & Daylight Sunrays -->
+  <polygon points="85,160 135,135 135,85 85,110" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+  <polygon points="95,145 250,230 310,200 135,115" fill="url(#sunGradConn)"/>
+  <text x="95" y="80" font-family="'Inter', sans-serif" font-size="10" font-weight="600" fill="#D97706">Gün Işığı Teması</text>
+
+  <!-- Living Space Furniture (Sofa & Coffee Table) -->
+  <!-- Sofa Body -->
+  <polygon points="120,225 180,195 240,225 180,255" fill="#3B82F6" opacity="0.85" stroke="#1E40AF" stroke-width="1.5"/>
+  <polygon points="120,225 120,205 180,175 180,195" fill="#2563EB" stroke="#1E40AF" stroke-width="1.5"/>
+  
+  <!-- Seated Family Silhouette on Sofa -->
+  <g transform="translate(150, 180)">
+    <circle cx="10" cy="5" r="7" fill="#1E3A8A"/>
+    <path d="M3 16 C3 11 17 11 17 16 L18 30 L2 30 Z" fill="#1E3A8A"/>
+  </g>
+
+  <!-- Study Desk & Chair (Semi-Connected Zone) -->
+  <polygon points="310,190 380,155 410,170 340,205" fill="#2C4035" stroke="#1E2D25" stroke-width="1.5"/>
+  
+  <!-- Working Silhouette at Desk -->
+  <g transform="translate(345, 145)">
+    <circle cx="10" cy="8" r="8" fill="#1E2D25"/>
+    <path d="M3 22 C3 16 17 16 17 22 L18 40 L2 40 Z" fill="#1E2D25"/>
+  </g>
+  <rect x="350" y="168" width="16" height="10" rx="1" fill="#FFFFFF" stroke="#1E2D25" stroke-width="1.5" transform="skewY(-15)"/>
+
+  <!-- Sightlines (Görüş Çizgileri) -->
+  <path d="M160 185 Q 260 160 355 153" fill="none" stroke="#2563EB" stroke-width="2" stroke-dasharray="6 4"/>
+  <polygon points="355,153 345,150 348,157" fill="#2563EB"/>
+  
+  <g transform="translate(245, 148)">
+    <rect x="-45" y="-12" width="90" height="22" rx="11" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.5"/>
+    <text x="0" y="3" font-family="'Inter', sans-serif" font-size="9.5" font-weight="700" fill="#1E40AF" text-anchor="middle">👁️ Görsel Bağlantı</text>
+  </g>
+
+  <!-- Title Label -->
+  <rect x="15" y="15" width="280" height="26" rx="6" fill="#FFFFFF" stroke="#2C4035" stroke-width="1.5"/>
+  <text x="155" y="32" font-family="'Inter', sans-serif" font-size="12" font-weight="700" fill="#2C4035" text-anchor="middle">Ortak Yaşama Bağlı Çalışma Alanı</text>
+</svg>
