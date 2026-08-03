@@ -1,7 +1,7 @@
 /**
  * BRIF.AI — Automated Scope, Surface & Payload Unit Tests (v6.2 Engine)
  *
- * Verifies core architectural principles across 107 test scenarios:
+ * Verifies core architectural principles across 112 test scenarios:
  * 1-28. Universal scope, surface, and empty state assertions
  * 29 (Test A). Finans Kulesi 18. Kat -> 32. Kat transition consistency
  * 30 (Test B). Kampüs Blok A -> Blok B transition consistency
@@ -17,6 +17,7 @@
  * 61-75. Visual preference click, state, round, layout, and stage regressions
  * 76-91. Workspace mode renderers and atomic scenario regressions
  * 92-107. Structured scenario quick-reply and preference-state regressions
+ * 108-112. Browser assertion isolation and repeat-run regressions
  */
 
 class TestScopeGuard {
@@ -26,11 +27,125 @@ class TestScopeGuard {
     this.resolver = new WorkspaceScopeResolver(this.hierarchy, this.store);
     this.guard = new RenderCompatibilityGuard(this.hierarchy);
     this.registry = new DOMSurfaceRegistry();
+    this.runId = `run-${TestScopeGuard.nextRunSequence()}`;
+    this.testNodeSequence = 0;
+    this.testNodes = [];
+    this.testRoot = null;
+  }
+
+  static nextRunSequence() {
+    TestScopeGuard.runSequence = (TestScopeGuard.runSequence || 0) + 1;
+    return TestScopeGuard.runSequence;
+  }
+
+  captureGlobals() {
+    const names = [
+      "appStateMachine",
+      "appDOMRegistry",
+      "appPlanEditor",
+      "appOrchestrator",
+      "__xss",
+      "__assistantXss",
+      "__parserXss",
+      "__scenarioXss",
+      "__quickReplyXss"
+    ];
+    return Object.fromEntries(names.map(name => [name, {
+      exists: Object.prototype.hasOwnProperty.call(window, name),
+      value: window[name]
+    }]));
+  }
+
+  restoreGlobals(globals) {
+    Object.entries(globals).forEach(([name, previous]) => {
+      if (previous.exists) {
+        window[name] = previous.value;
+      } else {
+        delete window[name];
+      }
+    });
+  }
+
+  captureProductionState(stateMachine = window.appStateMachine) {
+    const captureElement = id => {
+      const element = document.getElementById(id);
+      return element ? element.outerHTML : null;
+    };
+    const chat = document.getElementById("chatMessagesContainer");
+    const activeSnapshot = stateMachine && typeof stateMachine.getSnapshot === "function"
+      ? stateMachine.getSnapshot()
+      : null;
+
+    return {
+      activeSnapshot: JSON.stringify(activeSnapshot),
+      chat: {
+        html: chat ? chat.innerHTML : null,
+        messageCount: chat ? chat.querySelectorAll(".chat-message").length : 0,
+        messageTexts: chat
+          ? Array.from(chat.querySelectorAll(".chat-message .message-text"))
+            .map(element => element.textContent)
+          : []
+      },
+      workspace: {
+        bodyHtml: document.body.innerHTML,
+        architectDecisionHistory: captureElement("architectDecisionHistory"),
+        planEditorContainer: captureElement("planEditorContainer"),
+        visualPreferencesContent: captureElement("visualPreferencesContent")
+      }
+    };
+  }
+
+  beginIsolation() {
+    const root = document.createElement("div");
+    root.id = `test-scope-guard-${this.runId}-root`;
+    root.dataset.testScopeGuardRoot = this.runId;
+    root.style.cssText = "position:fixed;left:-10000px;top:0;width:1200px;z-index:-1;";
+    ["click", "submit", "change", "input"].forEach(eventName => {
+      root.addEventListener(eventName, event => event.stopPropagation());
+    });
+    document.body.appendChild(root);
+    this.testRoot = root;
+    this.testNodes.push(root);
+  }
+
+  installIsolatedGlobals() {
+    window.appDOMRegistry = new DOMSurfaceRegistry();
+    window.appStateMachine = new ContextStateMachine(this.hierarchy);
+    window.appPlanEditor = { render() {} };
+    window.appOrchestrator = null;
+    delete window.__xss;
+    delete window.__assistantXss;
+    delete window.__parserXss;
+    delete window.__scenarioXss;
+    delete window.__quickReplyXss;
+  }
+
+  createTestElement(label, tagName = "div", appendToRoot = true) {
+    const element = document.createElement(tagName);
+    this.testNodeSequence += 1;
+    element.id = `test-scope-guard-${this.runId}-${this.testNodeSequence}-${label}`;
+    if (appendToRoot) {
+      this.testRoot.appendChild(element);
+    }
+    this.testNodes.push(element);
+    return element;
+  }
+
+  cleanupTestNodes() {
+    [...this.testNodes].reverse().forEach(node => node.remove());
+    this.testNodes = [];
+    this.testRoot = null;
   }
 
   async runAllTests() {
     await this.store.initialize();
     const results = [];
+    const productionGlobals = this.captureGlobals();
+    const productionStateMachine = productionGlobals.appStateMachine.value;
+    const productionBefore = this.captureProductionState(productionStateMachine);
+    this.beginIsolation();
+    this.installIsolatedGlobals();
+    try {
 
     // Test 1: Plan incompatibility
     const ctx1 = { projectId: "proj_house_2story", buildingId: "bldg_main", levelId: "lvl_upper", entityId: "space_master_bath" };
@@ -75,7 +190,7 @@ class TestScopeGuard {
     results.push({ name: "Test 7: Scoped Actions Filtering (House action excluded in Campus)", pass: isHouseActionInCampus === false });
 
     // Test 8: Report empty state
-    const dummyContainer = document.createElement("div");
+    const dummyContainer = this.createTestElement("report-empty-8", "div", false);
     this.guard.renderReportEmptyState(dummyContainer, ctx1, "Çalışma Odası Kararı");
     const hasEmptyStateText = dummyContainer.innerHTML.includes("Bu aktif kapsam için mimar karar raporu bulunmuyor");
     results.push({ name: "Test 8: Report Empty State (No Blank Container)", pass: hasEmptyStateText === true });
@@ -141,13 +256,13 @@ class TestScopeGuard {
     results.push({ name: "Test 19: Render Registry Cleanup Assertion", pass: mountedHouseSurfaces.length === 0 });
 
     // Test 20: Plan provenance assertion
-    const dummyPlanEl = document.createElement("div");
+    const dummyPlanEl = this.createTestElement("plan-provenance-20", "div", false);
     dummyPlanEl.setAttribute("data-project-id", ctxTower.projectId);
     const provPass = dummyPlanEl.getAttribute("data-project-id") === "proj_tower_50floor";
     results.push({ name: "Test 20: Plan Provenance Assertion", pass: provPass === true });
 
     // Tests 21-28
-    const towerEmptyContainer = document.createElement("div");
+    const towerEmptyContainer = this.createTestElement("tower-empty-21", "div", false);
     this.guard.renderPlanEmptyState(towerEmptyContainer, ctxTower);
     const towerEmptyHTML = towerEmptyContainer.innerHTML;
     const towerPositivePass = towerEmptyHTML.includes("Bu kapsam için şematik plan bulunmuyor") &&
@@ -155,7 +270,7 @@ class TestScopeGuard {
                               towerEmptyHTML.includes("18. Kat");
     results.push({ name: "Test 21: Tower Positive Plan Empty State Assertion", pass: towerPositivePass === true });
 
-    const campusEmptyContainer = document.createElement("div");
+    const campusEmptyContainer = this.createTestElement("campus-empty-22", "div", false);
     this.guard.renderPlanEmptyState(campusEmptyContainer, campusCtx);
     const campusEmptyHTML = campusEmptyContainer.innerHTML;
     const campusPositivePass = campusEmptyHTML.includes("Bu kapsam için şematik plan bulunmuyor") &&
@@ -164,21 +279,21 @@ class TestScopeGuard {
     results.push({ name: "Test 22: Campus Positive Plan Empty State Assertion", pass: campusPositivePass === true });
 
     const regTest = new DOMSurfaceRegistry();
-    const presenterTest = new WorkspacePresenter("dummy", { hierarchy: this.hierarchy, guard: this.guard, registry: regTest });
-    presenterTest.container = document.createElement("div");
+    const presenterTest = new WorkspacePresenter("dummy", { hierarchy: this.hierarchy, guard: this.guard, registry: regTest, syncGlobalUI: false });
+    presenterTest.container = this.createTestElement("presenter-empty-23", "div", false);
     presenterTest.renderWorkspaceEmptyState({ activeContext: ctxTower });
     const mountedEmptySurfaces = regTest.getMountedSurfacesForProject("proj_tower_50floor");
     const emptyMountedPass = mountedEmptySurfaces.length > 0 && mountedEmptySurfaces[0].documentType === "empty_state";
     results.push({ name: "Test 23: Empty-State Registry Mounting", pass: emptyMountedPass === true });
 
-    const dummyMsg = document.createElement("div");
+    const dummyMsg = this.createTestElement("assistant-message-24", "div", false);
     dummyMsg.className = "chat-message assistant";
     const msgPass = dummyMsg.classList.contains("assistant") && dummyMsg.classList.contains("chat-message");
     results.push({ name: "Test 24: Assistant Panel Structured DOM", pass: msgPass === true });
 
-    const inputEl = document.createElement("input");
+    const inputEl = this.createTestElement("assistant-input-25", "input", false);
     inputEl.id = "assistantUserInput";
-    const btnEl = document.createElement("button");
+    const btnEl = this.createTestElement("send-button-25", "button", false);
     btnEl.className = "send-btn";
     const controlsPass = inputEl.id === "assistantUserInput" && btnEl.classList.contains("send-btn");
     results.push({ name: "Test 25: Assistant Panel Styled Controls", pass: controlsPass === true });
@@ -220,7 +335,8 @@ class TestScopeGuard {
     // Test 31 (Test C): House -> Tower surface clearing
     const regC = new DOMSurfaceRegistry();
     const snapC = smA.transitionToContext({ projectId: "proj_tower_50floor", buildingId: "tower_a", levelId: "lvl_18" });
-    regC.mountSurface({ surfaceId: "surf_house_plan", containerId: "planEditorContainer", projectId: "proj_house_2story" });
+    const planSurface31 = this.createTestElement("plan-surface-31");
+    regC.mountSurface({ surfaceId: "surf_house_plan", containerId: planSurface31.id, projectId: "proj_house_2story" });
     regC.unmountIncompatibleSurfaces(snapC);
     const testCPass = regC.getMountedSurfacesForProject("proj_house_2story").length === 0;
     results.push({ name: "Test 31 (Test C): House to Tower Surface Clearing", pass: testCPass === true });
@@ -274,11 +390,12 @@ class TestScopeGuard {
         entityId: "space_meeting_18a"
       }
     });
+    const chat37 = this.createTestElement("chat-37");
     const orchestrator37 = new ConversationOrchestrator({
       hierarchy: this.hierarchy,
-      stateMachine: sm37
+      stateMachine: sm37,
+      chatContainerId: chat37.id
     });
-    orchestrator37.chatContainerId = "test-scope-guard-missing-37";
     orchestrator37.setStage(2);
     const snap37 = sm37.getSnapshot();
     const test37Pass = snap37.projectId === "proj_tower_50floor" &&
@@ -298,11 +415,12 @@ class TestScopeGuard {
         entityId: "space_robotics_lab"
       }
     });
+    const chat38 = this.createTestElement("chat-38");
     const orchestrator38 = new ConversationOrchestrator({
       hierarchy: this.hierarchy,
-      stateMachine: sm38
+      stateMachine: sm38,
+      chatContainerId: chat38.id
     });
-    orchestrator38.chatContainerId = "test-scope-guard-missing-38";
     orchestrator38.setStage(3);
     const snap38 = sm38.getSnapshot();
     const test38Pass = snap38.projectId === "proj_campus_multiblock" &&
@@ -352,11 +470,8 @@ class TestScopeGuard {
     results.push({ name: "Test 40: Foreign Entity Cannot Produce Hybrid Snapshot", pass: test40Pass });
 
     // Test 41: User HTML payload remains inert text
-    const chat41 = document.createElement("div");
-    chat41.id = "test-scope-guard-chat-41";
-    document.body.appendChild(chat41);
-    const orchestrator41 = new ConversationOrchestrator({ hierarchy: this.hierarchy });
-    orchestrator41.chatContainerId = chat41.id;
+    const chat41 = this.createTestElement("chat-41");
+    const orchestrator41 = new ConversationOrchestrator({ hierarchy: this.hierarchy, chatContainerId: chat41.id });
     delete window.__xss;
     const userPayload41 = '<img src=x onerror="window.__xss=true">';
     orchestrator41.appendUserMessage(userPayload41);
@@ -370,11 +485,8 @@ class TestScopeGuard {
     results.push({ name: "Test 41: User Chat HTML Is Inert", pass: test41Pass === true });
 
     // Test 42: Assistant scripts and quick-reply attributes remain inert
-    const chat42 = document.createElement("div");
-    chat42.id = "test-scope-guard-chat-42";
-    document.body.appendChild(chat42);
-    const orchestrator42 = new ConversationOrchestrator({ hierarchy: this.hierarchy });
-    orchestrator42.chatContainerId = chat42.id;
+    const chat42 = this.createTestElement("chat-42");
+    const orchestrator42 = new ConversationOrchestrator({ hierarchy: this.hierarchy, chatContainerId: chat42.id });
     delete window.__assistantXss;
     const assistantPayload42 = '<script>window.__assistantXss=true</script>';
     const quickReply42 = '"><svg onload="window.__assistantXss=true">';
@@ -399,12 +511,13 @@ class TestScopeGuard {
       }
     };
     const sm43 = new ContextStateMachine(this.hierarchy);
+    const chat43 = this.createTestElement("chat-43");
     const orchestrator43 = new ConversationOrchestrator({
       hierarchy: this.hierarchy,
       stateMachine: sm43,
-      historyManager: history43
+      historyManager: history43,
+      chatContainerId: chat43.id
     });
-    orchestrator43.chatContainerId = "test-scope-guard-missing-43";
     const applied43 = orchestrator43.applyMasterBathOption(1);
     const snap43 = sm43.getSnapshot();
     const historyState43 = history43.states[history43.states.length - 1];
@@ -440,11 +553,12 @@ class TestScopeGuard {
 
     // Test 45: Architect view round-trip preserves the last customer stage
     const sm45 = new ContextStateMachine(this.hierarchy);
+    const chat45 = this.createTestElement("chat-45");
     const orchestrator45 = new ConversationOrchestrator({
       hierarchy: this.hierarchy,
-      stateMachine: sm45
+      stateMachine: sm45,
+      chatContainerId: chat45.id
     });
-    orchestrator45.chatContainerId = "test-scope-guard-missing-45";
     orchestrator45.setStage(2);
     sm45.dispatch({ type: "ARCHITECT_VIEW_OPENED" });
     const architectSnapshot45 = sm45.getSnapshot();
@@ -466,11 +580,12 @@ class TestScopeGuard {
 
     // Test 47: House stage changes preserve the active spatial scope
     const sm47 = new ContextStateMachine(this.hierarchy);
+    const chat47 = this.createTestElement("chat-47");
     const orchestrator47 = new ConversationOrchestrator({
       hierarchy: this.hierarchy,
-      stateMachine: sm47
+      stateMachine: sm47,
+      chatContainerId: chat47.id
     });
-    orchestrator47.chatContainerId = "test-scope-guard-missing-47";
     orchestrator47.setStage(1);
     const snap47 = sm47.getSnapshot();
     const test47Pass = snap47.projectId === "proj_house_2story" &&
@@ -520,12 +635,13 @@ class TestScopeGuard {
       hierarchy: this.hierarchy,
       stateMachine: sm51
     });
+    const chat51 = this.createTestElement("chat-51");
     const orchestrator51 = new ConversationOrchestrator({
       hierarchy: this.hierarchy,
       stateMachine: sm51,
-      assistant: assistant51
+      assistant: assistant51,
+      chatContainerId: chat51.id
     });
-    orchestrator51.chatContainerId = "test-scope-guard-missing-51";
     orchestrator51.handleUserMessage(masterText50);
     const snap51 = sm51.getSnapshot();
     const test51Pass = snap51.scenarioId === "master_bath_relocation" &&
@@ -552,9 +668,7 @@ class TestScopeGuard {
     results.push({ name: "Test 52: Empty And Invalid Messages Are Safe", pass: test52Pass });
 
     // Test 53: HTML remains inert through the complete generic chat path
-    const chat53 = document.createElement("div");
-    chat53.id = "test-scope-guard-chat-53";
-    document.body.appendChild(chat53);
+    const chat53 = this.createTestElement("chat-53");
     const sm53 = new ContextStateMachine(this.hierarchy);
     const assistant53 = new ContextualAssistant({
       hierarchy: this.hierarchy,
@@ -563,9 +677,9 @@ class TestScopeGuard {
     const orchestrator53 = new ConversationOrchestrator({
       hierarchy: this.hierarchy,
       stateMachine: sm53,
-      assistant: assistant53
+      assistant: assistant53,
+      chatContainerId: chat53.id
     });
-    orchestrator53.chatContainerId = chat53.id;
     delete window.__parserXss;
     const htmlPayload53 = '<img src=x onerror="window.__parserXss=true">';
     orchestrator53.appendUserMessage(htmlPayload53);
@@ -579,16 +693,14 @@ class TestScopeGuard {
     delete window.__parserXss;
     results.push({ name: "Test 53: Generic Chat HTML Is Inert", pass: test53Pass });
 
-    const visualContainer = document.createElement("div");
-    visualContainer.id = "test-scope-guard-visual-preferences";
-    document.body.appendChild(visualContainer);
+    const visualContainer = this.createTestElement("visual-preferences");
     const visualRegistry = new DOMSurfaceRegistry();
     const visualPresenter = new WorkspacePresenter(visualContainer.id, {
       hierarchy: this.hierarchy,
       store: this.store,
       resolver: this.resolver,
       guard: this.guard,
-      registry: visualRegistry
+      registry: visualRegistry, syncGlobalUI: false
     });
     const towerVisualContext = {
       projectId: "proj_tower_50floor",
@@ -672,11 +784,12 @@ class TestScopeGuard {
         entityId: "space_meeting_18a"
       }
     });
+    const chat60 = this.createTestElement("chat-60");
     const orchestrator60 = new ConversationOrchestrator({
       hierarchy: this.hierarchy,
-      stateMachine: sm60
+      stateMachine: sm60,
+      chatContainerId: chat60.id
     });
-    orchestrator60.chatContainerId = "test-scope-guard-missing-60";
     orchestrator60.setStage(2);
     const snap60 = sm60.getSnapshot();
     visualPresenter.renderVisualPreferences(snap60);
@@ -907,9 +1020,7 @@ class TestScopeGuard {
 
     visualContainer.remove();
 
-    const modeContainer = document.createElement("div");
-    modeContainer.id = "test-scope-guard-workspace-modes";
-    document.body.appendChild(modeContainer);
+    const modeContainer = this.createTestElement("workspace-modes");
     const modeState = new ContextStateMachine(this.hierarchy);
     const modePresenter = new WorkspacePresenter(modeContainer.id, {
       hierarchy: this.hierarchy,
@@ -917,7 +1028,7 @@ class TestScopeGuard {
       resolver: this.resolver,
       guard: this.guard,
       registry: new DOMSurfaceRegistry(),
-      stateMachine: modeState
+      stateMachine: modeState, syncGlobalUI: false
     });
 
     // Test 76: Every declared custom workspace mode has its renderer contract
@@ -1011,18 +1122,16 @@ class TestScopeGuard {
     results.push({ name: "Test 81: Unknown Mode Shows Safe Fallback", pass: test81Pass });
     modeContainer.remove();
 
-    const scenarioContainer82 = document.createElement("div");
-    scenarioContainer82.id = "test-scope-guard-master-bath-workspace";
-    document.body.appendChild(scenarioContainer82);
-    const scenarioChat82 = document.createElement("div");
-    scenarioChat82.id = "test-scope-guard-master-bath-chat";
-    document.body.appendChild(scenarioChat82);
+    const scenarioContainer82 = this.createTestElement("master-bath-workspace-82");
+    const scenarioChat82 = this.createTestElement("master-bath-chat-82");
+    const reportContainer88 = this.createTestElement("architect-report-88");
     const scenarioState82 = new ContextStateMachine(this.hierarchy);
     const scenarioHistory82 = new ChangeHistory({
       hierarchy: this.hierarchy,
       store: this.store,
       resolver: this.resolver,
-      guard: this.guard
+      guard: this.guard,
+      reportContainerId: reportContainer88.id
     });
     const scenarioPresenter82 = new WorkspacePresenter(scenarioContainer82.id, {
       hierarchy: this.hierarchy,
@@ -1030,7 +1139,7 @@ class TestScopeGuard {
       resolver: this.resolver,
       guard: this.guard,
       registry: new DOMSurfaceRegistry(),
-      stateMachine: scenarioState82
+      stateMachine: scenarioState82, syncGlobalUI: false
     });
     const scenarioAssistant82 = new ContextualAssistant({
       hierarchy: this.hierarchy,
@@ -1043,9 +1152,9 @@ class TestScopeGuard {
       resolver: this.resolver,
       assistant: scenarioAssistant82,
       presenter: scenarioPresenter82,
-      historyManager: scenarioHistory82
+      historyManager: scenarioHistory82,
+      chatContainerId: scenarioChat82.id
     });
-    scenarioOrchestrator82.chatContainerId = scenarioChat82.id;
     scenarioOrchestrator82.triggerFloorOverlayScenario();
     const publishedSnapshots82 = [];
     scenarioState82.subscribe(snapshot => publishedSnapshots82.push(snapshot));
@@ -1064,12 +1173,8 @@ class TestScopeGuard {
     results.push({ name: "Test 82: Overlay To Master Bath Is Safe", pass: test82Pass });
 
     // Test 83: Orientation does not crash or leak into the master-bath scenario
-    const orientationContainer83 = document.createElement("div");
-    orientationContainer83.id = "test-scope-guard-orientation-workspace";
-    document.body.appendChild(orientationContainer83);
-    const orientationChat83 = document.createElement("div");
-    orientationChat83.id = "test-scope-guard-orientation-chat";
-    document.body.appendChild(orientationChat83);
+    const orientationContainer83 = this.createTestElement("orientation-workspace-83");
+    const orientationChat83 = this.createTestElement("orientation-chat-83");
     const orientationState83 = new ContextStateMachine(this.hierarchy);
     const orientationPresenter83 = new WorkspacePresenter(orientationContainer83.id, {
       hierarchy: this.hierarchy,
@@ -1077,15 +1182,15 @@ class TestScopeGuard {
       resolver: this.resolver,
       guard: this.guard,
       registry: new DOMSurfaceRegistry(),
-      stateMachine: orientationState83
+      stateMachine: orientationState83, syncGlobalUI: false
     });
     const orientationOrchestrator83 = new ConversationOrchestrator({
       hierarchy: this.hierarchy,
       stateMachine: orientationState83,
       assistant: new ContextualAssistant({ hierarchy: this.hierarchy, stateMachine: orientationState83 }),
-      presenter: orientationPresenter83
+      presenter: orientationPresenter83,
+      chatContainerId: orientationChat83.id
     });
-    orientationOrchestrator83.chatContainerId = orientationChat83.id;
     orientationOrchestrator83.triggerOrientationScenario();
     let orientationError83 = null;
     try {
@@ -1138,8 +1243,6 @@ class TestScopeGuard {
     results.push({ name: "Test 87: Master Bath Prompt And Quick Replies Render", pass: test87Pass });
 
     // Test 88: ChangeHistory resolves the active snapshot and never falls back to lvl_ground
-    const reportContainer88 = document.getElementById("architectDecisionHistory");
-    const previousReport88 = reportContainer88 ? reportContainer88.innerHTML : "";
     const originalConsoleWarn88 = console.warn;
     const capturedWarnings88 = [];
     console.warn = (...args) => capturedWarnings88.push(args.map(String).join(" "));
@@ -1149,24 +1252,22 @@ class TestScopeGuard {
       console.warn = originalConsoleWarn88;
     }
     const test88Pass = scenarioHistory82.sessionState.levelId === "lvl_upper" &&
-      capturedWarnings88.length === 0;
-    if (reportContainer88) reportContainer88.innerHTML = previousReport88;
+      capturedWarnings88.length === 0 &&
+      reportContainer88.childElementCount > 0;
     results.push({ name: "Test 88: ChangeHistory Uses Current Scenario Snapshot", pass: test88Pass });
 
     // Test 89: A real form submit runs the complete master-bath message path
-    const form89 = document.createElement("form");
-    const input89 = document.createElement("input");
-    const chat89 = document.createElement("div");
-    chat89.id = "test-scope-guard-form-chat";
+    const form89 = this.createTestElement("form-89", "form");
+    const input89 = this.createTestElement("input-89", "input", false);
+    const chat89 = this.createTestElement("form-chat-89");
     form89.appendChild(input89);
-    document.body.append(form89, chat89);
     const formState89 = new ContextStateMachine(this.hierarchy);
     const formOrchestrator89 = new ConversationOrchestrator({
       hierarchy: this.hierarchy,
       stateMachine: formState89,
-      assistant: new ContextualAssistant({ hierarchy: this.hierarchy, stateMachine: formState89 })
+      assistant: new ContextualAssistant({ hierarchy: this.hierarchy, stateMachine: formState89 }),
+      chatContainerId: chat89.id
     });
-    formOrchestrator89.chatContainerId = chat89.id;
     form89.addEventListener("submit", event => {
       event.preventDefault();
       const text = input89.value.trim();
@@ -1215,13 +1316,9 @@ class TestScopeGuard {
     delete window.__scenarioXss;
     results.push({ name: "Test 91: Master Bath Scenario HTML Is Inert", pass: test91Pass });
 
-    const structuredWorkspace92 = document.createElement("div");
-    structuredWorkspace92.id = "test-scope-guard-structured-workspace";
-    const structuredChat92 = document.createElement("div");
-    structuredChat92.id = "test-scope-guard-structured-chat";
-    const planContainer92 = document.createElement("div");
-    planContainer92.id = "test-scope-guard-plan-geometry";
-    document.body.append(structuredWorkspace92, structuredChat92, planContainer92);
+    const structuredWorkspace92 = this.createTestElement("structured-workspace-92");
+    const structuredChat92 = this.createTestElement("structured-chat-92");
+    const planContainer92 = this.createTestElement("plan-geometry-92");
     const structuredState92 = new ContextStateMachine(this.hierarchy);
     const structuredPresenter92 = new WorkspacePresenter(structuredWorkspace92.id, {
       hierarchy: this.hierarchy,
@@ -1229,7 +1326,7 @@ class TestScopeGuard {
       resolver: this.resolver,
       guard: this.guard,
       registry: new DOMSurfaceRegistry(),
-      stateMachine: structuredState92
+      stateMachine: structuredState92, syncGlobalUI: false
     });
     const structuredOrchestrator92 = new ConversationOrchestrator({
       hierarchy: this.hierarchy,
@@ -1238,14 +1335,14 @@ class TestScopeGuard {
         hierarchy: this.hierarchy,
         stateMachine: structuredState92
       }),
-      presenter: structuredPresenter92
+      presenter: structuredPresenter92,
+      chatContainerId: structuredChat92.id
     });
-    structuredOrchestrator92.chatContainerId = structuredChat92.id;
     structuredOrchestrator92.triggerMasterBathScenario(
       "Ebeveyn banyosunu kuzey tarafına alalım."
     );
 
-    const planEditor92 = new PlanEditor(planContainer92.id);
+    const planEditor92 = new PlanEditor(planContainer92.id, { bindWindowEvents: false });
     planEditor92.loadData({
       alternatives: {
         a: {
@@ -1365,6 +1462,7 @@ class TestScopeGuard {
     results.push({ name: "Test 101: Stale Scenario Quick Reply Is Ignored", pass: test101Pass });
 
     // Test 102: A house reply cannot alter another project's state
+    const foreignChat102 = this.createTestElement("cross-project-chat-102");
     const foreignState102 = new ContextStateMachine(this.hierarchy);
     const foreignOrchestrator102 = new ConversationOrchestrator({
       hierarchy: this.hierarchy,
@@ -1372,9 +1470,13 @@ class TestScopeGuard {
       assistant: new ContextualAssistant({
         hierarchy: this.hierarchy,
         stateMachine: foreignState102
-      })
+      }),
+      chatContainerId: foreignChat102.id
     });
     foreignOrchestrator102.selectProject("proj_tower_50floor");
+    const foreignMessage102 = foreignOrchestrator102.allChatMessages.at(-1)?.text || "";
+    const foreignMessageIsolated102 = Boolean(foreignMessage102) &&
+      foreignChat102.textContent.includes("A Kulesi");
     const foreignMessagesBefore102 = foreignOrchestrator102.allChatMessages.length;
     const foreignAccepted102 = foreignOrchestrator102.handleQuickReply({ ...replyRegistry92[1] });
     const foreignSnapshot102 = foreignState102.getSnapshot();
@@ -1389,9 +1491,7 @@ class TestScopeGuard {
     results.push({ name: "Test 103: Quick Reply Listener Does Not Duplicate", pass: test103Pass });
 
     // Test 104: Free text records the same preference inside the active scenario
-    const freeTextChat104 = document.createElement("div");
-    freeTextChat104.id = "test-scope-guard-free-text-chat";
-    document.body.appendChild(freeTextChat104);
+    const freeTextChat104 = this.createTestElement("free-text-chat-104");
     const freeTextState104 = new ContextStateMachine(this.hierarchy);
     const freeTextOrchestrator104 = new ConversationOrchestrator({
       hierarchy: this.hierarchy,
@@ -1399,9 +1499,9 @@ class TestScopeGuard {
       assistant: new ContextualAssistant({
         hierarchy: this.hierarchy,
         stateMachine: freeTextState104
-      })
+      }),
+      chatContainerId: freeTextChat104.id
     });
-    freeTextOrchestrator104.chatContainerId = freeTextChat104.id;
     freeTextOrchestrator104.triggerMasterBathScenario("Ebeveyn banyosunu kuzey tarafına alalım.");
     freeTextOrchestrator104.appendUserMessage(replyRegistry92[1].label);
     freeTextOrchestrator104.handleUserMessage(replyRegistry92[1].label);
@@ -1412,9 +1512,7 @@ class TestScopeGuard {
     results.push({ name: "Test 104: Active Scenario Free Text Records Preference", pass: test104Pass });
 
     // Test 105: The same free text remains generic outside the scenario
-    const genericChat105 = document.createElement("div");
-    genericChat105.id = "test-scope-guard-generic-preference-chat";
-    document.body.appendChild(genericChat105);
+    const genericChat105 = this.createTestElement("generic-preference-chat-105");
     const genericState105 = new ContextStateMachine(this.hierarchy);
     const genericOrchestrator105 = new ConversationOrchestrator({
       hierarchy: this.hierarchy,
@@ -1422,9 +1520,9 @@ class TestScopeGuard {
       assistant: new ContextualAssistant({
         hierarchy: this.hierarchy,
         stateMachine: genericState105
-      })
+      }),
+      chatContainerId: genericChat105.id
     });
-    genericOrchestrator105.chatContainerId = genericChat105.id;
     genericOrchestrator105.appendUserMessage(replyRegistry92[1].label);
     genericOrchestrator105.handleUserMessage(replyRegistry92[1].label);
     const genericSnapshot105 = genericState105.getSnapshot();
@@ -1469,25 +1567,152 @@ class TestScopeGuard {
     delete window.__quickReplyXss;
     results.push({ name: "Test 107: Structured Quick Reply HTML Is Inert", pass: test107Pass });
 
-    scenarioContainer82.remove();
-    scenarioChat82.remove();
-    orientationContainer83.remove();
-    orientationChat83.remove();
-    form89.remove();
-    chat89.remove();
-    structuredWorkspace92.remove();
-    structuredChat92.remove();
-    planContainer92.remove();
-    freeTextChat104.remove();
-    genericChat105.remove();
+    const runRepeatedAssertion112 = label => {
+      const chat = this.createTestElement(`repeat-chat-${label}`);
+      const stateMachine = new ContextStateMachine(this.hierarchy);
+      const orchestrator = new ConversationOrchestrator({
+        hierarchy: this.hierarchy,
+        stateMachine,
+        assistant: new ContextualAssistant({ hierarchy: this.hierarchy, stateMachine }),
+        chatContainerId: chat.id
+      });
+      let listenerInvocations = 0;
+      chat.addEventListener("click", event => {
+        const chip = event.target.closest(".followup-chip");
+        if (!chip) return;
+        listenerInvocations += 1;
+        orchestrator.handleQuickReply({
+          label: chip.textContent || chip.dataset.reply || "",
+          action: chip.dataset.action,
+          value: chip.dataset.value,
+          optionId: chip.dataset.optionId,
+          scenarioId: chip.dataset.scenarioId,
+          decisionId: chip.dataset.decisionId,
+          preferenceKey: chip.dataset.preferenceKey,
+          preferenceValue: chip.dataset.preferenceValue
+        });
+      });
+      orchestrator.triggerMasterBathScenario("Repeat-run browser assertion.");
+      chat.querySelector(".followup-chip")
+        .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+      return {
+        chatId: chat.id,
+        listenerInvocations,
+        userMessageCount: chat.querySelectorAll(".chat-message.user").length,
+        acknowledgementCount: Array.from(
+          chat.querySelectorAll(".chat-message.assistant .message-text")
+        ).filter(element => element.textContent.includes("plan otomatik")).length
+      };
+    };
+    const repeatedRunA112 = runRepeatedAssertion112("a");
+    const repeatedRunB112 = runRepeatedAssertion112("b");
+    const repeatedRunPass112 = repeatedRunA112.chatId !== repeatedRunB112.chatId &&
+      [repeatedRunA112, repeatedRunB112].every(run =>
+        run.listenerInvocations === 1 &&
+        run.userMessageCount === 1 &&
+        run.acknowledgementCount === 1
+      );
+
+    this.cleanupTestNodes();
+    this.restoreGlobals(productionGlobals);
+
+    const productionAfter = this.captureProductionState(window.appStateMachine);
+    const productionChatUnchanged108 = productionAfter.chat.html === productionBefore.chat.html &&
+      productionAfter.chat.messageCount === productionBefore.chat.messageCount;
+    results.push({
+      name: "Test 108: Browser Assertions Do Not Mutate Production Chat",
+      pass: productionChatUnchanged108
+    });
+
+    const foreignMessageCountAfter102 = productionAfter.chat.messageTexts
+      .filter(message => message === foreignMessage102).length;
+    results.push({
+      name: "Test 109: Cross-Project Test Message Does Not Appear In Real UI",
+      pass: foreignMessageIsolated102 &&
+        foreignMessageCountAfter102 === 0
+    });
+
+    const globalsRestored110 = Object.entries(productionGlobals).every(([name, previous]) =>
+      previous.exists
+        ? window[name] === previous.value
+        : !Object.prototype.hasOwnProperty.call(window, name)
+    );
+    results.push({
+      name: "Test 110: Production Active Snapshot Unchanged After Test Suite",
+      pass: globalsRestored110 &&
+        productionAfter.activeSnapshot === productionBefore.activeSnapshot
+    });
+
+    const productionWorkspaceUnchanged111 = JSON.stringify(productionAfter.workspace) ===
+      JSON.stringify(productionBefore.workspace);
+    results.push({
+      name: "Test 111: Production Workspace DOM Unchanged After Test Suite",
+      pass: productionWorkspaceUnchanged111
+    });
+
+    const noTestRoots112 = document.querySelectorAll("[data-test-scope-guard-root]").length === 0;
+    results.push({
+      name: "Test 112: Repeated Test Run Does Not Duplicate Messages Or Listeners",
+      pass: repeatedRunPass112 && noTestRoots112 && productionChatUnchanged108
+    });
+
+    window.scopeGuardLastRun = {
+      runId: this.runId,
+      assertionCount: results.length,
+      passedCount: results.filter(result => result.pass).length,
+      productionChat: {
+        beforeMessageCount: productionBefore.chat.messageCount,
+        afterMessageCount: productionAfter.chat.messageCount,
+        htmlUnchanged: productionChatUnchanged108
+      },
+      activeSnapshotUnchanged:
+        productionAfter.activeSnapshot === productionBefore.activeSnapshot,
+      workspaceDomUnchanged: productionWorkspaceUnchanged111
+    };
 
     console.log(`=== Scope, Surface & Payload Guard Unit Test Results (${results.length} total) ===`);
     results.forEach(r => console.log(`${r.pass ? '✅ PASS' : '❌ FAIL'}: ${r.name}`));
 
     return results;
+    } finally {
+      this.cleanupTestNodes();
+      this.restoreGlobals(productionGlobals);
+    }
   }
 }
 
-// Auto-run on load in dev console
+async function waitForProductionApp(timeoutMs = 10000) {
+  if (document.readyState === "loading") {
+    await new Promise(resolve => {
+      document.addEventListener("DOMContentLoaded", resolve, { once: true });
+    });
+  }
+
+  const deadline = performance.now() + timeoutMs;
+  while (
+    (!window.appStateMachine ||
+      !window.appDOMRegistry ||
+      !window.appPlanEditor ||
+      !window.appOrchestrator) &&
+    performance.now() < deadline
+  ) {
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+
+  if (!window.appStateMachine || !window.appDOMRegistry ||
+      !window.appPlanEditor || !window.appOrchestrator) {
+    throw new Error("Production application did not initialize before browser assertions.");
+  }
+
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+}
+
 window.TestScopeGuard = TestScopeGuard;
-new TestScopeGuard().runAllTests();
+window.runScopeGuardAssertions = async () => {
+  await waitForProductionApp();
+  const results = await new TestScopeGuard().runAllTests();
+  window.scopeGuardLastResults = results;
+  return results;
+};
+window.scopeGuardTestPromise = window.runScopeGuardAssertions();

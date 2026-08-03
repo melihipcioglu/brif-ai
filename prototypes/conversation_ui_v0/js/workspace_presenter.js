@@ -18,6 +18,7 @@ class WorkspacePresenter {
     this.guard = options.guard || new RenderCompatibilityGuard(this.hierarchy);
     this.registry = options.registry || (window.appDOMRegistry || new DOMSurfaceRegistry());
     this.stateMachine = options.stateMachine || null;
+    this.syncGlobalUI = options.syncGlobalUI !== false;
   }
 
   setMode(mode, data = {}) {
@@ -71,16 +72,18 @@ class WorkspacePresenter {
     this.registry.unmountIncompatibleSurfaces(ctx);
 
     // 3. Render Assistant Badge & Header Info strictly from Snapshot (Requirement 2)
-    this.assertUIContextConsistency(ctx);
+    if (this.syncGlobalUI) {
+      this.assertUIContextConsistency(ctx);
 
-    // 4. Render Contextual Chat Input Placeholder (Requirement 5)
-    this.renderContextualChatPlaceholder(ctx);
+      // 4. Render Contextual Chat Input Placeholder (Requirement 5)
+      this.renderContextualChatPlaceholder(ctx);
 
-    // 5. Render Dynamic Navigation Tabs strictly from Snapshot (Requirements 1, 2 & 6)
-    this.renderDynamicNavigationTabs(ctx);
+      // 5. Render Dynamic Navigation Tabs strictly from Snapshot (Requirements 1, 2 & 6)
+      this.renderDynamicNavigationTabs(ctx);
 
-    // 6. Render Alternative Selectors Bar strictly scoped by Snapshot Capabilities (Requirements 2 & 4)
-    this.renderAlternativeSelectors(ctx);
+      // 6. Render Alternative Selectors Bar strictly scoped by Snapshot Capabilities (Requirements 2 & 4)
+      this.renderAlternativeSelectors(ctx);
+    }
 
     // 7. Workspace Document Pipeline & Explicit Empty State (Requirements 1, 2 & 6)
     if (workspaceMode === 'plan' || workspaceMode === 'stage3_program') {
@@ -137,7 +140,9 @@ class WorkspacePresenter {
     }
 
     // 8. Render Capability-Based Scoped Actions Bar (Requirement 4)
-    this.renderScopedActions(ctx);
+    if (this.syncGlobalUI) {
+      this.renderScopedActions(ctx);
+    }
   }
 
   renderVisualPreferences(activeContext) {

@@ -176,6 +176,8 @@ class PlanEditor {
 
     // Mouse Dragging Simulation (Requirement 5)
     let isDragging = false;
+    if (this.options.bindWindowEvents === false) return;
+
     let dragSpaceId = null;
     let startX = 0, startY = 0;
     let origX = 0, origY = 0;

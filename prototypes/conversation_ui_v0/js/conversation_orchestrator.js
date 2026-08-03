@@ -18,7 +18,7 @@ class ConversationOrchestrator {
     this.historyManager = options.historyManager;
     this.intentParser = new DemoIntentParser();
 
-    this.chatContainerId = 'chatMessagesContainer';
+    this.chatContainerId = options.chatContainerId || 'chatMessagesContainer';
     this.allChatMessages = [];
     this.chatFilterMode = 'active_scope';
 

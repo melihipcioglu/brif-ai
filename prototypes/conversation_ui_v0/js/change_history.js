@@ -12,6 +12,7 @@ class ChangeHistory {
     this.store = options.store || new ScopedDocumentStore();
     this.resolver = options.resolver || new WorkspaceScopeResolver(this.hierarchy, this.store);
     this.guard = options.guard || new RenderCompatibilityGuard(this.hierarchy);
+    this.reportContainerId = options.reportContainerId || 'architectDecisionHistory';
     this.sessionState = null;
   }
 
@@ -26,7 +27,7 @@ class ChangeHistory {
   // Scoped Decision Report Renderer (Requirements 3, 9, 11 & 12)
   renderArchitectReport(activeSnapshot = null) {
     const st = activeSnapshot || this.sessionState;
-    const container = document.getElementById('architectDecisionHistory');
+    const container = document.getElementById(this.reportContainerId);
 
     if (!st) {
       if (container) {
