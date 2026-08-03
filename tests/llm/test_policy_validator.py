@@ -201,9 +201,7 @@ def test_relationship_request_is_normalized_from_full_sentence() -> None:
     data = valid_result_data()
     data["intent"] = "request_visual_preference"
     request = conversation_request().model_copy(
-        update={
-            "message": "Ebeveyn banyosu yataktan görünmesin ve kuzey tarafında olsun."
-        }
+        update={"message": "Ebeveyn banyosu yataktan görünmesin ve kuzey tarafında olsun."}
     )
 
     safe_result = ArchitecturalIntentPolicyValidator().validate(

@@ -162,9 +162,7 @@ def test_out_of_scope_room_request_becomes_safe_follow_up() -> None:
     actions[0]["target_entity_id"] = "space_master_bathroom"
     actions[0]["description"] = "space_master_bathroom kuzey yönüne alınsın."
     request = conversation_request().model_copy(
-        update={
-            "message": "Ebeveyn banyosu yataktan görünmesin ve kuzey tarafında olsun."
-        }
+        update={"message": "Ebeveyn banyosu yataktan görünmesin ve kuzey tarafında olsun."}
     )
     original_request = request.model_dump()
     provider = MockProvider(ArchitecturalIntentResult.model_validate(data))
@@ -182,8 +180,7 @@ def test_out_of_scope_room_request_becomes_safe_follow_up() -> None:
     assert response.result.needs_follow_up is True
     assert response.result.needs_user_confirmation is False
     assert not any(
-        action.action_type in PLAN_CHANGE_ACTIONS
-        for action in response.result.proposed_actions
+        action.action_type in PLAN_CHANGE_ACTIONS for action in response.result.proposed_actions
     )
     assert "güvenlik kurallarını geçemedi" not in response.result.assistant_message
     assert_no_internal_ids(response.result)

@@ -158,9 +158,7 @@ class OllamaProvider:
             if not isinstance(raw_payload, dict):
                 raise TypeError("response payload must be an object")
             response_payload = cast(dict[str, Any], raw_payload)
-            self.last_performance_metrics = OllamaPerformanceMetrics.from_response(
-                response_payload
-            )
+            self.last_performance_metrics = OllamaPerformanceMetrics.from_response(response_payload)
             message = response_payload["message"]
             if not isinstance(message, dict):
                 raise TypeError("message must be an object")

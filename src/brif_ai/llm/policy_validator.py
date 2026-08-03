@@ -52,9 +52,7 @@ _RELATIONSHIP_TERMS = (
 def sanitize_public_text(text: str, visible_entities: list[VisibleEntity]) -> str:
     """Remove machine identifiers from text that can be shown to a user."""
 
-    entity_names = {
-        entity.entity_id.casefold(): entity.name for entity in visible_entities
-    }
+    entity_names = {entity.entity_id.casefold(): entity.name for entity in visible_entities}
 
     def replacement(match: re.Match[str]) -> str:
         identifier = match.group("identifier")
@@ -176,8 +174,7 @@ class ArchitecturalIntentPolicyValidator:
         recovered = result.model_copy(
             update={
                 "assistant_message": (
-                    f"{subject} talebinizi anladım. Ancak şu anda farklı bir "
-                    "mekân kapsamındasınız."
+                    f"{subject} talebinizi anladım. Ancak şu anda farklı bir mekân kapsamındasınız."
                 ),
                 "target": EntityTarget(
                     project_id=active.project_id,
@@ -249,12 +246,8 @@ class ArchitecturalIntentPolicyValidator:
                 "interpreted_priorities": [
                     sanitize(text) for text in result.interpreted_priorities
                 ],
-                "constraints_to_check": [
-                    sanitize(text) for text in result.constraints_to_check
-                ],
-                "missing_information": [
-                    sanitize(text) for text in result.missing_information
-                ],
+                "constraints_to_check": [sanitize(text) for text in result.constraints_to_check],
+                "missing_information": [sanitize(text) for text in result.missing_information],
                 "proposed_actions": actions,
                 "warnings": [sanitize(text) for text in result.warnings],
             }
