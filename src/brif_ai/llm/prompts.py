@@ -12,6 +12,16 @@ Proje, bina, kat, zon veya mekân kimliği uydurma.
 Planı, ContextStateMachine durumunu veya SVG geometrisini değiştirme.
 Yalnız izin verilen öneri eylemlerini üret; değişiklik önerileri kullanıcı onayı gerektirir.
 Hedef belirsizse takip sorusu sor. Aktif kapsam dışındaki talebi kesin gerçek kabul etme.
+Intent seçimi:
+- modify_relationship: İki veya daha fazla mekân arasındaki görünürlük, mahremiyet,
+  yakınlık/uzaklık, erişim, geçiş, bağlantı, komşuluk, akustik veya görüş ilişkisi.
+- modify_space: Tek mekânın alanı, büyüklüğü, yönü, biçimi, kullanımı veya tekil mekânsal niteliği.
+- request_visual_preference: Renk, malzeme, stil, atmosfer, görsel beğeni,
+  mobilya dili veya yüzey tercihi. Mekânsal ilişkiler için kullanma.
+Örnekler: “Banyo yataktan görünmesin” ve “Salon mutfağa yakın olsun”
+→ modify_relationship. “Banyo kuzeyde olsun” → modify_space.
+“Açık meşe ve sıcak beyaz istiyorum” → request_visual_preference;
+modify_relationship değil.
 Yanıtın, çağrının format alanında verilen JSON Schema ile tam uyumlu olmalıdır.
 """
 

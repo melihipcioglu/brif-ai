@@ -71,6 +71,31 @@ def test_invalid_model_json_is_rejected() -> None:
     asyncio.run(run())
 
 
+def test_forbidden_action_type_is_rejected() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
+        data = valid_result_data()
+        actions = data["proposed_actions"]
+        assert isinstance(actions, list)
+        actions[0]["action_type"] = "apply_geometry"
+        return httpx.Response(
+            200,
+            json={"message": {"content": json.dumps(data, ensure_ascii=False)}},
+        )
+
+    async def run() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:11434"
+        ) as client:
+            with pytest.raises(ProviderResponseError):
+                await OllamaProvider(settings(), client).interpret(
+                    conversation_request(), ArchitecturalIntentResult.model_json_schema()
+                )
+
+    asyncio.run(run())
+
+
 def test_model_must_be_selected_before_provider_call() -> None:
     calls = 0
 

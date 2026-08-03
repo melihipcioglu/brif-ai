@@ -13,7 +13,10 @@ from brif_ai.llm.contracts import (
     ProposalApprovalRecord,
     ProposedAction,
 )
-from brif_ai.llm.policy_validator import ArchitecturalIntentPolicyValidator
+from brif_ai.llm.policy_validator import (
+    ArchitecturalIntentPolicyValidator,
+    ScopeMismatchError,
+)
 from brif_ai.llm.provider import LocalLLMProvider
 from brif_ai.llm.settings import LocalLLMSettings
 
@@ -73,7 +76,10 @@ class LocalLLMConversationService:
             request,
             ArchitecturalIntentResult.model_json_schema(),
         )
-        safe_result = self.policy_validator.validate(result, request)
+        try:
+            safe_result = self.policy_validator.validate(result, request)
+        except ScopeMismatchError:
+            safe_result = self.policy_validator.recover_scope_mismatch(result, request)
         return ConversationInterpretationResponse(
             success=True,
             llm_enabled=True,

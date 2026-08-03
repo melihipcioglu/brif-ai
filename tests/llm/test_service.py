@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import pytest
 
 from brif_ai.llm.contracts import (
+    PLAN_CHANGE_ACTIONS,
     ArchitecturalIntentResult,
     ConversationRequest,
     LocalModelInfo,
@@ -20,7 +21,7 @@ from brif_ai.llm.service import (
 from brif_ai.llm.settings import LocalLLMSettings
 
 from .test_contracts import valid_result_data
-from .test_policy_validator import conversation_request
+from .test_policy_validator import assert_no_internal_ids, conversation_request
 
 
 class MockProvider:
@@ -96,7 +97,10 @@ def test_user_approval_only_creates_proposal_record() -> None:
 @pytest.mark.parametrize(
     ("message", "intent"),
     [
-        ("Ebeveyn banyosu yataktan görünmesin ve kuzey tarafında olsun.", "modify_space"),
+        (
+            "Ebeveyn banyosu yataktan görünmesin ve kuzey tarafında olsun.",
+            "modify_relationship",
+        ),
         ("Bu iki plan üst üste gelince ne olduğunu anlamadım.", "explain_plan"),
         ("Çalışma odası sessiz olsun ama tamamen kopuk olmasın.", "modify_relationship"),
     ],
@@ -145,6 +149,74 @@ def test_scenario_c_without_active_entity_requires_follow_up() -> None:
 
     assert response.result is not None
     assert response.result.needs_follow_up is True
+
+
+def test_out_of_scope_room_request_becomes_safe_follow_up() -> None:
+    data = valid_result_data()
+    data["intent"] = "request_visual_preference"
+    target = data["target"]
+    assert isinstance(target, dict)
+    target["entity_id"] = "space_master_bathroom"
+    actions = data["proposed_actions"]
+    assert isinstance(actions, list)
+    actions[0]["target_entity_id"] = "space_master_bathroom"
+    actions[0]["description"] = "space_master_bathroom kuzey yönüne alınsın."
+    request = conversation_request().model_copy(
+        update={
+            "message": "Ebeveyn banyosu yataktan görünmesin ve kuzey tarafında olsun."
+        }
+    )
+    original_request = request.model_dump()
+    provider = MockProvider(ArchitecturalIntentResult.model_validate(data))
+    llm_service = LocalLLMConversationService(
+        LocalLLMSettings(enabled=True, model="local-model:latest"), provider
+    )
+
+    response = asyncio.run(llm_service.interpret(request))
+
+    assert response.success is True
+    assert response.error is None
+    assert response.result is not None
+    assert response.result.intent.value == "modify_relationship"
+    assert response.result.target.entity_id is None
+    assert response.result.needs_follow_up is True
+    assert response.result.needs_user_confirmation is False
+    assert not any(
+        action.action_type in PLAN_CHANGE_ACTIONS
+        for action in response.result.proposed_actions
+    )
+    assert "güvenlik kurallarını geçemedi" not in response.result.assistant_message
+    assert_no_internal_ids(response.result)
+    assert request.model_dump() == original_request
+
+
+def test_active_relationship_request_stays_a_confirmation_only_suggestion() -> None:
+    data = valid_result_data()
+    data["intent"] = "modify_space"
+    actions = data["proposed_actions"]
+    assert isinstance(actions, list)
+    actions[0].update(
+        {
+            "action_type": "suggest_relationship_change",
+            "description": "Akustik bağlantıyı koruyacak bir tampon öner.",
+        }
+    )
+    request = conversation_request().model_copy(
+        update={"message": "Çalışma odası sessiz olsun ama tamamen kopuk olmasın."}
+    )
+    original_request = request.model_dump()
+    provider = MockProvider(ArchitecturalIntentResult.model_validate(data))
+    llm_service = LocalLLMConversationService(
+        LocalLLMSettings(enabled=True, model="local-model:latest"), provider
+    )
+
+    response = asyncio.run(llm_service.interpret(request))
+
+    assert response.result is not None
+    assert response.result.intent.value == "modify_relationship"
+    assert response.result.needs_user_confirmation is True
+    assert response.result.proposed_actions[0].requires_user_confirmation is True
+    assert request.model_dump() == original_request
 
 
 def test_scenario_f_provider_failure_preserves_request_state() -> None:

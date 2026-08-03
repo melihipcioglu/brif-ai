@@ -15,6 +15,17 @@ from brif_ai.llm.policy_validator import (
 
 from .test_contracts import valid_result_data
 
+INTERNAL_ID_PREFIXES = (
+    "space_",
+    "project_",
+    "building_",
+    "block_",
+    "level_",
+    "lvl_",
+    "zone_",
+    "entity_",
+)
+
 
 def conversation_request(*, entity_id: str | None = "space_study") -> ConversationRequest:
     return ConversationRequest(
@@ -40,6 +51,44 @@ def conversation_request(*, entity_id: str | None = "space_study") -> Conversati
             )
         ],
     )
+
+
+def request_with_master_bathroom() -> ConversationRequest:
+    request = conversation_request()
+    return request.model_copy(
+        update={
+            "visible_entities": [
+                *request.visible_entities,
+                VisibleEntity(
+                    entity_id="space_master_bathroom",
+                    entity_type="space",
+                    name="Ebeveyn Banyosu",
+                    project_id="proj_house_2story",
+                    building_id="bldg_main",
+                    level_id="lvl_ground",
+                    zone_id="zone_living",
+                ),
+            ]
+        }
+    )
+
+
+def public_texts(result: ArchitecturalIntentResult) -> list[str]:
+    return [
+        result.assistant_message,
+        result.follow_up_question or "",
+        *result.user_requirements,
+        *result.interpreted_priorities,
+        *result.constraints_to_check,
+        *result.missing_information,
+        *result.warnings,
+        *(action.description for action in result.proposed_actions),
+    ]
+
+
+def assert_no_internal_ids(result: ArchitecturalIntentResult) -> None:
+    combined = "\n".join(public_texts(result)).casefold()
+    assert all(prefix not in combined for prefix in INTERNAL_ID_PREFIXES)
 
 
 def result() -> ArchitecturalIntentResult:
@@ -146,3 +195,124 @@ def test_confidence_does_not_override_scope_policy() -> None:
         ArchitecturalIntentPolicyValidator().validate(
             ArchitecturalIntentResult.model_validate(data), conversation_request()
         )
+
+
+def test_relationship_request_is_normalized_from_full_sentence() -> None:
+    data = valid_result_data()
+    data["intent"] = "request_visual_preference"
+    request = conversation_request().model_copy(
+        update={
+            "message": "Ebeveyn banyosu yataktan görünmesin ve kuzey tarafında olsun."
+        }
+    )
+
+    safe_result = ArchitecturalIntentPolicyValidator().validate(
+        ArchitecturalIntentResult.model_validate(data), request
+    )
+
+    assert safe_result.intent.value == "modify_relationship"
+
+
+def test_material_and_color_request_remains_visual_preference() -> None:
+    data = valid_result_data()
+    data.update(
+        {
+            "assistant_message": "Açık meşe ve sıcak beyaz tonlarını değerlendirebilirim.",
+            "intent": "request_visual_preference",
+            "user_requirements": ["Açık meşe ve sıcak beyaz tonları."],
+            "interpreted_priorities": ["sıcak atmosfer"],
+            "constraints_to_check": [],
+        }
+    )
+    request = conversation_request().model_copy(
+        update={"message": "Çalışma odasında açık meşe ve sıcak beyaz tonları istiyorum."}
+    )
+
+    safe_result = ArchitecturalIntentPolicyValidator().validate(
+        ArchitecturalIntentResult.model_validate(data), request
+    )
+
+    assert safe_result.intent.value == "request_visual_preference"
+
+
+@pytest.mark.parametrize(
+    "public_field",
+    [
+        "assistant_message",
+        "follow_up_question",
+        "warning",
+        "action_description",
+        "constraint",
+        "missing_information",
+    ],
+)
+def test_internal_id_is_removed_from_each_public_response_field(
+    public_field: str,
+) -> None:
+    data = valid_result_data()
+    leaked_text = "space_master_bedroom için değerlendirme yapalım."
+    if public_field == "assistant_message":
+        data["assistant_message"] = leaked_text
+    elif public_field == "follow_up_question":
+        data["needs_follow_up"] = True
+        data["follow_up_question"] = leaked_text
+    elif public_field == "warning":
+        data["warnings"] = [leaked_text]
+    elif public_field == "action_description":
+        actions = data["proposed_actions"]
+        assert isinstance(actions, list)
+        actions[0]["description"] = leaked_text
+    elif public_field == "constraint":
+        data["constraints_to_check"] = [leaked_text]
+    else:
+        data["missing_information"] = [leaked_text]
+
+    safe_result = ArchitecturalIntentPolicyValidator().validate(
+        ArchitecturalIntentResult.model_validate(data), conversation_request()
+    )
+
+    assert_no_internal_ids(safe_result)
+
+
+def test_visible_entity_id_is_replaced_with_natural_name() -> None:
+    data = valid_result_data()
+    data["assistant_message"] = "space_master_bathroom için mahremiyet önerisi hazırlayabilirim."
+
+    safe_result = ArchitecturalIntentPolicyValidator().validate(
+        ArchitecturalIntentResult.model_validate(data),
+        request_with_master_bathroom(),
+    )
+
+    assert "Ebeveyn Banyosu" in safe_result.assistant_message
+    assert_no_internal_ids(safe_result)
+
+
+def test_unmatched_internal_ids_use_safe_natural_fallbacks() -> None:
+    data = valid_result_data()
+    data["warnings"] = [
+        (
+            "space_unknown_room project_unknown building_unknown block_unknown "
+            "level_unknown lvl_unknown zone_unknown entity_unknown"
+        )
+    ]
+
+    safe_result = ArchitecturalIntentPolicyValidator().validate(
+        ArchitecturalIntentResult.model_validate(data), conversation_request()
+    )
+
+    assert "ilgili mekân" in safe_result.warnings[0]
+    assert_no_internal_ids(safe_result)
+
+
+def test_machine_target_id_is_preserved_while_public_text_is_sanitized() -> None:
+    data = valid_result_data()
+    data["assistant_message"] = "space_study için öneri hazırlayabilirim."
+
+    safe_result = ArchitecturalIntentPolicyValidator().validate(
+        ArchitecturalIntentResult.model_validate(data), conversation_request()
+    )
+
+    assert safe_result.target.entity_id == "space_study"
+    assert safe_result.proposed_actions[0].target_entity_id == "space_study"
+    assert "Çalışma Odası" in safe_result.assistant_message
+    assert_no_internal_ids(safe_result)
