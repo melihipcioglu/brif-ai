@@ -272,6 +272,104 @@ def test_internal_id_is_removed_from_each_public_response_field(
     assert_no_internal_ids(safe_result)
 
 
+def test_follow_up_question_is_cleared_when_follow_up_is_not_needed() -> None:
+    data = valid_result_data()
+    data["needs_follow_up"] = False
+    data["follow_up_question"] = "Bu soru kullanıcıya gösterilmemeli."
+
+    safe_result = ArchitecturalIntentPolicyValidator().validate(
+        ArchitecturalIntentResult.model_validate(data), conversation_request()
+    )
+
+    assert safe_result.needs_follow_up is False
+    assert safe_result.follow_up_question is None
+
+
+@pytest.mark.parametrize(
+    "public_field",
+    [
+        "assistant_message",
+        "follow_up_question",
+        "user_requirement",
+        "interpreted_priority",
+        "constraint",
+        "missing_information",
+        "warning",
+        "action_description",
+    ],
+)
+def test_internal_technical_terms_are_localized_in_each_public_response_field(
+    public_field: str,
+) -> None:
+    data = valid_result_data()
+    leaked_text = (
+        "pending_proposals içinde modify_space için contextFingerprint ve generationId "
+        "takip ediliyor."
+    )
+    if public_field == "assistant_message":
+        data["assistant_message"] = leaked_text
+    elif public_field == "follow_up_question":
+        data["needs_follow_up"] = True
+        data["follow_up_question"] = leaked_text
+    elif public_field == "user_requirement":
+        data["user_requirements"] = [leaked_text]
+    elif public_field == "interpreted_priority":
+        data["interpreted_priorities"] = [leaked_text]
+    elif public_field == "constraint":
+        data["constraints_to_check"] = [leaked_text]
+    elif public_field == "missing_information":
+        data["missing_information"] = [leaked_text]
+    elif public_field == "warning":
+        data["warnings"] = [leaked_text]
+    else:
+        actions = data["proposed_actions"]
+        assert isinstance(actions, list)
+        actions[0]["description"] = leaked_text
+
+    safe_result = ArchitecturalIntentPolicyValidator().validate(
+        ArchitecturalIntentResult.model_validate(data), conversation_request()
+    )
+
+    combined = "\n".join(public_texts(safe_result))
+    combined_casefolded = combined.casefold()
+    assert "pending_proposals" not in combined_casefolded
+    assert "modify_space" not in combined_casefolded
+    assert "contextfingerprint" not in combined_casefolded
+    assert "generationid" not in combined_casefolded
+    assert "bekleyen öneriler" in combined_casefolded
+    assert "mekân düzenleme önerisi" in combined_casefolded
+    assert "bağlam bilgisi" in combined_casefolded
+    assert "bağlam sürümü" in combined_casefolded
+
+
+@pytest.mark.parametrize(
+    ("internal_term", "natural_phrase"),
+    [
+        ("pendingProposals", "bekleyen öneriler"),
+        ("proposed_actions", "önerilen adımlar"),
+        ("modifyRelationship", "mekânsal ilişki düzenleme önerisi"),
+        ("active_context", "aktif bağlam"),
+        ("targetEntityId", "ilgili öğe bilgisi"),
+        ("requires_user_confirmation", "kullanıcı onayı gerekiyor"),
+        ("followUpQuestion", "takip sorusu"),
+        ("request_visual_preference", "görsel tercih talebi"),
+    ],
+)
+def test_related_internal_terms_are_localized(
+    internal_term: str,
+    natural_phrase: str,
+) -> None:
+    data = valid_result_data()
+    data["assistant_message"] = f"{internal_term} kullanıcıya gösterilmemeli."
+
+    safe_result = ArchitecturalIntentPolicyValidator().validate(
+        ArchitecturalIntentResult.model_validate(data), conversation_request()
+    )
+
+    assert internal_term.casefold() not in safe_result.assistant_message.casefold()
+    assert natural_phrase in safe_result.assistant_message.casefold()
+
+
 def test_visible_entity_id_is_replaced_with_natural_name() -> None:
     data = valid_result_data()
     data["assistant_message"] = "space_master_bathroom için mahremiyet önerisi hazırlayabilirim."

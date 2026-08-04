@@ -30,6 +30,71 @@ _PUBLIC_FALLBACKS = {
     "zone": "ilgili bölge",
     "entity": "ilgili öğe",
 }
+_PUBLIC_TECHNICAL_TERM_REPLACEMENTS = (
+    ("pending_user_confirmation", "kullanıcı onayı bekleniyor"),
+    ("requires_user_confirmation", "kullanıcı onayı gerekiyor"),
+    ("needs_user_confirmation", "kullanıcı onayı gereksinimi"),
+    ("needs_follow_up", "ek bilgi gereksinimi"),
+    ("follow_up_question", "takip sorusu"),
+    ("assistant_message", "asistan yanıtı"),
+    ("pending_proposals", "bekleyen öneriler"),
+    ("pending_proposal", "bekleyen öneri"),
+    ("proposed_actions", "önerilen adımlar"),
+    ("proposed_action", "önerilen adım"),
+    ("conversation_summary", "konuşma özeti"),
+    ("current_decisions", "mevcut kararlar"),
+    ("visible_entities", "görünür öğeler"),
+    ("active_context", "aktif bağlam"),
+    ("context_fingerprint", "bağlam bilgisi"),
+    ("generation_id", "bağlam sürümü"),
+    ("target_entity_id", "ilgili öğe bilgisi"),
+    ("entity_id", "öğe bilgisi"),
+    ("project_id", "proje bilgisi"),
+    ("building_id", "yapı bilgisi"),
+    ("level_id", "kat bilgisi"),
+    ("zone_id", "bölge bilgisi"),
+    ("action_type", "öneri türü"),
+    ("intent_type", "talep türü"),
+    ("user_requirements", "kullanıcı gereksinimleri"),
+    ("interpreted_priorities", "yorumlanan öncelikler"),
+    ("constraints_to_check", "incelenecek kısıtlar"),
+    ("missing_information", "eksik bilgiler"),
+    ("gather_requirement", "gereksinim toplama"),
+    ("modify_relationship", "mekânsal ilişki düzenleme önerisi"),
+    ("modify_space", "mekân düzenleme önerisi"),
+    ("explain_plan", "plan açıklaması"),
+    ("compare_alternatives", "alternatif karşılaştırması"),
+    ("inspect_constraint", "kısıt incelemesi"),
+    ("request_visual_preference", "görsel tercih talebi"),
+    ("highlight_entity", "ilgili öğeyi vurgulama"),
+    ("focus_entity", "ilgili öğeye odaklanma"),
+    ("request_clarification", "açıklama isteme"),
+    ("suggest_space_resize", "mekân boyutu önerisi"),
+    ("suggest_relationship_change", "mekânsal ilişki önerisi"),
+    ("suggest_orientation_change", "yönlenme önerisi"),
+)
+
+
+def _internal_term_pattern(term: str) -> re.Pattern[str]:
+    words = term.split("_")
+    return re.compile(
+        r"(?<![\w])" + r"[_\s-]*".join(map(re.escape, words)) + r"(?![\w])",
+        re.IGNORECASE,
+    )
+
+
+_PUBLIC_TECHNICAL_TERM_PATTERNS = tuple(
+    (_internal_term_pattern(term), replacement)
+    for term, replacement in _PUBLIC_TECHNICAL_TERM_REPLACEMENTS
+)
+
+
+def _localize_internal_terms(text: str) -> str:
+    for pattern, replacement in _PUBLIC_TECHNICAL_TERM_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
 _RELATIONSHIP_TERMS = (
     "görünür",
     "görünmesin",
@@ -62,7 +127,8 @@ def sanitize_public_text(text: str, visible_entities: list[VisibleEntity]) -> st
         prefix = identifier.split("_", maxsplit=1)[0].casefold()
         return _PUBLIC_FALLBACKS[prefix]
 
-    sanitized = _INTERNAL_ID_PATTERN.sub(replacement, text)
+    sanitized = _localize_internal_terms(text)
+    sanitized = _INTERNAL_ID_PATTERN.sub(replacement, sanitized)
     sanitized = re.sub(r"[ \t]+", " ", sanitized)
     sanitized = re.sub(r" +([,.!?;:])", r"\1", sanitized)
     sanitized = "\n".join(line.strip() for line in sanitized.splitlines()).strip()
@@ -234,7 +300,7 @@ class ArchitecturalIntentPolicyValidator:
             action.model_copy(update={"description": sanitize(action.description)})
             for action in result.proposed_actions
         ]
-        return result.model_copy(
+        sanitized = result.model_copy(
             update={
                 "assistant_message": sanitize(result.assistant_message),
                 "follow_up_question": (
@@ -252,6 +318,9 @@ class ArchitecturalIntentPolicyValidator:
                 "warnings": [sanitize(text) for text in result.warnings],
             }
         )
+        if not sanitized.needs_follow_up:
+            return sanitized.model_copy(update={"follow_up_question": None})
+        return sanitized
 
     @staticmethod
     def _match_scope(field: str, proposed: str | None, active: str | None) -> None:

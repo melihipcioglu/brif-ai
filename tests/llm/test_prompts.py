@@ -117,6 +117,8 @@ def test_pending_proposal_target_must_be_visible() -> None:
 
 
 def test_system_prompt_preserves_pending_proposal_continuity() -> None:
+    assert "doğal Türkçe" in SYSTEM_PROMPT
+    assert "iç alan veya enum adlarını" in SYSTEM_PROMPT
     assert "ilk analizi tekrarlama" in SYSTEM_PROMPT
     assert "henüz onaylanmış karar değildir" in SYSTEM_PROMPT
     assert "onaylama, ayrıntılandırma veya vazgeçme" in SYSTEM_PROMPT
