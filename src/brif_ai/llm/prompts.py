@@ -31,6 +31,18 @@ modify_relationship değil.
 Yanıtın, çağrının format alanında verilen JSON Schema ile tam uyumlu olmalıdır.
 """
 
+SCHEMA_REPAIR_PROMPT = f"""{SYSTEM_PROMPT}
+Önceki yanıt JSON Schema doğrulamasından geçmedi.
+Yalnızca çağrının format alanındaki JSON Schema ile tam uyumlu tek bir JSON nesnesi üret.
+Markdown, kod bloğu, açıklama veya JSON nesnesi dışında serbest metin üretme.
+Önceki geçersiz cevabı yorumlama, ondan veri çıkarmaya çalışma ve verilmeyen bilgi uydurma.
+Aynı doğrulanmış kullanıcı isteğini ve bağlamı kullan; bağlam, görünür kapsam, bekleyen öneri
+ve kullanıcı onayı kurallarını değiştirme.
+Eksik bilgi varsa şemadaki takip alanlarını kullan; plan değişikliğini uygulama, yalnızca
+kullanıcı onayı gerektiren bir öneri olarak döndür.
+Yanıtı kısa tut, ancak şemanın zorunlu alanlarının tamamını üret.
+"""
+
 
 def build_user_prompt(request: ConversationRequest) -> str:
     """Serialize only the minimum validated context needed for interpretation."""
