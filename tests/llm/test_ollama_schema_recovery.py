@@ -69,6 +69,44 @@ def test_schema_invalid_response_is_repaired_once_without_reusing_untrusted_outp
     assert invalid_content not in json.dumps(repair, ensure_ascii=False)
 
 
+def test_length_limited_json_gets_one_repair_with_the_full_output_budget() -> None:
+    chat_payloads: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
+        payload = json.loads(request.content)
+        chat_payloads.append(payload)
+        if len(chat_payloads) == 1:
+            return httpx.Response(
+                200,
+                json={
+                    "message": {"content": '{"assistant_message":"yarım'},
+                    "done_reason": "length",
+                    "eval_count": payload["options"]["num_predict"],
+                },
+            )
+        return httpx.Response(
+            200,
+            json={"message": {"content": json.dumps(valid_result_data())}},
+        )
+
+    async def run() -> ArchitecturalIntentResult:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:11434"
+        ) as client:
+            return await OllamaProvider(settings(), client).interpret(
+                conversation_request(), schema()
+            )
+
+    result = asyncio.run(run())
+
+    assert result.intent.value == "modify_space"
+    assert len(chat_payloads) == 2
+    assert chat_payloads[0]["options"]["num_predict"] == 768
+    assert chat_payloads[1]["options"]["num_predict"] == 768
+
+
 def test_valid_json_with_invalid_schema_is_repaired_once() -> None:
     chat_calls = 0
 
@@ -207,7 +245,16 @@ def test_repair_preserves_validated_context_and_pending_proposal() -> None:
         "house|main|upper|private|master-bath"
     )
     assert repair_context["active_context"]["generation_id"] == 7
-    assert repair_context["pending_proposals"] == request_data()["pending_proposals"]
+    pending = request_data()["pending_proposals"]
+    assert isinstance(pending, list)
+    first_pending = pending[0]
+    assert isinstance(first_pending, dict)
+    assert repair_context["pending_proposals"] == [
+        {
+            "status": first_pending["status"],
+            "action": first_pending["action"],
+        }
+    ]
 
 
 @pytest.mark.parametrize(
