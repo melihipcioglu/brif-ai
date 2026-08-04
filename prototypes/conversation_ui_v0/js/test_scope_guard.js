@@ -1,7 +1,7 @@
 /**
  * BRIF.AI — Automated Scope, Surface & Payload Unit Tests (v6.2 Engine)
  *
- * Verifies core architectural principles across 113 test scenarios:
+ * Verifies core architectural principles across 119 test scenarios:
  * 1-28. Universal scope, surface, and empty state assertions
  * 29 (Test A). Finans Kulesi 18. Kat -> 32. Kat transition consistency
  * 30 (Test B). Kampüs Blok A -> Blok B transition consistency
@@ -18,6 +18,7 @@
  * 76-91. Workspace mode renderers and atomic scenario regressions
  * 92-107. Structured scenario quick-reply and preference-state regressions
  * 108-113. Browser assertion isolation and repeat-run regressions
+ * 114-119. Pending proposal continuity, fallback, approval, and safety regressions
  */
 
 class TestScopeGuard {
@@ -48,7 +49,8 @@ class TestScopeGuard {
       "__assistantXss",
       "__parserXss",
       "__scenarioXss",
-      "__quickReplyXss"
+      "__quickReplyXss",
+      "__proposalXss"
     ];
     return Object.fromEntries(names.map(name => [name, {
       exists: Object.prototype.hasOwnProperty.call(window, name),
@@ -160,6 +162,7 @@ class TestScopeGuard {
     delete window.__parserXss;
     delete window.__scenarioXss;
     delete window.__quickReplyXss;
+    delete window.__proposalXss;
   }
 
   createTestElement(label, tagName = "div", appendToRoot = true) {
@@ -1708,6 +1711,255 @@ class TestScopeGuard {
       protectedGlobalUIUnchanged113 &&
       workspaceDiff113.changedIds.length === 0;
 
+    const createPendingHarness114 = label => {
+      const chat = this.createTestElement(`pending-chat-${label}`);
+      const stateMachine = new ContextStateMachine(this.hierarchy);
+      stateMachine.dispatch({
+        type: "SCENARIO_CONTEXT_STARTED",
+        payload: {
+          projectId: "proj_house_2story",
+          buildingId: "bldg_main",
+          levelId: "lvl_upper",
+          entityId: "space_master_bath",
+          entityType: "space",
+          scenarioId: "master_bath_relocation",
+          decisionId: "dec_master_bath",
+          targetEntityId: "space_master_bath",
+          workspaceMode: "plan"
+        }
+      });
+      const orchestrator = new ConversationOrchestrator({
+        hierarchy: this.hierarchy,
+        stateMachine,
+        assistant: this.createIsolatedAssistant(stateMachine),
+        chatContainerId: chat.id
+      });
+      const snapshot = stateMachine.getSnapshot();
+      orchestrator.appendUserMessage("Ebeveyn banyosunu kuzey tarafına alalım.");
+      orchestrator.handleStructuredLLMResponse({
+        assistant_message: "Banyoyu kuzey kenarına taşıma önerisi oluşturdum.",
+        needs_follow_up: false,
+        follow_up_question: null,
+        proposed_actions: [{
+          action_type: "suggest_orientation_change",
+          target_entity_id: "space_master_bath",
+          description: "Ebeveyn banyosunu kuzey kenarına taşı.",
+          requires_user_confirmation: true
+        }]
+      }, snapshot.contextFingerprint, snapshot.generationId);
+      return {
+        chat,
+        stateMachine,
+        orchestrator,
+        snapshot,
+        proposalId: Array.from(orchestrator.pendingProposals.keys())[0]
+      };
+    };
+
+    // Test 114: Follow-up request includes conversation and pending proposal context
+    const continuity114 = createPendingHarness114("114");
+    continuity114.orchestrator.appendUserMessage("Şimdi ne yapacağım?");
+    const continuitySummary114 = continuity114.orchestrator.getConversationSummary();
+    const continuityGateway114 = new LocalLLMGateway({
+      hierarchy: this.hierarchy,
+      stateMachine: continuity114.stateMachine,
+      orchestrator: continuity114.orchestrator,
+      fetchFn: async () => { throw new Error("not used"); }
+    });
+    const continuityRequest114 = continuityGateway114.buildRequest(
+      "Şimdi ne yapacağım?",
+      continuity114.stateMachine.getSnapshot()
+    );
+    const test114Pass = continuity114.orchestrator.pendingProposals.size === 1 &&
+      continuity114.orchestrator.proposalRecords.length === 0 &&
+      continuitySummary114.includes("Şimdi ne yapacağım?") &&
+      continuitySummary114.includes("Banyoyu kuzey kenarına taşıma önerisi oluşturdum.") &&
+      continuitySummary114.includes("Ebeveyn banyosunu kuzey kenarına taşı.") &&
+      continuitySummary114.includes("pending_user_confirmation") &&
+      continuityRequest114.pending_proposals.length === 1 &&
+      continuityRequest114.pending_proposals[0].context_fingerprint ===
+        continuity114.snapshot.contextFingerprint &&
+      continuityRequest114.pending_proposals[0].generation_id ===
+        continuity114.snapshot.generationId &&
+      continuityRequest114.current_decisions.length === 0 &&
+      !JSON.stringify(continuityRequest114.pending_proposals).includes("proposalId");
+
+    // Test 115: Every provider failure keeps the pending proposal conversation alive
+    const response115 = (ok, status, payload) => ({
+      ok,
+      status,
+      async json() { return payload; }
+    });
+    const fallbackCases115 = [
+      {
+        label: "disabled",
+        expectedStatus: "demo",
+        fetchFn: async () => response115(true, 200, {
+          success: false,
+          llm_enabled: false,
+          error: "disabled"
+        })
+      },
+      {
+        label: "unavailable",
+        expectedStatus: "error",
+        fetchFn: async () => response115(false, 503, {
+          success: false,
+          llm_enabled: true,
+          error: "offline"
+        })
+      },
+      {
+        label: "timeout",
+        expectedStatus: "timeout",
+        fetchFn: async () => {
+          const error = new Error("timeout");
+          error.name = "AbortError";
+          throw error;
+        }
+      },
+      {
+        label: "invalid-response",
+        expectedStatus: "invalid",
+        fetchFn: async () => ({
+          ok: true,
+          status: 200,
+          async json() { throw new Error("invalid json"); }
+        })
+      },
+      {
+        label: "policy-rejection",
+        expectedStatus: "invalid",
+        fetchFn: async () => response115(false, 422, {
+          success: false,
+          llm_enabled: true,
+          error: "policy rejection"
+        })
+      },
+      {
+        label: "unreachable",
+        expectedStatus: "unreachable",
+        fetchFn: async () => { throw new Error("offline"); }
+      }
+    ];
+    const fallbackRuns115 = [];
+    for (const fallbackCase of fallbackCases115) {
+      const harness = createPendingHarness114(`115-${fallbackCase.label}`);
+      harness.orchestrator.appendUserMessage("Şimdi ne yapacağım?");
+      const gateway = new LocalLLMGateway({
+        hierarchy: this.hierarchy,
+        stateMachine: harness.stateMachine,
+        orchestrator: harness.orchestrator,
+        fetchFn: fallbackCase.fetchFn
+      });
+      const outcome = await gateway.interpret("Şimdi ne yapacağım?");
+      const assistantTexts = harness.orchestrator.allChatMessages
+        .filter(message => message.role === "assistant")
+        .map(message => message.text);
+      fallbackRuns115.push({
+        label: fallbackCase.label,
+        status: outcome.status,
+        expectedStatus: fallbackCase.expectedStatus,
+        pendingCount: harness.orchestrator.pendingProposals.size,
+        decisionCount: harness.orchestrator.proposalRecords.length,
+        initialAnalysisCount: assistantTexts.filter(text =>
+          text === "Banyoyu kuzey kenarına taşıma önerisi oluşturdum."
+        ).length,
+        continued: assistantTexts.at(-1)?.includes("Bekleyen öneriniz") &&
+          assistantTexts.at(-1)?.includes("onaylayabilir") &&
+          assistantTexts.at(-1)?.includes("ayrıntılandırabilir") &&
+          assistantTexts.at(-1)?.includes("vazgeçebilirsiniz")
+      });
+    }
+    const test115Pass = fallbackRuns115.every(run =>
+      run.status === run.expectedStatus &&
+      run.pendingCount === 1 &&
+      run.decisionCount === 0 &&
+      run.initialAnalysisCount === 1 &&
+      run.continued === true
+    );
+
+    // Test 116: Explicit approval records a decision without changing the plan context
+    const approval116 = createPendingHarness114("116");
+    const approvalSnapshotBefore116 = approval116.stateMachine.getSnapshot();
+    approval116.orchestrator.appendUserMessage("Öneriyi onaylıyorum.");
+    const approvalResult116 = await approval116.orchestrator.handleUserMessage(
+      "Öneriyi onaylıyorum."
+    );
+    const approvalSnapshotAfter116 = approval116.stateMachine.getSnapshot();
+    const test116Pass = approvalResult116?.status === "approved" &&
+      approval116.orchestrator.pendingProposals.size === 0 &&
+      approval116.orchestrator.proposalRecords.length === 1 &&
+      approval116.orchestrator.getCurrentDecisions().length === 1 &&
+      approvalSnapshotAfter116.contextFingerprint ===
+        approvalSnapshotBefore116.contextFingerprint &&
+      approvalSnapshotAfter116.generationId === approvalSnapshotBefore116.generationId &&
+      approval116.orchestrator.allChatMessages.at(-1)?.text.includes(
+        "Plan henüz değiştirilmedi"
+      );
+
+    // Test 117: A generation change makes an otherwise matching proposal stale
+    const stale117 = createPendingHarness114("117");
+    stale117.stateMachine.dispatch({
+      type: "STAGE_CHANGED",
+      payload: { activeStage: 2 }
+    });
+    const staleRecord117 = stale117.orchestrator.approveProposalById(stale117.proposalId);
+    const test117Pass = staleRecord117 === null &&
+      stale117.orchestrator.pendingProposals.size === 1 &&
+      stale117.orchestrator.proposalRecords.length === 0 &&
+      stale117.orchestrator.allChatMessages.at(-1)?.text.includes("Bağlam değiştiği");
+
+    // Test 118: Proposed action descriptions remain inert DOM text
+    delete window.__proposalXss;
+    const proposalXssChat118 = this.createTestElement("proposal-xss-chat-118");
+    const proposalXssState118 = new ContextStateMachine(this.hierarchy);
+    const proposalXssOrchestrator118 = new ConversationOrchestrator({
+      hierarchy: this.hierarchy,
+      stateMachine: proposalXssState118,
+      assistant: this.createIsolatedAssistant(proposalXssState118),
+      chatContainerId: proposalXssChat118.id
+    });
+    const proposalXssSnapshot118 = proposalXssState118.getSnapshot();
+    const proposalXssPayload118 =
+      '<img src=x onerror="window.__proposalXss=true"><script>window.__proposalXss=true</script>';
+    proposalXssOrchestrator118.handleStructuredLLMResponse({
+      assistant_message: "Güvenli öneri.",
+      needs_follow_up: false,
+      follow_up_question: null,
+      proposed_actions: [{
+        action_type: "suggest_space_resize",
+        target_entity_id: "space_study",
+        description: proposalXssPayload118,
+        requires_user_confirmation: true
+      }]
+    }, proposalXssSnapshot118.contextFingerprint, proposalXssSnapshot118.generationId);
+    const proposalLabel118 = proposalXssChat118.querySelector(
+      ".suggestion-chips .message-text"
+    );
+    const test118Pass = proposalLabel118?.textContent === proposalXssPayload118 &&
+      proposalXssChat118.querySelector("img, script, svg") === null &&
+      window.__proposalXss === undefined;
+    delete window.__proposalXss;
+
+    // Test 119: Explicit cancellation removes only the pending proposal
+    const dismissal119 = createPendingHarness114("119");
+    const dismissalSnapshotBefore119 = dismissal119.stateMachine.getSnapshot();
+    dismissal119.orchestrator.appendUserMessage("Bu öneriden vazgeçiyorum.");
+    const dismissalResult119 = await dismissal119.orchestrator.handleUserMessage(
+      "Bu öneriden vazgeçiyorum."
+    );
+    const dismissalSnapshotAfter119 = dismissal119.stateMachine.getSnapshot();
+    const test119Pass = dismissalResult119?.status === "dismissed" &&
+      dismissal119.orchestrator.pendingProposals.size === 0 &&
+      dismissal119.orchestrator.proposalRecords.length === 0 &&
+      dismissalSnapshotAfter119.contextFingerprint ===
+        dismissalSnapshotBefore119.contextFingerprint &&
+      dismissalSnapshotAfter119.generationId === dismissalSnapshotBefore119.generationId &&
+      dismissal119.orchestrator.allChatMessages.at(-1)?.text.includes(
+        "Plan değiştirilmedi"
+      );
+
     this.cleanupTestNodes();
     this.restoreGlobals(productionGlobals);
 
@@ -1772,6 +2024,42 @@ class TestScopeGuard {
         `calls=${JSON.stringify(globalSyncCallCounts113)}, changed=${workspaceDiff113.changedIds.join(", ")}`
     });
 
+    results.push({
+      name: "Test 114: Follow-Up Retains Pending Proposal Context",
+      pass: test114Pass,
+      details: test114Pass ? "" : JSON.stringify({
+        summary: continuitySummary114,
+        pendingProposals: continuityRequest114.pending_proposals,
+        currentDecisions: continuityRequest114.current_decisions
+      })
+    });
+
+    results.push({
+      name: "Test 115: Provider Failures Preserve Conversation Continuity",
+      pass: test115Pass,
+      details: test115Pass ? "" : JSON.stringify(fallbackRuns115)
+    });
+
+    results.push({
+      name: "Test 116: Pending Proposal Requires Explicit Approval",
+      pass: test116Pass
+    });
+
+    results.push({
+      name: "Test 117: Stale Pending Proposal Is Rejected",
+      pass: test117Pass
+    });
+
+    results.push({
+      name: "Test 118: Pending Proposal HTML Is Inert",
+      pass: test118Pass
+    });
+
+    results.push({
+      name: "Test 119: Pending Proposal Can Be Dismissed Safely",
+      pass: test119Pass
+    });
+
     window.scopeGuardLastRun = {
       runId: this.runId,
       assertionCount: results.length,
@@ -1794,6 +2082,14 @@ class TestScopeGuard {
         syncGlobalUICallCounts: globalSyncCallCounts113,
         productionGlobalUIUnchanged: protectedGlobalUIUnchanged113,
         workspaceDiff: workspaceDiff113
+      },
+      llmContinuity: {
+        pendingContextIncluded: test114Pass,
+        fallbackRuns: fallbackRuns115,
+        explicitApprovalSafe: test116Pass,
+        staleProposalRejected: test117Pass,
+        proposalHtmlInert: test118Pass,
+        dismissalSafe: test119Pass
       }
     };
 
