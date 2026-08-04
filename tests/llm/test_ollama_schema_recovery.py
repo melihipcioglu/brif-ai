@@ -1,0 +1,282 @@
+from __future__ import annotations
+
+import asyncio
+import json
+from typing import Any
+
+import httpx
+import pytest
+from apps.api.main import create_app
+from fastapi.testclient import TestClient
+
+from brif_ai.llm.contracts import (
+    ArchitecturalIntentResult,
+    ConversationInterpretationResponse,
+    ConversationRequest,
+)
+from brif_ai.llm.ollama_provider import OllamaProvider
+from brif_ai.llm.provider import (
+    ProviderResponseError,
+    ProviderTimeoutError,
+    ProviderUnavailableError,
+)
+from brif_ai.llm.service import LocalLLMConversationService
+from brif_ai.llm.settings import LocalLLMSettings
+
+from .test_contracts import valid_result_data
+from .test_policy_validator import conversation_request, public_texts
+from .test_prompts import request_data
+
+
+def settings() -> LocalLLMSettings:
+    return LocalLLMSettings(enabled=True, model="local-model:latest")
+
+
+def schema() -> dict[str, object]:
+    return ArchitecturalIntentResult.model_json_schema()
+
+
+def test_schema_invalid_response_is_repaired_once_without_reusing_untrusted_output() -> None:
+    chat_payloads: list[dict[str, Any]] = []
+    invalid_content = '{"assistant_message":"yarım'
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
+        payload = json.loads(request.content)
+        chat_payloads.append(payload)
+        content = invalid_content if len(chat_payloads) == 1 else json.dumps(valid_result_data())
+        return httpx.Response(200, json={"message": {"content": content}})
+
+    async def run() -> ArchitecturalIntentResult:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:11434"
+        ) as client:
+            return await OllamaProvider(settings(), client).interpret(
+                conversation_request(), schema()
+            )
+
+    result = asyncio.run(run())
+
+    assert result.intent.value == "modify_space"
+    assert len(chat_payloads) == 2
+    first, repair = chat_payloads
+    assert repair["format"] == first["format"] == schema()
+    assert repair["messages"][1] == first["messages"][1]
+    repair_instruction = repair["messages"][0]["content"].casefold()
+    assert "yalnızca" in repair_instruction
+    assert "json schema" in repair_instruction
+    assert invalid_content not in json.dumps(repair, ensure_ascii=False)
+
+
+def test_valid_json_with_invalid_schema_is_repaired_once() -> None:
+    chat_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal chat_calls
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
+        chat_calls += 1
+        data = valid_result_data()
+        if chat_calls == 1:
+            data.pop("assistant_message")
+        return httpx.Response(
+            200,
+            json={"message": {"content": json.dumps(data, ensure_ascii=False)}},
+        )
+
+    async def run() -> ArchitecturalIntentResult:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:11434"
+        ) as client:
+            return await OllamaProvider(settings(), client).interpret(
+                conversation_request(), schema()
+            )
+
+    result = asyncio.run(run())
+
+    assert result.intent.value == "modify_space"
+    assert chat_calls == 2
+
+
+def test_second_invalid_response_preserves_safe_error_without_a_third_attempt() -> None:
+    chat_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal chat_calls
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
+        chat_calls += 1
+        return httpx.Response(200, json={"message": {"content": "not-json"}})
+
+    async def run() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:11434"
+        ) as client:
+            with pytest.raises(ProviderResponseError):
+                await OllamaProvider(settings(), client).interpret(conversation_request(), schema())
+
+    asyncio.run(run())
+    assert chat_calls == 2
+
+
+def test_second_invalid_response_returns_existing_safe_502() -> None:
+    chat_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal chat_calls
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
+        chat_calls += 1
+        return httpx.Response(200, json={"message": {"content": "not-json"}})
+
+    async_client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler),
+        base_url="http://127.0.0.1:11434",
+    )
+    provider = OllamaProvider(settings(), async_client)
+    test_client = TestClient(create_app(settings(), provider))
+    try:
+        response = test_client.post(
+            "/api/v1/conversation/interpret",
+            json=conversation_request().model_dump(mode="json"),
+        )
+    finally:
+        asyncio.run(async_client.aclose())
+
+    assert response.status_code == 502
+    assert response.json()["error"] == (
+        "Yerel model doğrulanabilir bir mimari niyet yanıtı üretmedi."
+    )
+    assert chat_calls == 2
+
+
+def test_repair_does_not_weaken_plan_change_confirmation_rules() -> None:
+    chat_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal chat_calls
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
+        chat_calls += 1
+        if chat_calls == 1:
+            return httpx.Response(200, json={"message": {"content": "not-json"}})
+        data = valid_result_data()
+        data["needs_user_confirmation"] = False
+        return httpx.Response(
+            200,
+            json={"message": {"content": json.dumps(data, ensure_ascii=False)}},
+        )
+
+    async def run() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:11434"
+        ) as client:
+            with pytest.raises(ProviderResponseError):
+                await OllamaProvider(settings(), client).interpret(conversation_request(), schema())
+
+    asyncio.run(run())
+    assert chat_calls == 2
+
+
+def test_repair_preserves_validated_context_and_pending_proposal() -> None:
+    chat_payloads: list[dict[str, Any]] = []
+    request_with_pending = ConversationRequest.model_validate(request_data())
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
+        payload = json.loads(request.content)
+        chat_payloads.append(payload)
+        content = "not-json" if len(chat_payloads) == 1 else json.dumps(valid_result_data())
+        return httpx.Response(200, json={"message": {"content": content}})
+
+    async def run() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:11434"
+        ) as client:
+            await OllamaProvider(settings(), client).interpret(request_with_pending, schema())
+
+    asyncio.run(run())
+
+    assert len(chat_payloads) == 2
+    original_context = json.loads(chat_payloads[0]["messages"][1]["content"])
+    repair_context = json.loads(chat_payloads[1]["messages"][1]["content"])
+    assert repair_context == original_context
+    assert repair_context["active_context"]["context_fingerprint"] == (
+        "house|main|upper|private|master-bath"
+    )
+    assert repair_context["active_context"]["generation_id"] == 7
+    assert repair_context["pending_proposals"] == request_data()["pending_proposals"]
+
+
+@pytest.mark.parametrize(
+    ("provider_error", "expected_error"),
+    [
+        (httpx.ReadTimeout, ProviderTimeoutError),
+        (httpx.ConnectError, ProviderUnavailableError),
+    ],
+)
+def test_transport_failure_is_not_retried(
+    provider_error: type[httpx.RequestError],
+    expected_error: type[Exception],
+) -> None:
+    chat_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal chat_calls
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
+        chat_calls += 1
+        raise provider_error("transport failed", request=request)
+
+    async def run() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:11434"
+        ) as client:
+            with pytest.raises(expected_error):
+                await OllamaProvider(settings(), client).interpret(conversation_request(), schema())
+
+    asyncio.run(run())
+    assert chat_calls == 1
+
+
+def test_recovered_response_still_hides_internal_terms_from_user_text() -> None:
+    chat_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal chat_calls
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
+        chat_calls += 1
+        if chat_calls == 1:
+            return httpx.Response(200, json={"message": {"content": "not-json"}})
+        data = valid_result_data()
+        data["assistant_message"] = (
+            "pending_proposals, modify_space, contextFingerprint ve generationId hazır."
+        )
+        return httpx.Response(
+            200,
+            json={"message": {"content": json.dumps(data, ensure_ascii=False)}},
+        )
+
+    async def run() -> ConversationInterpretationResponse:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:11434"
+        ) as client:
+            provider = OllamaProvider(settings(), client)
+            service = LocalLLMConversationService(settings(), provider)
+            return await service.interpret(conversation_request())
+
+    response = asyncio.run(run())
+
+    assert response.result is not None
+    combined = "\n".join(public_texts(response.result)).casefold()
+    for technical_term in (
+        "pending_proposals",
+        "modify_space",
+        "contextfingerprint",
+        "generationid",
+    ):
+        assert technical_term not in combined
+    assert chat_calls == 2

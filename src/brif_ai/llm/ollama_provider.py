@@ -15,7 +15,7 @@ from brif_ai.llm.contracts import (
     LocalModelInfo,
     ProviderHealth,
 )
-from brif_ai.llm.prompts import SYSTEM_PROMPT, build_user_prompt
+from brif_ai.llm.prompts import SCHEMA_REPAIR_PROMPT, SYSTEM_PROMPT, build_user_prompt
 from brif_ai.llm.provider import (
     ModelNotAvailableError,
     ModelNotSelectedError,
@@ -136,10 +136,31 @@ class OllamaProvider:
         if self.settings.model not in {model.name for model in installed_models}:
             raise ModelNotAvailableError("Seçilen model bu bilgisayarda kurulu değil.")
 
-        payload: dict[str, object] = {
+        payload = self._build_chat_payload(request, output_schema)
+        response = await self._request("POST", "/api/chat", json=payload)
+        try:
+            return self._parse_chat_response(response)
+        except ProviderResponseError:
+            repair_payload = self._build_chat_payload(
+                request,
+                output_schema,
+                repair=True,
+            )
+            repair_response = await self._request("POST", "/api/chat", json=repair_payload)
+            return self._parse_chat_response(repair_response)
+
+    def _build_chat_payload(
+        self,
+        request: ConversationRequest,
+        output_schema: dict[str, object],
+        *,
+        repair: bool = False,
+    ) -> dict[str, object]:
+        system_prompt = SCHEMA_REPAIR_PROMPT if repair else SYSTEM_PROMPT
+        return {
             "model": self.settings.model,
             "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": build_user_prompt(request)},
             ],
             "stream": False,
@@ -151,8 +172,8 @@ class OllamaProvider:
                 "num_predict": self.settings.num_predict,
             },
         }
-        response = await self._request("POST", "/api/chat", json=payload)
 
+    def _parse_chat_response(self, response: httpx.Response) -> ArchitecturalIntentResult:
         try:
             raw_payload = response.json()
             if not isinstance(raw_payload, dict):
