@@ -15,6 +15,23 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
 
+## Demoyu Başlatma ve Kapatma
+
+BRIF.AI yerel konuşma demosunu Windows üzerinde tek bir komutla başlatabilirsiniz:
+
+```powershell
+.\run_demo.ps1
+```
+
+Bu komut sırasıyla gerekli kontrolleri yapar (proje dizini, sanal ortam, Python paketleri, Ollama servisi, model ve portlar). Sunucular hazır olduğunda tarayıcınızda demo adresi (`http://127.0.0.1:8080`) otomatik açılır.
+
+- **Farklı portlar ile başlatma:**
+  ```powershell
+  .\run_demo.ps1 -ApiPort 8005 -UiPort 8090
+  ```
+- **Güvenli Kapatma:**
+  Demoyu sonlandırmak için komut penceresinde `Ctrl+C` tuşlarına basmanız yeterlidir. Yalnızca demo için başlatılan sunucular güvenle kapatılır.
+
 ## Developer Commands
 
 ```powershell

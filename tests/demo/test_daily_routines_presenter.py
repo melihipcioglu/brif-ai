@@ -8,6 +8,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+from pathlib import Path
 
 import pytest
 
@@ -432,7 +433,8 @@ def test_streamlit_apptest_single_choice_unselected_and_error_preservation() -> 
     """Verify Streamlit AppTest for unselected radio, error display, and value preservation."""
     from streamlit.testing.v1 import AppTest
 
-    at = AppTest.from_file("apps/daily_routines_demo.py").run()
+    demo_script = str(Path(__file__).resolve().parents[2] / "apps" / "daily_routines_demo.py")
+    at = AppTest.from_file(demo_script).run()
     assert not at.exception
 
     # Initially, radio option exists and has no selection in session state
