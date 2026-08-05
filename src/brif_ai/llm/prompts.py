@@ -4,31 +4,23 @@ from __future__ import annotations
 
 import json
 
-from brif_ai.llm.contracts import ConversationRequest
+from brif_ai.llm.contracts import ActiveContextSnapshot, ConversationRequest, VisibleEntity
 
 SYSTEM_PROMPT = """Sen BRIF.AI mimari niyet yorumlayıcısısın.
-Yalnız verilen aktif bağlamı ve görünür varlıkları kullan.
-Proje, bina, kat, zon veya mekân kimliği uydurma.
-Planı, ContextStateMachine durumunu veya SVG geometrisini değiştirme.
-Yalnız izin verilen öneri eylemlerini üret; değişiklik önerileri kullanıcı onayı gerektirir.
-Hedef belirsizse takip sorusu sor. Aktif kapsam dışındaki talebi kesin gerçek kabul etme.
-Bekleyen öneri kayıtları henüz onaylanmış karar değildir.
-Takip mesajı mevcut bekleyen öneriyle ilgiliyse ilk analizi tekrarlama; önerinin durumunu
-açıkla ve kullanıcıya onaylama, ayrıntılandırma veya vazgeçme seçeneklerini doğal dille sun.
-Makine kimliklerini kullanıcıya gösterme ve bekleyen öneriyi onaylanmış gibi anlatma.
-Kullanıcıya açık tüm metinleri doğal Türkçe yaz.
-Kullanıcıya açık metinlerde iç alan veya enum adlarını gösterme; bunları doğal ifadelerle anlat.
-Intent seçimi:
-- modify_relationship: İki veya daha fazla mekân arasındaki görünürlük, mahremiyet,
-  yakınlık/uzaklık, erişim, geçiş, bağlantı, komşuluk, akustik veya görüş ilişkisi.
-- modify_space: Tek mekânın alanı, büyüklüğü, yönü, biçimi, kullanımı veya tekil mekânsal niteliği.
-- request_visual_preference: Renk, malzeme, stil, atmosfer, görsel beğeni,
-  mobilya dili veya yüzey tercihi. Mekânsal ilişkiler için kullanma.
-Örnekler: “Banyo yataktan görünmesin” ve “Salon mutfağa yakın olsun”
-→ modify_relationship. “Banyo kuzeyde olsun” → modify_space.
-“Açık meşe ve sıcak beyaz istiyorum” → request_visual_preference;
-modify_relationship değil.
-Yanıtın, çağrının format alanında verilen JSON Schema ile tam uyumlu olmalıdır.
+Yalnız aktif bağlamı ve bu kapsamdaki görünür varlıkları kullan; kimlik veya bilgi uydurma.
+Planı, durum makinesini ya da geometriyi değiştirme. Yalnız izin verilen önerileri üret;
+plan değişikliği önerileri kullanıcı onayı ve requires_user_confirmation=true gerektirir.
+Hedef belirsiz veya kapsam dışıysa takip sorusu sor; talebi gerçek kabul etme.
+Bekleyen öneriler henüz onaylanmış karar değildir. Takip mesajında ilk analizi tekrarlama;
+durumunu açıklayıp onaylama, ayrıntılandırma veya vazgeçme seçeneklerini doğal Türkçe sun.
+Kullanıcı metninde makine kimliği, iç alan veya enum adlarını gösterme.
+Intent: mekânlar arası görünürlük, mahremiyet, yakınlık, erişim, bağlantı, akustik veya görüş
+modify_relationship; tek mekânın alanı, yönü, biçimi veya kullanımı modify_space; renk,
+malzeme, stil ve atmosfer request_visual_preference. “Banyo kuzeyde olsun” modify_space'tir.
+Yanıt yalnız format alanındaki JSON Schema ile tam uyumlu tek JSON nesnesi olmalıdır.
+Aynı bilgiyi alanlar arasında tekrarlama. assistant_message en fazla iki kısa cümle olsun.
+Her metin listesinde en fazla bir gerekli ve kısa öğe kullan; gereksizse boş liste kullan.
+Önerilen eylemlerde normalde en fazla bir eylem üret. Takip sorusu tek ve kısa olsun.
 """
 
 SCHEMA_REPAIR_PROMPT = f"""{SYSTEM_PROMPT}
@@ -44,17 +36,52 @@ Yanıtı kısa tut, ancak şemanın zorunlu alanlarının tamamını üret.
 """
 
 
-def build_user_prompt(request: ConversationRequest) -> str:
-    """Serialize only the minimum validated context needed for interpretation."""
+def _is_in_active_scope(request: ConversationRequest, entity: VisibleEntity) -> bool:
+    active = request.active_context
+    return (
+        entity.project_id == active.project_id
+        and (active.building_id is None or entity.building_id == active.building_id)
+        and (active.level_id is None or entity.level_id == active.level_id)
+    )
 
+
+def _visible_entity_payload(
+    entity: VisibleEntity,
+    active: ActiveContextSnapshot,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "entity_id": entity.entity_id,
+        "entity_type": entity.entity_type,
+        "name": entity.name,
+        "zone_id": entity.zone_id,
+    }
+    if active.building_id is None:
+        payload["building_id"] = entity.building_id
+    if active.level_id is None:
+        payload["level_id"] = entity.level_id
+    return payload
+
+
+def build_user_prompt(request: ConversationRequest) -> str:
+    """Serialize validated context once, without repeating inherited scope."""
+
+    active = request.active_context
     payload = {
         "message": request.message,
-        "active_context": request.active_context.model_dump(mode="json"),
-        "visible_entities": [entity.model_dump(mode="json") for entity in request.visible_entities],
+        "active_context": active.model_dump(mode="json"),
+        "visible_entities": [
+            _visible_entity_payload(entity, active)
+            for entity in request.visible_entities
+            if _is_in_active_scope(request, entity)
+        ],
         "conversation_summary": request.conversation_summary,
         "current_decisions": request.current_decisions,
         "pending_proposals": [
-            proposal.model_dump(mode="json") for proposal in request.pending_proposals
+            {
+                "status": proposal.status,
+                "action": proposal.action.model_dump(mode="json"),
+            }
+            for proposal in request.pending_proposals
         ],
     }
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))

@@ -56,13 +56,25 @@ def request_data() -> dict[str, object]:
 
 
 def test_pending_proposal_is_validated_and_serialized_for_model() -> None:
-    request = ConversationRequest.model_validate(request_data())
+    data = request_data()
+    request = ConversationRequest.model_validate(data)
 
     payload = json.loads(build_user_prompt(request))
+    pending = data["pending_proposals"]
+    assert isinstance(pending, list)
+    first_pending = pending[0]
+    assert isinstance(first_pending, dict)
 
     assert payload["message"] == "Şimdi ne yapacağım?"
     assert payload["current_decisions"] == []
-    assert payload["pending_proposals"] == request_data()["pending_proposals"]
+    assert payload["active_context"]["context_fingerprint"] == first_pending["context_fingerprint"]
+    assert payload["active_context"]["generation_id"] == first_pending["generation_id"]
+    assert payload["pending_proposals"] == [
+        {
+            "status": first_pending["status"],
+            "action": first_pending["action"],
+        }
+    ]
     assert "proposal_id" not in json.dumps(payload)
 
 
