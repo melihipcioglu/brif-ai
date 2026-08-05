@@ -32,6 +32,16 @@ Aynı doğrulanmış kullanıcı isteğini ve bağlamı kullan; bağlam, görün
 ve kullanıcı onayı kurallarını değiştirme.
 Eksik bilgi varsa şemadaki takip alanlarını kullan; plan değişikliğini uygulama, yalnızca
 kullanıcı onayı gerektiren bir öneri olarak döndür.
+Tutarlılık kuralları:
+- target her zaman bir JSON nesnesi olsun; bilinmeyen alt alanlarda null kullan.
+- user_requirements, interpreted_priorities, constraints_to_check, missing_information,
+  proposed_actions ve warnings her zaman JSON dizisi olsun; null veya metin kullanma.
+- needs_follow_up=true ise follow_up_question dolu bir metin olsun; false ise null olsun.
+- proposed_actions boş değilse needs_user_confirmation=true olsun ve her eylemde
+  requires_user_confirmation=true kullan.
+- Plan değişikliği eyleminde yalnız görünür kapsamdaki gerçek target_entity_id değerini kullan;
+  hedef bilinmiyorsa eylem üretme, takip sorusu sor.
+- confidence 0 ile 1 arasında bir sayı olsun; şema dışı hiçbir alan ekleme.
 Yanıtı kısa tut, ancak şemanın zorunlu alanlarının tamamını üret.
 """
 
