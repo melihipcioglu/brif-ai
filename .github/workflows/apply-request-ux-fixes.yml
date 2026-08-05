@@ -1,0 +1,153 @@
+name: Apply verified request UX fixes
+
+on:
+  push:
+    branches:
+      - fix/local-demo-real-llm-wiring-v0
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/local-demo-real-llm-wiring-v0
+          fetch-depth: 0
+
+      - name: Patch request and proposal UI state
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly one match, found {count}")
+              return text.replace(old, new, 1)
+
+          orchestrator_path = Path("prototypes/conversation_ui_v0/js/conversation_orchestrator.js")
+          text = orchestrator_path.read_text(encoding="utf-8")
+
+          text = replace_once(
+              text,
+              """    this.requestStartTime = 0;\n    this.pendingWaitingMessageIndex = -1;\n""",
+              """    this.requestStartTime = 0;\n    this.pendingWaitingMessageIndex = -1;\n    this.activeRequestMessage = null;\n    this.handledCancellationMessages = new Map();\n""",
+              "constructor cancellation state",
+          )
+
+          text = replace_once(
+              text,
+              """    this.isRequestPending = true;\n    this.setChatInputLocked(true);\n""",
+              """    this.isRequestPending = true;\n    this.activeRequestMessage = String(messageText || '');\n    this.setChatInputLocked(true);\n""",
+              "active request message",
+          )
+
+          text = replace_once(
+              text,
+              """  finishPendingRequest() {\n    if (this.requestTimerId) {\n      clearInterval(this.requestTimerId);\n      this.requestTimerId = null;\n    }\n    this.currentAbortController = null;\n    this.isRequestPending = false;\n    this.setChatInputLocked(false);\n    this.pendingWaitingMessageIndex = -1;\n  }\n""",
+              """  finishPendingRequest() {\n    if (this.requestTimerId) {\n      clearInterval(this.requestTimerId);\n      this.requestTimerId = null;\n    }\n    if (\n      this.pendingWaitingMessageIndex >= 0 &&\n      this.allChatMessages[this.pendingWaitingMessageIndex]?.isWaitingIndicator\n    ) {\n      this.allChatMessages.splice(this.pendingWaitingMessageIndex, 1);\n    }\n    this.pendingWaitingMessageIndex = -1;\n    this.currentAbortController = null;\n    this.isRequestPending = false;\n    this.activeRequestMessage = null;\n    this.setChatInputLocked(false);\n    this.renderFilteredChatMessages();\n  }\n""",
+              "finish pending request cleanup",
+          )
+
+          text = replace_once(
+              text,
+              """  cancelCurrentRequest() {\n    if (!this.isRequestPending) return false;\n    if (this.currentAbortController) {\n      this.currentAbortController.abort();\n    }\n    this.finishPendingRequest();\n    this.appendAssistantMessage(\n      'İstek kullanıcı tarafından iptal edildi. Plan veya karar kayıtları değiştirilmedi.'\n    );\n    return true;\n  }\n""",
+              """  cancelCurrentRequest() {\n    if (!this.isRequestPending) return false;\n    const canceledMessage = this.activeRequestMessage || '';\n    if (canceledMessage) {\n      const handledCount = this.handledCancellationMessages.get(canceledMessage) || 0;\n      this.handledCancellationMessages.set(canceledMessage, handledCount + 1);\n    }\n    if (this.currentAbortController) {\n      this.currentAbortController.abort();\n    }\n    this.finishPendingRequest();\n    this.appendAssistantMessage(\n      'İstek kullanıcı tarafından iptal edildi. Plan veya karar kayıtları değiştirilmedi.',\n      [],\n      [],\n      { retryMessage: canceledMessage || null }\n    );\n    return true;\n  }\n""",
+              "single cancellation notice with retry",
+          )
+
+          text = replace_once(
+              text,
+              """        msg.proposedActions.forEach(proposal => {\n          const label = document.createElement('span');\n          label.className = 'message-text';\n          label.textContent = proposal.action.description;\n          proposals.appendChild(label);\n          const button = document.createElement('button');\n          button.className = 'chip-btn proposal-approve-btn';\n          button.dataset.proposalId = proposal.id;\n          button.textContent = 'Öneriyi onayla';\n          proposals.appendChild(button);\n        });\n""",
+              """        msg.proposedActions.forEach(proposal => {\n          const label = document.createElement('span');\n          label.className = 'message-text';\n          label.textContent = proposal.action.description;\n          proposals.appendChild(label);\n          const button = document.createElement('button');\n          button.type = 'button';\n          button.className = 'chip-btn proposal-approve-btn';\n          button.dataset.proposalId = proposal.id;\n          if (proposal.status === 'approved') {\n            button.disabled = true;\n            button.classList.add('proposal-approved');\n            button.textContent = 'Onaylandı';\n            button.setAttribute('aria-disabled', 'true');\n          } else {\n            button.textContent = 'Öneriyi onayla';\n          }\n          proposals.appendChild(button);\n        });\n""",
+              "approved proposal card state",
+          )
+
+          text = replace_once(
+              text,
+              """    this.proposalRecords.push(record);\n    this.pendingProposals.delete(proposalId);\n    this.appendAssistantMessage(\n""",
+              """    this.proposalRecords.push(record);\n    this.pendingProposals.delete(proposalId);\n    this.allChatMessages.forEach(message => {\n      if (!Array.isArray(message.proposedActions)) return;\n      message.proposedActions.forEach(candidate => {\n        if (candidate.id === proposalId) candidate.status = 'approved';\n      });\n    });\n    this.appendAssistantMessage(\n""",
+              "persist approved card state",
+          )
+
+          text = replace_once(
+              text,
+              """    if (status === 'canceled') {\n      this.appendAssistantMessage(\n        'İstek kullanıcı tarafından iptal edildi. Plan veya karar kayıtları değiştirilmedi.'\n      );\n      return { status: 'canceled' };\n    }\n""",
+              """    if (status === 'canceled') {\n      const handledCount = this.handledCancellationMessages.get(messageText) || 0;\n      if (handledCount > 0) {\n        if (handledCount === 1) {\n          this.handledCancellationMessages.delete(messageText);\n        } else {\n          this.handledCancellationMessages.set(messageText, handledCount - 1);\n        }\n        return { status: 'canceled' };\n      }\n      this.appendAssistantMessage(\n        'İstek kullanıcı tarafından iptal edildi. Plan veya karar kayıtları değiştirilmedi.',\n        [],\n        [],\n        { retryMessage: messageText }\n      );\n      return { status: 'canceled' };\n    }\n""",
+              "deduplicate canceled fallback",
+          )
+
+          orchestrator_path.write_text(text, encoding="utf-8")
+
+          test_path = Path("prototypes/conversation_ui_v0/js/test_scope_guard.js")
+          tests = test_path.read_text(encoding="utf-8")
+
+          tests = replace_once(
+              tests,
+              """    const approvalSnapshotAfter116 = approval116.stateMachine.getSnapshot();\n    const test116Pass = approvalResult116?.status === \"approved\" &&\n""",
+              """    const approvalSnapshotAfter116 = approval116.stateMachine.getSnapshot();\n    const approvedButton116 = approval116.chat.querySelector(\n      `.proposal-approve-btn[data-proposal-id=\"${approval116.proposalId}\"]`\n    );\n    const test116Pass = approvalResult116?.status === \"approved\" &&\n""",
+              "approval button test setup",
+          )
+
+          tests = replace_once(
+              tests,
+              """      approval116.orchestrator.proposalRecords.length === 1 &&\n      approval116.orchestrator.getCurrentDecisions().length === 1 &&\n""",
+              """      approval116.orchestrator.proposalRecords.length === 1 &&\n      approvedButton116?.disabled === true &&\n      approvedButton116?.textContent === \"Onaylandı\" &&\n      approval116.orchestrator.getCurrentDecisions().length === 1 &&\n""",
+              "approval button assertions",
+          )
+
+          tests = replace_once(
+              tests,
+              """    const cancelSnapAfter123 = cancelHarness123.stateMachine.getSnapshot();\n    const cancelLastMsg123 = cancelHarness123.orchestrator.allChatMessages.at(-1);\n    const test123Pass = cancelHarness123.orchestrator.isRequestPending === false &&\n""",
+              """    const cancelSnapAfter123 = cancelHarness123.stateMachine.getSnapshot();\n    const cancelLastMsg123 = cancelHarness123.orchestrator.allChatMessages.at(-1);\n    const cancelMessages123 = cancelHarness123.orchestrator.allChatMessages.filter(message =>\n      message.text === 'İstek kullanıcı tarafından iptal edildi. Plan veya karar kayıtları değiştirilmedi.'\n    );\n    const test123Pass = cancelHarness123.orchestrator.isRequestPending === false &&\n""",
+              "cancellation message count setup",
+          )
+
+          tests = replace_once(
+              tests,
+              """      cancelLastMsg123?.text.includes(\"değiştirilmedi\") &&\n      cancelSnapBefore123.contextFingerprint === cancelSnapAfter123.contextFingerprint &&\n""",
+              """      cancelLastMsg123?.text.includes(\"değiştirilmedi\") &&\n      cancelLastMsg123?.retryMessage === \"İptal edilecek istek\" &&\n      cancelMessages123.length === 1 &&\n      !cancelHarness123.orchestrator.allChatMessages.some(message => message.isWaitingIndicator) &&\n      cancelSnapBefore123.contextFingerprint === cancelSnapAfter123.contextFingerprint &&\n""",
+              "cancellation retry and cleanup assertions",
+          )
+
+          tests = replace_once(
+              tests,
+              """    const lateResult124 = await interpretPromise124;\n    const test124Pass = (lateResult124?.status === \"canceled\" || lateResult124?.status === \"stale\") &&\n      !lateHarness124.orchestrator.allChatMessages.some(m => m.text === \"Geç yanıt sızmamalı!\");\n""",
+              """    const lateResult124 = await interpretPromise124;\n    const cancellationMessages124 = lateHarness124.orchestrator.allChatMessages.filter(message =>\n      message.text === 'İstek kullanıcı tarafından iptal edildi. Plan veya karar kayıtları değiştirilmedi.'\n    );\n    const test124Pass = (lateResult124?.status === \"canceled\" || lateResult124?.status === \"stale\") &&\n      cancellationMessages124.length === 1 &&\n      cancellationMessages124[0]?.retryMessage === \"Gecikmeli istek\" &&\n      !lateHarness124.orchestrator.allChatMessages.some(message => message.isWaitingIndicator) &&\n      !lateHarness124.orchestrator.allChatMessages.some(m => m.text === \"Geç yanıt sızmamalı!\");\n""",
+              "late cancellation dedup assertions",
+          )
+
+          test_path.write_text(tests, encoding="utf-8")
+          PY
+
+      - name: Validate JavaScript syntax and focused source assertions
+        shell: bash
+        run: |
+          node --check prototypes/conversation_ui_v0/js/conversation_orchestrator.js
+          node --check prototypes/conversation_ui_v0/js/test_scope_guard.js
+          python - <<'PY'
+          from pathlib import Path
+          text = Path('prototypes/conversation_ui_v0/js/conversation_orchestrator.js').read_text(encoding='utf-8')
+          assert "handledCancellationMessages" in text
+          assert "{ retryMessage: canceledMessage || null }" in text
+          assert "button.textContent = 'Onaylandı'" in text
+          assert "candidate.status = 'approved'" in text
+          PY
+
+      - name: Remove one-time workflow and commit fixes
+        shell: bash
+        run: |
+          rm .github/workflows/apply-request-ux-fixes.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add prototypes/conversation_ui_v0/js/conversation_orchestrator.js \
+                  prototypes/conversation_ui_v0/js/test_scope_guard.js \
+                  .github/workflows/apply-request-ux-fixes.yml
+          git commit -m "fix(ui): deduplicate cancellation and persist proposal status"
+          git push origin HEAD:fix/local-demo-real-llm-wiring-v0
