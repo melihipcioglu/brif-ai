@@ -170,11 +170,13 @@ def run_all_preflight_checks(
     checks.append(check_required_modules())
 
     if api_port == ui_port:
-        checks.append((
-            False,
-            f"Hata: API portu ve Arayüz portu aynı olamaz ({api_port}). "
-            "Lütfen farklı portlar belirtin.",
-        ))
+        checks.append(
+            (
+                False,
+                f"Hata: API portu ve Arayüz portu aynı olamaz ({api_port}). "
+                "Lütfen farklı portlar belirtin.",
+            )
+        )
     else:
         checks.append(check_port_free(api_port))
         checks.append(check_port_free(ui_port))
