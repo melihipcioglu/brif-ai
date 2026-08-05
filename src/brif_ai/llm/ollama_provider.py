@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import math
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, cast
 
 import httpx
@@ -26,6 +29,7 @@ from brif_ai.llm.provider import (
 from brif_ai.llm.settings import LocalLLMSettings
 
 _NANOSECONDS_PER_SECOND = 1_000_000_000
+_SCHEMA_DIAGNOSTIC_PATH = Path(".demo_logs") / "llm_schema_errors.jsonl"
 
 
 def _duration_seconds(payload: dict[str, Any], field: str) -> float | None:
@@ -73,6 +77,55 @@ class OllamaPerformanceMetrics:
             eval_seconds=eval_seconds,
             tokens_per_second=tokens_per_second,
         )
+
+
+def _safe_error_details(error: Exception) -> list[dict[str, str]]:
+    if isinstance(error, ValidationError):
+        details: list[dict[str, str]] = []
+        for item in error.errors():
+            location = ".".join(str(part) for part in item.get("loc", ()))
+            details.append(
+                {
+                    "location": location,
+                    "type": str(item.get("type", "validation_error")),
+                    "message": str(item.get("msg", "Schema doğrulama hatası.")),
+                }
+            )
+        return details
+    return [
+        {
+            "location": "response",
+            "type": type(error).__name__,
+            "message": str(error),
+        }
+    ]
+
+
+def _write_schema_diagnostic(
+    error: Exception,
+    payload: dict[str, Any],
+    metrics: OllamaPerformanceMetrics | None,
+    *,
+    attempt: str,
+    path: Path = _SCHEMA_DIAGNOSTIC_PATH,
+) -> None:
+    """Write validation locations and performance only; never persist model/user text."""
+
+    record: dict[str, object] = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "attempt": attempt,
+        "done": payload.get("done"),
+        "done_reason": payload.get("done_reason"),
+        "errors": _safe_error_details(error),
+        "metrics": asdict(metrics) if metrics is not None else None,
+    }
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, ensure_ascii=False, separators=(",", ":")))
+            handle.write("\n")
+    except OSError:
+        pass
 
 
 class OllamaProvider:
@@ -139,7 +192,7 @@ class OllamaProvider:
         payload = self._build_chat_payload(request, output_schema)
         response = await self._request("POST", "/api/chat", json=payload)
         try:
-            return self._parse_chat_response(response)
+            return self._parse_chat_response(response, attempt="initial")
         except ProviderResponseError:
             repair_payload = self._build_chat_payload(
                 request,
@@ -147,7 +200,7 @@ class OllamaProvider:
                 repair=True,
             )
             repair_response = await self._request("POST", "/api/chat", json=repair_payload)
-            return self._parse_chat_response(repair_response)
+            return self._parse_chat_response(repair_response, attempt="repair")
 
     def _build_chat_payload(
         self,
@@ -173,7 +226,14 @@ class OllamaProvider:
             },
         }
 
-    def _parse_chat_response(self, response: httpx.Response) -> ArchitecturalIntentResult:
+    def _parse_chat_response(
+        self,
+        response: httpx.Response,
+        *,
+        attempt: str,
+    ) -> ArchitecturalIntentResult:
+        raw_payload: object | None = None
+        response_payload: dict[str, Any] = {}
         try:
             raw_payload = response.json()
             if not isinstance(raw_payload, dict):
@@ -188,6 +248,12 @@ class OllamaProvider:
                 raise TypeError("message content must be a string")
             return ArchitecturalIntentResult.model_validate_json(content)
         except (KeyError, TypeError, ValueError, ValidationError) as error:
+            _write_schema_diagnostic(
+                error,
+                response_payload,
+                self.last_performance_metrics,
+                attempt=attempt,
+            )
             raise ProviderResponseError(
                 "Yerel model doğrulanabilir bir mimari niyet yanıtı üretmedi."
             ) from error
