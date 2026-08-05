@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import contextlib
 import json
+import signal
 import socket
 import subprocess
 import sys
@@ -89,25 +91,41 @@ def check_model_available(
     model_name: str = "qwen3:4b-instruct",
     ollama_url: str = "http://127.0.0.1:11434",
 ) -> tuple[bool, str]:
-    """Verify configured model is installed in Ollama."""
+    """Verify configured model is installed in Ollama with exact match."""
     endpoint = f"{ollama_url.rstrip('/')}/api/tags"
+    target = model_name.strip().lower()
+
     try:
         req = urllib.request.Request(endpoint, method="GET")
         with urllib.request.urlopen(req, timeout=3.0) as resp:
             if resp.status == 200:
                 data = json.loads(resp.read().decode("utf-8"))
-                models = [m.get("name", "") for m in data.get("models", [])]
-                target_base = model_name.split(":")[0]
-                installed = any(
-                    m == model_name
-                    or m.startswith(f"{model_name}:")
-                    or m.startswith(f"{target_base}:")
-                    for m in models
+                installed_models: set[str] = set()
+
+                for m in data.get("models", []):
+                    if isinstance(m, dict):
+                        for key in ("name", "model"):
+                            val = m.get(key)
+                            if isinstance(val, str) and val.strip():
+                                name_lower = val.strip().lower()
+                                installed_models.add(name_lower)
+                                if name_lower.endswith(":latest"):
+                                    installed_models.add(name_lower[:-7])
+
+                target_latest = f"{target}:latest" if ":" not in target else target
+                target_base = target[:-7] if target.endswith(":latest") else target
+
+                is_available = (
+                    target in installed_models
+                    or target_latest in installed_models
+                    or target_base in installed_models
                 )
-                if installed:
+
+                if is_available:
                     return True, f"Model '{model_name}' Ollama servisinde mevcut."
     except Exception:
         pass
+
     return (
         False,
         f"Hata: Belirtilen yerel model ('{model_name}') Ollama servisinde yüklü değil. "
@@ -116,7 +134,13 @@ def check_model_available(
 
 
 def check_port_free(port: int, host: str = "127.0.0.1") -> tuple[bool, str]:
-    """Verify port is free on local machine."""
+    """Verify port is valid and free on local machine."""
+    if not (0 <= port <= 65535):
+        return (
+            False,
+            f"Hata: Geçersiz port numarası ({port}). Port 1 ile 65535 arasında olmalıdır.",
+        )
+
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
             s.bind((host, port))
@@ -208,7 +232,7 @@ def launch_demo(
     """Run checks, start API & UI servers, wait for readiness, open browser, and manage exit."""
     root = Path(project_root).resolve()
     print("=" * 60)
-    print("🚀 BRIF.AI — Yerel Konuşma Demosu Başlatıcı")
+    print("[+] BRIF.AI — Yerel Konuşma Demosu Başlatıcı")
     print("=" * 60)
     print("[1/5] Kontroller yapılıyor...")
 
@@ -223,19 +247,30 @@ def launch_demo(
 
     failed = False
     for ok, msg in results:
-        status_icon = "  ✓" if ok else "  ❌"
+        status_icon = "  [v]" if ok else "  [x]"
         print(f"{status_icon} {msg}")
         if not ok:
             failed = True
 
     if failed:
-        print("\n❌ Ön kontroller başarısız oldu. İşlem güvenli biçimde durduruldu.")
+        print("\n[x] Ön kontroller başarısız oldu. İşlem güvenli biçimde durduruldu.")
         sys.exit(1)
 
     print("\n[2/5] Ön kontroller tamamlandı. Bağımlılıklar hazır.")
 
     python_executable = sys.executable
     manager = DemoProcessManager()
+
+    # Guarantee process cleanup on exit or termination signal
+    atexit.register(manager.stop_all)
+
+    def _sig_handler(_signum: int, _frame: object) -> None:
+        manager.stop_all()
+        sys.exit(0)
+
+    with contextlib.suppress(ValueError, OSError):
+        signal.signal(signal.SIGINT, _sig_handler)
+        signal.signal(signal.SIGTERM, _sig_handler)
 
     # Determine UI directory
     ui_dir = root / "prototypes" / "conversation_ui_v0"
@@ -285,15 +320,15 @@ def launch_demo(
     api_ready = wait_for_api_ready(api_url, timeout=15.0)
 
     if not api_ready:
-        print("❌ API servisi zaman aşımı süresince hazır olamadı.")
+        print("[x] API servisi zaman aşımı süresince hazır olamadı.")
         manager.stop_all()
         sys.exit(1)
 
-    print("\n[5/5] 🎉 BRIF.AI Yerel Konuşma Demosu Başarıyla Başlatıldı!")
+    print("\n[5/5] BRIF.AI Yerel Konuşma Demosu Başarıyla Başlatıldı!")
     print("-" * 60)
-    print(f"📌 Demo Adresi: {ui_url}")
-    print(f"📌 API Adresi:  {api_url}")
-    print("🔒 Güvenli Kapatma: Demoyu sonlandırmak için Ctrl+C tuşlarına basın.")
+    print(f"[*] Demo Adresi: {ui_url}")
+    print(f"[*] API Adresi:  {api_url}")
+    print("[!] Güvenli Kapatma: Demoyu sonlandırmak için Ctrl+C tuşlarına basın.")
     print("-" * 60)
 
     if open_browser:

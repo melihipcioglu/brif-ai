@@ -34,14 +34,22 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$ProjectRoot = (Get-Item $PSScriptRoot).Parent.FullName
-if (-not (Test-Path "$ProjectRoot\pyproject.toml")) {
-    $ProjectRoot = Get-Location
+# Resolve Project Root (containing pyproject.toml)
+$CandidateRoot = $PSScriptRoot
+if (-not (Test-Path "$CandidateRoot\pyproject.toml")) {
+    if (Test-Path "$CandidateRoot\..\pyproject.toml") {
+        $CandidateRoot = (Get-Item "$CandidateRoot\..").FullName
+    } else {
+        $CandidateRoot = Get-Location
+    }
 }
+$ProjectRoot = (Get-Item $CandidateRoot).FullName
 
+# Verify .venv Python executable strictly; do NOT fallback to system Python
 $VenvPython = Join-Path $ProjectRoot ".venv\Scripts\python.exe"
 if (-not (Test-Path $VenvPython)) {
-    $VenvPython = "python"
+    Write-Host "Hata: Python sanal ortamı (.venv) bulunamadı. Lütfen sanal ortamın kurulu olduğundan emin olun." -ForegroundColor Red
+    exit 1
 }
 
 $LauncherArgs = @(
@@ -60,5 +68,10 @@ if ($NoOllamaCheck) {
     $LauncherArgs += "--no-ollama-check"
 }
 
-& $VenvPython $LauncherArgs
+Push-Location $ProjectRoot
+try {
+    & $VenvPython $LauncherArgs
+} finally {
+    Pop-Location
+}
 exit $LASTEXITCODE
