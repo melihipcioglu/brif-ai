@@ -197,12 +197,19 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 .chip-btn { background-color: #FFFFFF; border: 1px solid var(--color-brand-accent); color: var(--color-brand-primary); padding: 5px 10px; border-radius: var(--radius-full); font-size: 11px; font-weight: 600; cursor: pointer; }
 .chip-btn:hover { background-color: var(--color-brand-light); }
 
+.chip-btn.cancel-request-btn { border-color: #EF4444; color: #DC2626; background-color: #FEF2F2; }
+.chip-btn.cancel-request-btn:hover { background-color: #FEE2E2; }
+.chip-btn.retry-request-btn { border-color: #2563EB; color: #1D4ED8; background-color: #EFF6FF; }
+.chip-btn.retry-request-btn:hover { background-color: #DBEAFE; }
+
 .chat-input-area { padding: 12px 14px; border-top: 1px solid var(--color-border); background-color: #FFFFFF; display: flex; flex-direction: column; gap: 6px; }
 .chat-form { display: flex; gap: 8px; align-items: center; }
 #assistantUserInput { flex: 1; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 9px 12px; font-size: 12.5px; outline: none; background-color: var(--color-surface-subtle); color: var(--color-text-primary); }
 #assistantUserInput:focus { border-color: var(--color-brand-accent); background-color: #FFFFFF; }
+#assistantUserInput:disabled { background-color: #F3F4F6; color: #9CA3AF; cursor: not-allowed; opacity: 0.8; }
 .send-btn { background-color: var(--color-brand-primary); color: #FFFFFF; border: none; padding: 9px 16px; border-radius: var(--radius-md); font-size: 12.5px; font-weight: 700; cursor: pointer; }
 .send-btn:hover { background-color: var(--color-brand-dark); }
+.send-btn:disabled { background-color: #9CA3AF; cursor: not-allowed; opacity: 0.7; }
 .chat-footer-hint { font-size: 10px; color: var(--color-text-tertiary); text-align: center; }
 
 /* Stage 4 Plan & Workspace Presenter */

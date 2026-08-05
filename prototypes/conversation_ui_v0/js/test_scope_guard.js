@@ -1,7 +1,7 @@
 /**
  * BRIF.AI — Automated Scope, Surface & Payload Unit Tests (v6.2 Engine)
  *
- * Verifies core architectural principles across 119 test scenarios:
+ * Verifies core architectural principles across 128 test scenarios:
  * 1-28. Universal scope, surface, and empty state assertions
  * 29 (Test A). Finans Kulesi 18. Kat -> 32. Kat transition consistency
  * 30 (Test B). Kampüs Blok A -> Blok B transition consistency
@@ -19,6 +19,7 @@
  * 92-107. Structured scenario quick-reply and preference-state regressions
  * 108-113. Browser assertion isolation and repeat-run regressions
  * 114-119. Pending proposal continuity, fallback, approval, and safety regressions
+ * 120-128. Local LLM request UX, lock, timer, cancel, late response, Turkish error, and retry regressions
  */
 
 class TestScopeGuard {
@@ -1960,6 +1961,158 @@ class TestScopeGuard {
         "Plan değiştirilmedi"
       );
 
+    // Test 120: Input field and send button locking during pending request
+    const lockHarness120 = createPendingHarness114("120");
+    const testInput120 = document.createElement("input");
+    testInput120.id = "assistantUserInput";
+    const testSendBtn120 = document.createElement("button");
+    testSendBtn120.id = "sendBtn";
+    lockHarness120.chat.parentElement.appendChild(testInput120);
+    lockHarness120.chat.parentElement.appendChild(testSendBtn120);
+    lockHarness120.orchestrator.startPendingRequest("Test mesajı");
+    const inputLocked120 = testInput120.disabled === true && testSendBtn120.disabled === true;
+    lockHarness120.orchestrator.finishPendingRequest();
+    const inputUnlocked120 = testInput120.disabled === false && testSendBtn120.disabled === false;
+    const test120Pass = inputLocked120 && inputUnlocked120;
+
+    // Test 121: Status message and live elapsed time indicator with Cancel button
+    const statusHarness121 = createPendingHarness114("121");
+    statusHarness121.orchestrator.startPendingRequest("Bekleme mesajı");
+    const lastMsg121 = statusHarness121.orchestrator.allChatMessages.at(-1);
+    const test121Pass = statusHarness121.orchestrator.isRequestPending === true &&
+      lastMsg121?.text.includes("Mimari talebiniz değerlendiriliyor") &&
+      lastMsg121?.canCancel === true;
+    statusHarness121.orchestrator.finishPendingRequest();
+
+    // Test 122: Double-submit prevention during pending request
+    const doubleHarness122 = createPendingHarness114("122");
+    doubleHarness122.orchestrator.startPendingRequest("Birinci mesaj");
+    const msgCountBefore122 = doubleHarness122.orchestrator.allChatMessages.length;
+    const doubleResult122 = await doubleHarness122.orchestrator.handleUserMessage("İkinci mesaj");
+    const msgCountAfter122 = doubleHarness122.orchestrator.allChatMessages.length;
+    const test122Pass = doubleResult122 === null && msgCountBefore122 === msgCountAfter122;
+    doubleHarness122.orchestrator.finishPendingRequest();
+
+    // Test 123: Safe user cancellation aborts request and preserves state immutability
+    const cancelHarness123 = createPendingHarness114("123");
+    const cancelSnapBefore123 = cancelHarness123.stateMachine.getSnapshot();
+    cancelHarness123.orchestrator.startPendingRequest("İptal edilecek istek");
+    cancelHarness123.orchestrator.cancelCurrentRequest();
+    const cancelSnapAfter123 = cancelHarness123.stateMachine.getSnapshot();
+    const cancelLastMsg123 = cancelHarness123.orchestrator.allChatMessages.at(-1);
+    const test123Pass = cancelHarness123.orchestrator.isRequestPending === false &&
+      cancelLastMsg123?.text.includes("kullanıcı tarafından iptal edildi") &&
+      cancelLastMsg123?.text.includes("değiştirilmedi") &&
+      cancelSnapBefore123.contextFingerprint === cancelSnapAfter123.contextFingerprint &&
+      cancelSnapBefore123.generationId === cancelSnapAfter123.generationId &&
+      cancelHarness123.orchestrator.pendingProposals.size === 1;
+
+    // Test 124: Late response rejection after cancellation
+    const lateHarness124 = createPendingHarness114("124");
+    const lateSnap124 = lateHarness124.stateMachine.getSnapshot();
+    let resolveFetch124;
+    const delayedFetch124 = () => new Promise(res => { resolveFetch124 = res; });
+    const gateway124 = new LocalLLMGateway({
+      hierarchy: this.hierarchy,
+      stateMachine: lateHarness124.stateMachine,
+      orchestrator: lateHarness124.orchestrator,
+      fetchFn: delayedFetch124
+    });
+    lateHarness124.orchestrator.setLocalLLMGateway(gateway124);
+    const interpretPromise124 = lateHarness124.orchestrator.handleUserMessage("Gecikmeli istek");
+    lateHarness124.orchestrator.cancelCurrentRequest();
+    if (resolveFetch124) {
+      resolveFetch124({
+        ok: true,
+        json: async () => ({
+          success: true,
+          llm_enabled: true,
+          context_fingerprint: lateSnap124.contextFingerprint,
+          generation_id: lateSnap124.generationId,
+          result: { assistant_message: "Geç yanıt sızmamalı!", intent: "unknown", confidence: 1, needs_follow_up: false, proposed_actions: [] }
+        })
+      });
+    }
+    const lateResult124 = await interpretPromise124;
+    const test124Pass = (lateResult124?.status === "canceled" || lateResult124?.status === "stale") &&
+      !lateHarness124.orchestrator.allChatMessages.some(m => m.text === "Geç yanıt sızmamalı!");
+
+    // Test 125: Unreachable connection error shows Turkish message and Retry button without technical leak
+    const unreachableHarness125 = createPendingHarness114("125");
+    const unreachableGateway125 = new LocalLLMGateway({
+      hierarchy: this.hierarchy,
+      stateMachine: unreachableHarness125.stateMachine,
+      orchestrator: unreachableHarness125.orchestrator,
+      fetchFn: async () => { throw new Error("Failed to fetch"); }
+    });
+    unreachableHarness125.orchestrator.setLocalLLMGateway(unreachableGateway125);
+    const unreachableOutcome125 = await unreachableHarness125.orchestrator.handleUserMessage("Bağlantı hatası");
+    const unreachableLastMsg125 = unreachableHarness125.orchestrator.allChatMessages.at(-1);
+    const test125Pass = unreachableOutcome125?.status === "unreachable" &&
+      unreachableLastMsg125?.text.includes("ulaşılamıyor") &&
+      unreachableLastMsg125?.retryMessage === "Bağlantı hatası" &&
+      !unreachableLastMsg125?.text.includes("Failed to fetch") &&
+      !unreachableLastMsg125?.text.includes("500");
+
+    // Test 126: Timeout shows natural Turkish timeout message and Retry button
+    const timeoutHarness126 = createPendingHarness114("126");
+    const timeoutGateway126 = new LocalLLMGateway({
+      hierarchy: this.hierarchy,
+      stateMachine: timeoutHarness126.stateMachine,
+      orchestrator: timeoutHarness126.orchestrator,
+      fetchFn: async () => {
+        const err = new Error("timeout");
+        err.name = "AbortError";
+        throw err;
+      }
+    });
+    timeoutHarness126.orchestrator.setLocalLLMGateway(timeoutGateway126);
+    const timeoutOutcome126 = await timeoutHarness126.orchestrator.handleUserMessage("Zaman aşımı testi");
+    const timeoutLastMsg126 = timeoutHarness126.orchestrator.allChatMessages.at(-1);
+    const test126Pass = timeoutOutcome126?.status === "timeout" &&
+      timeoutLastMsg126?.text.includes("zaman aşımına uğradı") &&
+      timeoutLastMsg126?.retryMessage === "Zaman aşımı testi";
+
+    // Test 127: Safe 502 / Invalid server response shows Turkish error and Retry button without 502 leak
+    const invalidHarness127 = createPendingHarness114("127");
+    const invalidGateway127 = new LocalLLMGateway({
+      hierarchy: this.hierarchy,
+      stateMachine: invalidHarness127.stateMachine,
+      orchestrator: invalidHarness127.orchestrator,
+      fetchFn: async () => ({
+        ok: false,
+        status: 502,
+        json: async () => ({ success: false, llm_enabled: true, error: "Bad Gateway 502" })
+      })
+    });
+    invalidHarness127.orchestrator.setLocalLLMGateway(invalidGateway127);
+    const invalidOutcome127 = await invalidHarness127.orchestrator.handleUserMessage("502 testi");
+    const invalidLastMsg127 = invalidHarness127.orchestrator.allChatMessages.at(-1);
+    const test127Pass = (invalidOutcome127?.status === "invalid" || invalidOutcome127?.status === "error") &&
+      invalidLastMsg127?.text.includes("doğrulanamayan bir yanıt") &&
+      invalidLastMsg127?.retryMessage === "502 testi" &&
+      !invalidLastMsg127?.text.includes("502") &&
+      !invalidLastMsg127?.text.includes("Bad Gateway");
+
+    // Test 128: Retry button action re-initiates request safely without auto-retry
+    const retryHarness128 = createPendingHarness114("128");
+    let resolveRetry128;
+    const delayedRetryFetch128 = () => new Promise(res => { resolveRetry128 = res; });
+    const retryGateway128 = new LocalLLMGateway({
+      hierarchy: this.hierarchy,
+      stateMachine: retryHarness128.stateMachine,
+      orchestrator: retryHarness128.orchestrator,
+      fetchFn: delayedRetryFetch128
+    });
+    retryHarness128.orchestrator.setLocalLLMGateway(retryGateway128);
+    const retryPromise128 = retryHarness128.orchestrator.retryLastMessage("Tekrar denenecek mesaj");
+    const retryLastMsg128 = retryHarness128.orchestrator.allChatMessages.at(-1);
+    const test128Pass = retryHarness128.orchestrator.isRequestPending === true &&
+      retryLastMsg128?.text.includes("Mimari talebiniz değerlendiriliyor");
+    retryHarness128.orchestrator.cancelCurrentRequest();
+    if (resolveRetry128) resolveRetry128({ ok: true, json: async () => ({ llm_enabled: false }) });
+    await retryPromise128;
+
     this.cleanupTestNodes();
     this.restoreGlobals(productionGlobals);
 
@@ -2059,6 +2212,16 @@ class TestScopeGuard {
       name: "Test 119: Pending Proposal Can Be Dismissed Safely",
       pass: test119Pass
     });
+
+    results.push({ name: "Test 120: Request Lock Disables Input and Submit Button", pass: test120Pass });
+    results.push({ name: "Test 121: Request Status Displays Waiting Text, Timer and Cancel Action", pass: test121Pass });
+    results.push({ name: "Test 122: Double-Submit Prevention Blocks Duplicate Requests", pass: test122Pass });
+    results.push({ name: "Test 123: Safe Cancellation Aborts Request and Preserves Immutability", pass: test123Pass });
+    results.push({ name: "Test 124: Late Response After Cancellation Is Rejected", pass: test124Pass });
+    results.push({ name: "Test 125: Unreachable Network Error Shows Turkish Message and Retry Option", pass: test125Pass });
+    results.push({ name: "Test 126: Timeout Error Shows Turkish Timeout Message and Retry Option", pass: test126Pass });
+    results.push({ name: "Test 127: Safe 502 Response Hides Technical Leak and Offers Retry", pass: test127Pass });
+    results.push({ name: "Test 128: Manual Retry Re-initiates Controlled Request Flow", pass: test128Pass });
 
     window.scopeGuardLastRun = {
       runId: this.runId,

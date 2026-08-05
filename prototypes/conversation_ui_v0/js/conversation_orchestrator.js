@@ -26,6 +26,12 @@ class ConversationOrchestrator {
     this.allChatMessages = [];
     this.chatFilterMode = 'active_scope';
 
+    this.isRequestPending = false;
+    this.currentAbortController = null;
+    this.requestTimerId = null;
+    this.requestStartTime = 0;
+    this.pendingWaitingMessageIndex = -1;
+
     // Subscribe to StateMachine & automatically re-render Presenter surfaces
     this.stateMachine.subscribe((ctx) => {
       this.syncStateWithHistory(ctx);
@@ -35,6 +41,97 @@ class ConversationOrchestrator {
       }
       this.renderFilteredChatMessages();
     });
+  }
+
+  setChatInputLocked(locked) {
+    const chatContainer = document.getElementById(this.chatContainerId);
+    const parent = chatContainer ? (chatContainer.closest('[data-test-scope-guard-root]') || chatContainer.parentElement) : document;
+    const input = (parent && parent.querySelector('#assistantUserInput')) || document.getElementById('assistantUserInput');
+    const sendBtn = (parent && parent.querySelector('#sendBtn')) || document.getElementById('sendBtn') ||
+      (document.getElementById('assistantChatForm')?.querySelector('button[type="submit"]'));
+    if (input) {
+      input.disabled = locked;
+      if (locked) {
+        if (this._originalPlaceholder === undefined) {
+          this._originalPlaceholder = input.placeholder || '';
+        }
+        input.placeholder = 'Mimari talebiniz değerlendiriliyor...';
+      } else {
+        if (this._originalPlaceholder !== undefined) {
+          input.placeholder = this._originalPlaceholder;
+          delete this._originalPlaceholder;
+        }
+      }
+    }
+    if (sendBtn) {
+      sendBtn.disabled = locked;
+    }
+  }
+
+  startPendingRequest(messageText) {
+    if (this.isRequestPending) return false;
+    this.isRequestPending = true;
+    this.setChatInputLocked(true);
+    this.currentAbortController = new AbortController();
+    this.requestStartTime = Date.now();
+
+    const ctx = this.stateMachine.getContext();
+    this.allChatMessages.push({
+      role: 'assistant',
+      text: 'Mimari talebiniz değerlendiriliyor (0 sn)',
+      quickReplies: [],
+      proposedActions: [],
+      isWaitingIndicator: true,
+      canCancel: true,
+      snapshot: { ...ctx, timestamp: new Date().toISOString() }
+    });
+    this.pendingWaitingMessageIndex = this.allChatMessages.length - 1;
+    this.renderFilteredChatMessages();
+
+    if (this.requestTimerId) clearInterval(this.requestTimerId);
+    this.requestTimerId = setInterval(() => {
+      if (!this.isRequestPending || this.pendingWaitingMessageIndex < 0) {
+        if (this.requestTimerId) clearInterval(this.requestTimerId);
+        this.requestTimerId = null;
+        return;
+      }
+      const sec = Math.floor((Date.now() - this.requestStartTime) / 1000);
+      const waitingMsg = this.allChatMessages[this.pendingWaitingMessageIndex];
+      if (waitingMsg && waitingMsg.isWaitingIndicator) {
+        waitingMsg.text = `Mimari talebiniz değerlendiriliyor (${sec} sn)`;
+        this.renderFilteredChatMessages();
+      }
+    }, 1000);
+
+    return true;
+  }
+
+  finishPendingRequest() {
+    if (this.requestTimerId) {
+      clearInterval(this.requestTimerId);
+      this.requestTimerId = null;
+    }
+    this.currentAbortController = null;
+    this.isRequestPending = false;
+    this.setChatInputLocked(false);
+    this.pendingWaitingMessageIndex = -1;
+  }
+
+  cancelCurrentRequest() {
+    if (!this.isRequestPending) return false;
+    if (this.currentAbortController) {
+      this.currentAbortController.abort();
+    }
+    this.finishPendingRequest();
+    this.appendAssistantMessage(
+      'İstek kullanıcı tarafından iptal edildi. Plan veya karar kayıtları değiştirilmedi.'
+    );
+    return true;
+  }
+
+  retryLastMessage(messageText) {
+    if (this.isRequestPending) return false;
+    return this.handleUserMessage(messageText);
   }
 
   setStage(stageNum) {
@@ -206,6 +303,30 @@ class ConversationOrchestrator {
         content.appendChild(proposals);
       }
 
+      if (msg.canCancel || msg.isWaitingIndicator) {
+        const cancelBox = document.createElement('div');
+        cancelBox.className = 'suggestion-chips';
+        const cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.className = 'chip-btn cancel-request-btn';
+        cancelBtn.id = 'cancelRequestBtn';
+        cancelBtn.textContent = 'İptal et';
+        cancelBox.appendChild(cancelBtn);
+        content.appendChild(cancelBox);
+      }
+
+      if (msg.retryMessage) {
+        const retryBox = document.createElement('div');
+        retryBox.className = 'suggestion-chips';
+        const retryBtn = document.createElement('button');
+        retryBtn.type = 'button';
+        retryBtn.className = 'chip-btn retry-request-btn';
+        retryBtn.dataset.retryMessage = msg.retryMessage;
+        retryBtn.textContent = 'Tekrar dene';
+        retryBox.appendChild(retryBtn);
+        content.appendChild(retryBox);
+      }
+
       msgDiv.append(avatar, content);
       chatContainer.appendChild(msgDiv);
     });
@@ -214,16 +335,26 @@ class ConversationOrchestrator {
   }
 
   async handleUserMessage(messageText) {
-    if (!messageText) return;
+    if (!messageText) return null;
 
     const pendingCommand = this.handlePendingProposalCommand(messageText);
     if (pendingCommand) return pendingCommand;
 
-    if (this.localLLMGateway) {
-      return this.localLLMGateway.interpret(messageText);
-    }
+    if (this.isRequestPending) return null;
 
-    return this.handleDemoUserMessage(messageText);
+    this.startPendingRequest(messageText);
+
+    try {
+      if (this.localLLMGateway) {
+        return await this.localLLMGateway.interpret(
+          messageText,
+          { signal: this.currentAbortController?.signal }
+        );
+      }
+      return this.handleDemoUserMessage(messageText);
+    } finally {
+      this.finishPendingRequest();
+    }
   }
 
   handleDemoUserMessage(messageText) {
@@ -388,36 +519,40 @@ class ConversationOrchestrator {
     const commandResult = this.handlePendingProposalCommand(messageText);
     if (commandResult) return commandResult;
 
+    if (status === 'canceled') {
+      this.appendAssistantMessage(
+        'İstek kullanıcı tarafından iptal edildi. Plan veya karar kayıtları değiştirilmedi.'
+      );
+      return { status: 'canceled' };
+    }
+
+    const reason = {
+      disabled: 'Yerel yapay zekâ bağlantısı devre dışı. Demo konuşma modu kullanılıyor.',
+      error: 'Yerel yapay zekâ servisi doğrulanamayan bir yanıt döndürdü.',
+      invalid: 'Yerel yapay zekâ servisi doğrulanamayan bir yanıt döndürdü.',
+      timeout: 'Yerel yapay zekâ yanıtı zaman aşımına uğradı (yanıt süresi sınırı aşıldı).',
+      unreachable: 'Yerel yapay zekâ servisine ulaşılamıyor. Lütfen Ollama servisinin ve yerel sunucunun çalıştığından emin olun.'
+    }[status] || 'Yerel yapay zekâ servisi yanıt veremedi.';
+
     const pending = this.getPendingProposalContext();
     if (pending.length > 0) {
-      const reason = {
-        disabled: 'Yerel yapay zekâ bağlantısı şu anda devre dışı.',
-        error: 'Yerel yapay zekâ isteği tamamlanamadı.',
-        invalid: 'Yerel modelin yanıtı güvenlik doğrulamasını geçemedi.',
-        timeout: 'Yerel yapay zekâ isteği zaman aşımına uğradı.',
-        unreachable: 'Yerel yapay zekâ servisine şu anda ulaşılamıyor.'
-      }[status] || 'Yerel yapay zekâ yanıt veremedi.';
       const descriptions = pending
         .map(proposal => proposal.action.description)
         .join(' ');
       this.appendAssistantMessage(
         `${reason} Bekleyen öneriniz: ${descriptions} ` +
         'Plan otomatik değiştirilmedi. Öneriyi onaylayabilir, ' +
-        'ayrıntılandırabilir veya vazgeçebilirsiniz.'
+        'ayrıntılandırabilir veya vazgeçebilirsiniz.',
+        [],
+        [],
+        { retryMessage: messageText }
       );
       return { status: 'pending_continuation', failureStatus: status };
     }
 
-    const reason = {
-      disabled: 'Yerel yapay zekâ bağlantısı devre dışı. Demo konuşma modu kullanılıyor.',
-      error: 'Yerel yapay zekâ isteği tamamlanamadı. Demo konuşma modu kullanılıyor.',
-      invalid: 'Yerel model doğrulanabilir bir mimari niyet yanıtı üretmedi.',
-      timeout: 'Yerel yapay zekâ isteği zaman aşımına uğradı.',
-      unreachable: 'Yerel yapay zekâ servisine ulaşılamadı.'
-    }[status] || 'Yerel yapay zekâ yanıt veremedi.';
-    this.appendAssistantMessage(reason);
+    this.appendAssistantMessage(reason, [], [], { retryMessage: messageText });
     this.handleDemoUserMessage(messageText);
-    return { status: 'demo', failureStatus: status };
+    return { status: status, failureStatus: status };
   }
 
   normalizeQuickReply(reply, scopeSnapshot = null) {
@@ -626,7 +761,12 @@ class ConversationOrchestrator {
     this.renderFilteredChatMessages();
   }
 
-  appendAssistantMessage(text, quickReplies = [], proposedActions = []) {
+  appendAssistantMessage(text, quickReplies = [], proposedActions = [], options = {}) {
+    if (this.pendingWaitingMessageIndex >= 0 && this.allChatMessages[this.pendingWaitingMessageIndex]?.isWaitingIndicator) {
+      this.allChatMessages.splice(this.pendingWaitingMessageIndex, 1);
+      this.pendingWaitingMessageIndex = -1;
+    }
+
     const ctx = this.stateMachine.getContext();
     this.allChatMessages.push({
       role: 'assistant',
@@ -635,6 +775,9 @@ class ConversationOrchestrator {
         .map(reply => this.normalizeQuickReply(reply, ctx))
         .filter(reply => reply.label),
       proposedActions: Array.isArray(proposedActions) ? proposedActions : [],
+      retryMessage: options.retryMessage || null,
+      isWaitingIndicator: options.isWaitingIndicator || false,
+      canCancel: options.canCancel || false,
       snapshot: { ...ctx, timestamp: new Date().toISOString() }
     });
     this.renderFilteredChatMessages();

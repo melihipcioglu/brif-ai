@@ -247,6 +247,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (assistantChatForm) {
     assistantChatForm.addEventListener('submit', (e) => {
       e.preventDefault();
+      if (orchestrator.isRequestPending) return;
+
       const text = assistantUserInput.value.trim();
       if (!text) return;
 
@@ -261,6 +263,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Event Delegation
   document.addEventListener('click', (e) => {
+    // Cancel request button delegation
+    const cancelReqBtn = e.target.closest('.cancel-request-btn');
+    if (cancelReqBtn) {
+      orchestrator.cancelCurrentRequest();
+      return;
+    }
+
+    // Retry request button delegation
+    const retryReqBtn = e.target.closest('.retry-request-btn');
+    if (retryReqBtn && retryReqBtn.dataset.retryMessage) {
+      orchestrator.retryLastMessage(retryReqBtn.dataset.retryMessage);
+      return;
+    }
+
     const proposalButton = e.target.closest('.proposal-approve-btn');
     if (proposalButton && proposalButton.dataset.proposalId) {
       orchestrator.approveProposalById(proposalButton.dataset.proposalId);

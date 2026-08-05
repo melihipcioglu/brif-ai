@@ -13,13 +13,22 @@ class LocalLLMGateway {
     this.fetchFn = options.fetchFn || ((...args) => fetch(...args));
   }
 
-  async interpret(message) {
+  async interpret(message, options = {}) {
     const requestSnapshot = Object.freeze({ ...this.stateMachine.getSnapshot() });
     const requestBody = this.buildRequest(message, requestSnapshot);
-    this.orchestrator.appendAssistantMessage('Talebinizi mimari açıdan değerlendiriyorum…');
+    const signal = options.signal;
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
+
+    if (signal) {
+      if (signal.aborted) {
+        clearTimeout(timeoutId);
+        this.runFallback(message, 'canceled');
+        return { status: 'canceled' };
+      }
+      signal.addEventListener('abort', () => controller.abort(), { once: true });
+    }
 
     try {
       const response = await this.fetchFn(`${this.baseUrl}/api/v1/conversation/interpret`, {
@@ -29,6 +38,11 @@ class LocalLLMGateway {
         signal: controller.signal
       });
       const payload = await this.readResponse(response);
+
+      if (signal && signal.aborted) {
+        this.runFallback(message, 'canceled');
+        return { status: 'canceled' };
+      }
 
       if (!payload.llm_enabled) {
         this.runFallback(message, 'disabled');
@@ -60,6 +74,10 @@ class LocalLLMGateway {
       );
       return { status: 'success', payload };
     } catch (error) {
+      if (signal && signal.aborted) {
+        this.runFallback(message, 'canceled');
+        return { status: 'canceled' };
+      }
       if (error && error.name === 'AbortError') {
         this.runFallback(message, 'timeout');
         return { status: 'timeout' };
