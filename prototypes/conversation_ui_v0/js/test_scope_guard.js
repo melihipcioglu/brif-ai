@@ -1888,9 +1888,14 @@ class TestScopeGuard {
       "Öneriyi onaylıyorum."
     );
     const approvalSnapshotAfter116 = approval116.stateMachine.getSnapshot();
+    const approvedButton116 = approval116.chat.querySelector(
+      `.proposal-approve-btn[data-proposal-id="${approval116.proposalId}"]`
+    );
     const test116Pass = approvalResult116?.status === "approved" &&
       approval116.orchestrator.pendingProposals.size === 0 &&
       approval116.orchestrator.proposalRecords.length === 1 &&
+      approvedButton116?.disabled === true &&
+      approvedButton116?.textContent === "Onaylandı" &&
       approval116.orchestrator.getCurrentDecisions().length === 1 &&
       approvalSnapshotAfter116.contextFingerprint ===
         approvalSnapshotBefore116.contextFingerprint &&
@@ -2000,9 +2005,15 @@ class TestScopeGuard {
     cancelHarness123.orchestrator.cancelCurrentRequest();
     const cancelSnapAfter123 = cancelHarness123.stateMachine.getSnapshot();
     const cancelLastMsg123 = cancelHarness123.orchestrator.allChatMessages.at(-1);
+    const cancelMessages123 = cancelHarness123.orchestrator.allChatMessages.filter(message =>
+      message.text === 'İstek kullanıcı tarafından iptal edildi. Plan veya karar kayıtları değiştirilmedi.'
+    );
     const test123Pass = cancelHarness123.orchestrator.isRequestPending === false &&
       cancelLastMsg123?.text.includes("kullanıcı tarafından iptal edildi") &&
       cancelLastMsg123?.text.includes("değiştirilmedi") &&
+      cancelLastMsg123?.retryMessage === "İptal edilecek istek" &&
+      cancelMessages123.length === 1 &&
+      !cancelHarness123.orchestrator.allChatMessages.some(message => message.isWaitingIndicator) &&
       cancelSnapBefore123.contextFingerprint === cancelSnapAfter123.contextFingerprint &&
       cancelSnapBefore123.generationId === cancelSnapAfter123.generationId &&
       cancelHarness123.orchestrator.pendingProposals.size === 1;
@@ -2034,7 +2045,13 @@ class TestScopeGuard {
       });
     }
     const lateResult124 = await interpretPromise124;
+    const cancellationMessages124 = lateHarness124.orchestrator.allChatMessages.filter(message =>
+      message.text === 'İstek kullanıcı tarafından iptal edildi. Plan veya karar kayıtları değiştirilmedi.'
+    );
     const test124Pass = (lateResult124?.status === "canceled" || lateResult124?.status === "stale") &&
+      cancellationMessages124.length === 1 &&
+      cancellationMessages124[0]?.retryMessage === "Gecikmeli istek" &&
+      !lateHarness124.orchestrator.allChatMessages.some(message => message.isWaitingIndicator) &&
       !lateHarness124.orchestrator.allChatMessages.some(m => m.text === "Geç yanıt sızmamalı!");
 
     // Test 125: Unreachable connection error shows Turkish message and Retry button without technical leak

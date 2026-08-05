@@ -31,6 +31,8 @@ class ConversationOrchestrator {
     this.requestTimerId = null;
     this.requestStartTime = 0;
     this.pendingWaitingMessageIndex = -1;
+    this.activeRequestMessage = null;
+    this.handledCancellationMessages = new Map();
 
     // Subscribe to StateMachine & automatically re-render Presenter surfaces
     this.stateMachine.subscribe((ctx) => {
@@ -71,6 +73,7 @@ class ConversationOrchestrator {
   startPendingRequest(messageText) {
     if (this.isRequestPending) return false;
     this.isRequestPending = true;
+    this.activeRequestMessage = String(messageText || '');
     this.setChatInputLocked(true);
     this.currentAbortController = new AbortController();
     this.requestStartTime = Date.now();
@@ -111,20 +114,36 @@ class ConversationOrchestrator {
       clearInterval(this.requestTimerId);
       this.requestTimerId = null;
     }
+    if (
+      this.pendingWaitingMessageIndex >= 0 &&
+      this.allChatMessages[this.pendingWaitingMessageIndex]?.isWaitingIndicator
+    ) {
+      this.allChatMessages.splice(this.pendingWaitingMessageIndex, 1);
+    }
+    this.pendingWaitingMessageIndex = -1;
     this.currentAbortController = null;
     this.isRequestPending = false;
+    this.activeRequestMessage = null;
     this.setChatInputLocked(false);
-    this.pendingWaitingMessageIndex = -1;
+    this.renderFilteredChatMessages();
   }
 
   cancelCurrentRequest() {
     if (!this.isRequestPending) return false;
+    const canceledMessage = this.activeRequestMessage || '';
+    if (canceledMessage) {
+      const handledCount = this.handledCancellationMessages.get(canceledMessage) || 0;
+      this.handledCancellationMessages.set(canceledMessage, handledCount + 1);
+    }
     if (this.currentAbortController) {
       this.currentAbortController.abort();
     }
     this.finishPendingRequest();
     this.appendAssistantMessage(
-      'İstek kullanıcı tarafından iptal edildi. Plan veya karar kayıtları değiştirilmedi.'
+      'İstek kullanıcı tarafından iptal edildi. Plan veya karar kayıtları değiştirilmedi.',
+      [],
+      [],
+      { retryMessage: canceledMessage || null }
     );
     return true;
   }
@@ -295,9 +314,17 @@ class ConversationOrchestrator {
           label.textContent = proposal.action.description;
           proposals.appendChild(label);
           const button = document.createElement('button');
+          button.type = 'button';
           button.className = 'chip-btn proposal-approve-btn';
           button.dataset.proposalId = proposal.id;
-          button.textContent = 'Öneriyi onayla';
+          if (proposal.status === 'approved') {
+            button.disabled = true;
+            button.classList.add('proposal-approved');
+            button.textContent = 'Onaylandı';
+            button.setAttribute('aria-disabled', 'true');
+          } else {
+            button.textContent = 'Öneriyi onayla';
+          }
           proposals.appendChild(button);
         });
         content.appendChild(proposals);
@@ -437,6 +464,12 @@ class ConversationOrchestrator {
     };
     this.proposalRecords.push(record);
     this.pendingProposals.delete(proposalId);
+    this.allChatMessages.forEach(message => {
+      if (!Array.isArray(message.proposedActions)) return;
+      message.proposedActions.forEach(candidate => {
+        if (candidate.id === proposalId) candidate.status = 'approved';
+      });
+    });
     this.appendAssistantMessage(
       'Öneri onay kaydı oluşturuldu. Plan henüz değiştirilmedi.'
     );
@@ -520,8 +553,20 @@ class ConversationOrchestrator {
     if (commandResult) return commandResult;
 
     if (status === 'canceled') {
+      const handledCount = this.handledCancellationMessages.get(messageText) || 0;
+      if (handledCount > 0) {
+        if (handledCount === 1) {
+          this.handledCancellationMessages.delete(messageText);
+        } else {
+          this.handledCancellationMessages.set(messageText, handledCount - 1);
+        }
+        return { status: 'canceled' };
+      }
       this.appendAssistantMessage(
-        'İstek kullanıcı tarafından iptal edildi. Plan veya karar kayıtları değiştirilmedi.'
+        'İstek kullanıcı tarafından iptal edildi. Plan veya karar kayıtları değiştirilmedi.',
+        [],
+        [],
+        { retryMessage: messageText }
       );
       return { status: 'canceled' };
     }
