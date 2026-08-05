@@ -39,11 +39,37 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   window.appOrchestrator = orchestrator;
 
+  const resolveLocalApiBaseUrl = () => {
+    const DEFAULT_URL = 'http://127.0.0.1:8000';
+    if (typeof window === 'undefined' || !window.location) {
+      return DEFAULT_URL;
+    }
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const rawParam = urlParams.get('apiBaseUrl') || window.BRIF_AI_API_BASE_URL;
+      if (!rawParam || typeof rawParam !== 'string') {
+        return DEFAULT_URL;
+      }
+      const trimmed = rawParam.trim();
+      const match = trimmed.match(/^http:\/\/(127\.0\.0\.1|localhost):([1-9]\d{0,4})$/i);
+      if (!match) {
+        return DEFAULT_URL;
+      }
+      const port = parseInt(match[2], 10);
+      if (isNaN(port) || port < 1 || port > 65535) {
+        return DEFAULT_URL;
+      }
+      return `http://${match[1]}:${port}`;
+    } catch (_e) {
+      return DEFAULT_URL;
+    }
+  };
+
   const localLLMGateway = new LocalLLMGateway({
     hierarchy,
     stateMachine,
     orchestrator,
-    baseUrl: window.BRIF_AI_API_BASE_URL || 'http://127.0.0.1:8000'
+    baseUrl: resolveLocalApiBaseUrl()
   });
   orchestrator.setLocalLLMGateway(localLLMGateway);
   window.appLocalLLMGateway = localLLMGateway;

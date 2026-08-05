@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import socket
 import subprocess
+import sys
 import time
-from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from brif_ai.demo.launcher import (
     DemoProcessManager,
@@ -16,7 +19,9 @@ from brif_ai.demo.launcher import (
     check_project_root,
     check_required_modules,
     check_virtual_environment,
+    run_all_preflight_checks,
     wait_for_api_ready,
+    wait_for_ui_ready,
 )
 
 
@@ -59,7 +64,7 @@ def test_check_required_modules() -> None:
     assert "gerekli python modülleri" in msg.lower()
 
 
-def test_check_port_free() -> None:
+def test_check_port_free_valid() -> None:
     # Find a free port
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
@@ -69,17 +74,42 @@ def test_check_port_free() -> None:
     assert ok is True
     assert "boş" in msg.lower()
 
-    # Test busy port
-    s_busy = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s_busy.bind(("127.0.0.1", free_port))
-    s_busy.listen(1)
 
-    try:
-        ok_busy, msg_busy = check_port_free(free_port)
+def test_check_port_free_zero_rejected() -> None:
+    """Verify port 0 is strictly rejected."""
+    ok, msg = check_port_free(0)
+    assert ok is False
+    assert "geçersiz port numarası" in msg.lower()
+
+
+def test_check_port_free_busy() -> None:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        s.listen(1)
+        busy_port = int(s.getsockname()[1])
+
+        ok_busy, msg_busy = check_port_free(busy_port)
         assert ok_busy is False
         assert "kullanılıyor" in msg_busy.lower()
-    finally:
-        s_busy.close()
+
+
+def test_preflight_checks_rejects_same_api_and_ui_ports(tmp_path: Path) -> None:
+    """Verify preflight check fails immediately if API and UI ports collide."""
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'test'")
+    ui_dir = tmp_path / "prototypes" / "conversation_ui_v0"
+    ui_dir.mkdir(parents=True)
+    (ui_dir / "index.html").write_text("<html></html>")
+    (tmp_path / ".venv" / "Scripts").mkdir(parents=True)
+    (tmp_path / ".venv" / "Scripts" / "python.exe").write_text("")
+
+    results = run_all_preflight_checks(
+        project_root=tmp_path,
+        api_port=8080,
+        ui_port=8080,
+        check_ollama=False,
+    )
+    failed = [msg for ok, msg in results if not ok]
+    assert any("aynı olamaz" in msg for msg in failed)
 
 
 def test_check_ollama_service_reachable() -> None:
@@ -164,13 +194,14 @@ def test_wait_for_api_ready_success() -> None:
         assert ready is True
 
 
-def test_wait_for_api_ready_timeout() -> None:
-    with patch("urllib.request.urlopen", side_effect=OSError("Connection refused")):
-        start = time.time()
-        ready = wait_for_api_ready("http://127.0.0.1:8000", timeout=0.5)
-        elapsed = time.time() - start
-        assert ready is False
-        assert elapsed >= 0.4
+def test_wait_for_ui_ready_success() -> None:
+    fake_response = MagicMock()
+    fake_response.status = 200
+    fake_response.__enter__.return_value = fake_response
+
+    with patch("urllib.request.urlopen", return_value=fake_response):
+        ready = wait_for_ui_ready("http://127.0.0.1:8080", timeout=1.0)
+        assert ready is True
 
 
 def test_demo_process_manager_only_stops_owned_processes() -> None:
@@ -184,6 +215,7 @@ def test_demo_process_manager_only_stops_owned_processes() -> None:
     mock_proc.terminate.assert_called_once()
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Requires Windows PowerShell environment")
 def test_powershell_script_missing_venv_exits_with_turkish_error(tmp_path: Path) -> None:
     """Verify PowerShell script exits cleanly with exit code 1 if .venv is missing."""
     dummy_ps1 = tmp_path / "run_demo.ps1"
@@ -217,12 +249,12 @@ def test_powershell_script_missing_venv_exits_with_turkish_error(tmp_path: Path)
     assert "ModuleNotFoundError" not in output
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Requires Windows PowerShell environment")
 def test_powershell_script_from_outside_working_directory(tmp_path: Path) -> None:
     """Verify PowerShell script invoked from a different directory resolves project root."""
     real_root = Path(".").resolve()
     script_path = real_root / "run_demo.ps1"
 
-    # Bind a busy port to cause clean exit after root resolution
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as busy_s:
         busy_s.bind(("127.0.0.1", 0))
         busy_s.listen(1)

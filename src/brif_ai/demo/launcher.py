@@ -134,8 +134,8 @@ def check_model_available(
 
 
 def check_port_free(port: int, host: str = "127.0.0.1") -> tuple[bool, str]:
-    """Verify port is valid and free on local machine."""
-    if not (0 <= port <= 65535):
+    """Verify port is valid (1-65535) and free on local machine."""
+    if not (1 <= port <= 65535):
         return (
             False,
             f"Hata: Geçersiz port numarası ({port}). Port 1 ile 65535 arasında olmalıdır.",
@@ -168,8 +168,16 @@ def run_all_preflight_checks(
     checks.append(check_project_root(root))
     checks.append(check_virtual_environment(root))
     checks.append(check_required_modules())
-    checks.append(check_port_free(api_port))
-    checks.append(check_port_free(ui_port))
+
+    if api_port == ui_port:
+        checks.append((
+            False,
+            f"Hata: API portu ve Arayüz portu aynı olamaz ({api_port}). "
+            "Lütfen farklı portlar belirtin.",
+        ))
+    else:
+        checks.append(check_port_free(api_port))
+        checks.append(check_port_free(ui_port))
 
     if check_ollama:
         ollama_ok, ollama_msg = check_ollama_service(ollama_url)
@@ -195,13 +203,28 @@ def wait_for_api_ready(api_url: str, timeout: float = 15.0) -> bool:
     return False
 
 
+def wait_for_ui_ready(ui_url: str, timeout: float = 15.0) -> bool:
+    """Poll UI HTTP endpoint until ready or timeout expires."""
+    endpoint = f"{ui_url.rstrip('/')}/index.html"
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            req = urllib.request.Request(endpoint, method="GET")
+            with urllib.request.urlopen(req, timeout=1.0) as resp:
+                if resp.status == 200:
+                    return True
+        except Exception:
+            time.sleep(0.3)
+    return False
+
+
 class DemoProcessManager:
     """Manages owned child processes for the BRIF.AI demo."""
 
     def __init__(self) -> None:
-        self.processes: dict[str, subprocess.Popen[str]] = {}
+        self.processes: dict[str, subprocess.Popen[bytes]] = {}
 
-    def register_process(self, name: str, proc: subprocess.Popen[str]) -> None:
+    def register_process(self, name: str, proc: subprocess.Popen[bytes]) -> None:
         self.processes[name] = proc
 
     def stop_all(self) -> None:
@@ -271,6 +294,8 @@ def launch_demo(
     with contextlib.suppress(ValueError, OSError):
         signal.signal(signal.SIGINT, _sig_handler)
         signal.signal(signal.SIGTERM, _sig_handler)
+        if hasattr(signal, "SIGBREAK"):
+            signal.signal(signal.SIGBREAK, _sig_handler)
 
     # Determine UI directory
     ui_dir = root / "prototypes" / "conversation_ui_v0"
@@ -289,9 +314,8 @@ def launch_demo(
     api_proc = subprocess.Popen(
         api_cmd,
         cwd=root,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
     manager.register_process("api", api_proc)
 
@@ -307,45 +331,57 @@ def launch_demo(
     ui_proc = subprocess.Popen(
         ui_cmd,
         cwd=root,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
     manager.register_process("ui", ui_proc)
 
     api_url = f"http://127.0.0.1:{api_port}"
-    ui_url = f"http://127.0.0.1:{ui_port}"
+    ui_base_url = f"http://127.0.0.1:{ui_port}"
+    full_ui_url = (
+        f"{ui_base_url}/?apiBaseUrl=http%3A%2F%2F127.0.0.1%3A{api_port}"
+        if api_port != 8000
+        else ui_base_url
+    )
 
     print("API hazırlık durumu kontrol ediliyor...")
     api_ready = wait_for_api_ready(api_url, timeout=15.0)
 
     if not api_ready:
-        print("[x] API servisi zaman aşımı süresince hazır olamadı.")
+        print("[x] Hata: API servisi zaman aşımı süresince hazır olamadı.")
+        manager.stop_all()
+        sys.exit(1)
+
+    print("Arayüz hazırlık durumu kontrol ediliyor...")
+    ui_ready = wait_for_ui_ready(ui_base_url, timeout=15.0)
+
+    if not ui_ready:
+        print("[x] Hata: Arayüz servisi zaman aşımı süresince hazır olamadı.")
         manager.stop_all()
         sys.exit(1)
 
     print("\n[5/5] BRIF.AI Yerel Konuşma Demosu Başarıyla Başlatıldı!")
     print("-" * 60)
-    print(f"[*] Demo Adresi: {ui_url}")
+    print(f"[*] Demo Adresi: {full_ui_url}")
     print(f"[*] API Adresi:  {api_url}")
     print("[!] Güvenli Kapatma: Demoyu sonlandırmak için Ctrl+C tuşlarına basın.")
     print("-" * 60)
 
     if open_browser:
         with contextlib.suppress(Exception):
-            webbrowser.open(ui_url)
+            webbrowser.open(full_ui_url)
 
     try:
         while True:
             time.sleep(1.0)
             if api_proc.poll() is not None or ui_proc.poll() is not None:
-                print("\n⚠️ Sunucu süreçlerinden biri beklenmeyen şekilde durdu.")
+                print("\n[!] Sunucu süreçlerinden biri beklenmeyen şekilde durdu.")
                 break
     except KeyboardInterrupt:
-        print("\n\n🛑 Kapatma isteği alındı. Süreçler temizleniyor...")
+        print("\n\n[*] Kapatma isteği alındı. Süreçler temizleniyor...")
     finally:
         manager.stop_all()
-        print("✅ BRIF.AI yerel demo süreçleri güvenle kapatıldı.")
+        print("[v] BRIF.AI yerel demo süreçleri güvenle kapatıldı.")
 
 
 def main() -> None:
