@@ -6,6 +6,7 @@ import argparse
 import atexit
 import contextlib
 import json
+import os
 import signal
 import socket
 import subprocess
@@ -190,19 +191,72 @@ def run_all_preflight_checks(
     return checks
 
 
-def wait_for_api_ready(api_url: str, timeout: float = 15.0) -> bool:
-    """Poll API health endpoint until ready or timeout expires."""
+def wait_for_api_ready(
+    api_url: str,
+    timeout: float = 15.0,
+    expected_model: str = "qwen3:4b-instruct",
+    expected_provider: str = "ollama",
+) -> tuple[bool, str]:
+    """Poll API health endpoint until ready with real LLM verification or timeout expires."""
     endpoint = f"{api_url.rstrip('/')}/api/v1/health"
     start_time = time.time()
+    last_error = "API servisine ulaşılamadı."
+
     while time.time() - start_time < timeout:
         try:
             req = urllib.request.Request(endpoint, method="GET")
             with urllib.request.urlopen(req, timeout=1.0) as resp:
                 if resp.status == 200:
-                    return True
-        except Exception:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    status = str(data.get("status", ""))
+                    llm_enabled = bool(data.get("llm_enabled", False))
+                    provider = str(data.get("provider", ""))
+                    provider_reachable = bool(data.get("provider_reachable", False))
+                    selected_model = data.get("selected_model")
+                    model_available = bool(data.get("model_available", False))
+
+                    if status != "ok":
+                        last_error = f"Hata: API sağlık durumu uygun değil (status='{status}')."
+                        time.sleep(0.3)
+                        continue
+
+                    if not llm_enabled:
+                        last_error = (
+                            "Hata: API LLM bağlantısı etkinleştirilmedi (llm_enabled=false)."
+                        )
+                        time.sleep(0.3)
+                        continue
+
+                    if provider != expected_provider or not provider_reachable:
+                        last_error = (
+                            f"Hata: Sağlayıcı '{expected_provider}' erişilebilir değil "
+                            f"(provider='{provider}', reachable={provider_reachable})."
+                        )
+                        time.sleep(0.3)
+                        continue
+
+                    if selected_model != expected_model:
+                        last_error = (
+                            f"Hata: Seçilen model eşleşmiyor (Beklenen: '{expected_model}', "
+                            f"API: '{selected_model}')."
+                        )
+                        time.sleep(0.3)
+                        continue
+
+                    if not model_available:
+                        last_error = (
+                            f"Hata: Seçilen model '{expected_model}' API tarafında "
+                            "kullanılabilir görünmüyor (model_available=false)."
+                        )
+                        time.sleep(0.3)
+                        continue
+
+                    return True, "API servisi ve yerel LLM bağlantısı hazır."
+        except Exception as exc:
+            last_error = f"API sağlık kontrolü hatası: {exc}"
             time.sleep(0.3)
-    return False
+
+    return False, last_error
 
 
 def wait_for_ui_ready(ui_url: str, timeout: float = 15.0) -> bool:
@@ -303,6 +357,16 @@ def launch_demo(
     ui_dir = root / "prototypes" / "conversation_ui_v0"
 
     print(f"[3/5] API başlatılıyor... (http://127.0.0.1:{api_port})")
+
+    api_env = os.environ.copy()
+    api_env["BRIF_AI_LLM_ENABLED"] = "true"
+    api_env["BRIF_AI_LLM_PROVIDER"] = "ollama"
+    api_env["BRIF_AI_LLM_BASE_URL"] = ollama_url
+    api_env["BRIF_AI_LLM_MODEL"] = model_name
+    api_env["BRIF_AI_LLM_TEMPERATURE"] = "0"
+    api_env["BRIF_AI_LLM_THINK"] = "false"
+    api_env["BRIF_AI_LLM_NUM_PREDICT"] = "768"
+
     api_cmd = [
         python_executable,
         "-m",
@@ -316,6 +380,7 @@ def launch_demo(
     api_proc = subprocess.Popen(
         api_cmd,
         cwd=root,
+        env=api_env,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
@@ -346,11 +411,16 @@ def launch_demo(
         else ui_base_url
     )
 
-    print("API hazırlık durumu kontrol ediliyor...")
-    api_ready = wait_for_api_ready(api_url, timeout=15.0)
+    print("API hazırlık durumu ve LLM bağlantısı kontrol ediliyor...")
+    api_ready, api_msg = wait_for_api_ready(
+        api_url,
+        timeout=15.0,
+        expected_model=model_name,
+        expected_provider="ollama",
+    )
 
     if not api_ready:
-        print("[x] Hata: API servisi zaman aşımı süresince hazır olamadı.")
+        print(f"[x] {api_msg}")
         manager.stop_all()
         sys.exit(1)
 
@@ -366,6 +436,10 @@ def launch_demo(
     print("-" * 60)
     print(f"[*] Demo Adresi: {full_ui_url}")
     print(f"[*] API Adresi:  {api_url}")
+    print("[*] Yerel yapay zekâ etkin")
+    print(f"[*] Kullanılan sağlayıcı: Ollama ({ollama_url})")
+    print(f"[*] Kullanılan model: {model_name}")
+    print("[*] Demo/fallback modu kullanılmıyor")
     print("[!] Güvenli Kapatma: Demoyu sonlandırmak için Ctrl+C tuşlarına basın.")
     print("-" * 60)
 
