@@ -7,7 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from brif_ai.llm.contracts import ConversationRequest
-from brif_ai.llm.prompts import SYSTEM_PROMPT, build_user_prompt
+from brif_ai.llm.prompts import SCHEMA_REPAIR_PROMPT, SYSTEM_PROMPT, build_user_prompt
 
 
 def request_data() -> dict[str, object]:
@@ -134,3 +134,14 @@ def test_system_prompt_preserves_pending_proposal_continuity() -> None:
     assert "ilk analizi tekrarlama" in SYSTEM_PROMPT
     assert "henüz onaylanmış karar değildir" in SYSTEM_PROMPT
     assert "onaylama, ayrıntılandırma veya vazgeçme" in SYSTEM_PROMPT
+
+
+def test_schema_repair_prompt_states_cross_field_consistency_rules() -> None:
+    assert "target her zaman bir JSON nesnesi" in SCHEMA_REPAIR_PROMPT
+    assert "her zaman JSON dizisi" in SCHEMA_REPAIR_PROMPT
+    assert "needs_follow_up=true" in SCHEMA_REPAIR_PROMPT
+    assert "needs_user_confirmation=true" in SCHEMA_REPAIR_PROMPT
+    assert "requires_user_confirmation=true" in SCHEMA_REPAIR_PROMPT
+    assert "yalnız görünür kapsamdaki gerçek target_entity_id" in SCHEMA_REPAIR_PROMPT
+    assert "confidence 0 ile 1 arasında" in SCHEMA_REPAIR_PROMPT
+    assert "şema dışı hiçbir alan ekleme" in SCHEMA_REPAIR_PROMPT
