@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -112,7 +112,7 @@ def _write_schema_diagnostic(
     """Write validation locations and performance only; never persist model/user text."""
 
     record: dict[str, object] = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "attempt": attempt,
         "done": payload.get("done"),
         "done_reason": payload.get("done_reason"),
