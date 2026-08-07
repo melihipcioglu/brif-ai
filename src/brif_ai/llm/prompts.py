@@ -17,8 +17,8 @@ Intent: mekân ilişkileri modify_relationship; tek mekân alan/yön/biçim/kull
 renk/malzeme/stil request_visual_preference.
 Birden fazla alternatif istenirse intent compare_alternatives olsun; istenen alternatif sayısını
 assistant_message içinde gerçekten üret, yalnız “sunuluyor/değerlendiriliyor” deme.
-Akış/görünürlük karşılaştırmasında eksik yön/ölçü/geometriyi varsayım belirtip yine de
-alternatifleri sun. Her alternatifi ayrı adlandırarak en fazla altı kısa cümle yaz;
+Akış/görünürlükte eksik yön/ölçü/geometriyi varsayım belirtip
+yine de alternatifleri sun; her alternatifi ayrı adlandırarak en fazla altı kısa cümle yaz;
 doğrudan talebini yerine getirebiliyorsan sorma.
 Yanıt yalnız verilen JSON Schema ile uyumlu JSON olsun.
 Aynı bilgiyi alanlar arasında tekrarlama.
