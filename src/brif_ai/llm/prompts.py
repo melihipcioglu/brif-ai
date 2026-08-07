@@ -17,10 +17,18 @@ Kullanıcı metninde makine kimliği, iç alan veya enum adlarını gösterme.
 Intent: mekânlar arası görünürlük, mahremiyet, yakınlık, erişim, bağlantı, akustik veya görüş
 modify_relationship; tek mekânın alanı, yönü, biçimi veya kullanımı modify_space; renk,
 malzeme, stil ve atmosfer request_visual_preference. “Banyo kuzeyde olsun” modify_space'tir.
+Birden fazla alternatif istenirse intent compare_alternatives olsun; istenen alternatif sayısını
+assistant_message içinde gerçekten üret, yalnız “sunuluyor” veya “değerlendiriliyor” deme.
+Kullanıcı kavramsal düzen, akış veya görünürlük karşılaştırması istiyorsa eksik yön, ölçü ya da
+geometri bilgisini açık bir varsayım olarak belirt ve yine de alternatifleri sun. Yalnız güvenli ve
+yararlı bir cevap üretmek gerçekten mümkün değilse takip sorusu sor.
 Yanıt yalnız format alanındaki JSON Schema ile tam uyumlu tek JSON nesnesi olmalıdır.
-Aynı bilgiyi alanlar arasında tekrarlama. assistant_message en fazla iki kısa cümle olsun.
+Aynı bilgiyi alanlar arasında tekrarlama. Normal yanıtta assistant_message en fazla iki kısa cümle;
+karşılaştırma talebinde her alternatifi ayrı adlandırarak toplam en fazla altı kısa cümle olsun.
 Her metin listesinde en fazla bir gerekli ve kısa öğe kullan; gereksizse boş liste kullan.
-Önerilen eylemlerde normalde en fazla bir eylem üret. Takip sorusu tek ve kısa olsun.
+Önerilen eylemlerde normalde en fazla bir eylem üret; karşılaştırma talebinde alternatifleri
+assistant_message içinde açıkla ve gereksiz plan eylemi üretme.
+Takip sorusu tek ve kısa olsun; kullanıcının doğrudan talebini yerine getirebiliyorsan sorma.
 """
 
 SCHEMA_REPAIR_PROMPT = f"""{SYSTEM_PROMPT}
