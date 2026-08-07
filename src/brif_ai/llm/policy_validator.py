@@ -20,15 +20,27 @@ _INTERNAL_ID_PATTERN = re.compile(
     r")(?![\w])",
     re.IGNORECASE,
 )
+FORBIDDEN_PUBLIC_TERMS: tuple[str, ...] = (
+    "entity_id",
+    "entity",
+    "target_entity_id",
+    "target",
+    "enum",
+    "öğe bilgisi",
+    "ilgili mekân",
+    "visible_entities",
+    "aktif kapsam kimliği",
+)
+
 _PUBLIC_FALLBACKS = {
-    "space": "ilgili mekân",
-    "project": "ilgili proje",
-    "building": "ilgili yapı",
-    "block": "ilgili yapı",
-    "level": "ilgili kat",
-    "lvl": "ilgili kat",
-    "zone": "ilgili bölge",
-    "entity": "ilgili öğe",
+    "space": "mekân",
+    "project": "proje",
+    "building": "yapı",
+    "block": "yapı",
+    "level": "kat",
+    "lvl": "kat",
+    "zone": "bölge",
+    "entity": "öğe",
 }
 _PUBLIC_TECHNICAL_TERM_REPLACEMENTS = (
     ("pending_user_confirmation", "kullanıcı onayı bekleniyor"),
@@ -47,8 +59,8 @@ _PUBLIC_TECHNICAL_TERM_REPLACEMENTS = (
     ("active_context", "aktif bağlam"),
     ("context_fingerprint", "bağlam bilgisi"),
     ("generation_id", "bağlam sürümü"),
-    ("target_entity_id", "ilgili öğe bilgisi"),
-    ("entity_id", "öğe bilgisi"),
+    ("target_entity_id", "mekân bilgisi"),
+    ("entity_id", "mekân bilgisi"),
     ("project_id", "proje bilgisi"),
     ("building_id", "yapı bilgisi"),
     ("level_id", "kat bilgisi"),
@@ -85,7 +97,9 @@ def _internal_term_pattern(term: str) -> re.Pattern[str]:
 
 _PUBLIC_TECHNICAL_TERM_PATTERNS = tuple(
     (_internal_term_pattern(term), replacement)
-    for term, replacement in _PUBLIC_TECHNICAL_TERM_REPLACEMENTS
+    for term, replacement in sorted(
+        _PUBLIC_TECHNICAL_TERM_REPLACEMENTS, key=lambda pair: len(pair[0]), reverse=True
+    )
 )
 
 
@@ -125,14 +139,25 @@ def sanitize_public_text(text: str, visible_entities: list[VisibleEntity]) -> st
         if entity_name is not None:
             return entity_name
         prefix = identifier.split("_", maxsplit=1)[0].casefold()
-        return _PUBLIC_FALLBACKS[prefix]
+        return _PUBLIC_FALLBACKS.get(prefix, "öğe")
 
     sanitized = _localize_internal_terms(text)
     sanitized = _INTERNAL_ID_PATTERN.sub(replacement, sanitized)
     sanitized = re.sub(r"[ \t]+", " ", sanitized)
     sanitized = re.sub(r" +([,.!?;:])", r"\1", sanitized)
     sanitized = "\n".join(line.strip() for line in sanitized.splitlines()).strip()
-    return sanitized or "İlgili kapsam hakkında ek bilgi gerekiyor."
+    return sanitized or "Mekân kapsamı hakkında ek bilgi gerekiyor."
+
+
+_FORBIDDEN_SYSTEM_PATTERNS = tuple(
+    re.compile(
+        r"(?<![\w])" + re.escape(term) + r"(?![\w])"
+        if re.match(r"^\w+$", term)
+        else re.escape(term),
+        re.IGNORECASE,
+    )
+    for term in FORBIDDEN_PUBLIC_TERMS
+)
 
 
 class PolicyValidationError(ValueError):
@@ -146,15 +171,100 @@ class ScopeMismatchError(PolicyValidationError):
 class ArchitecturalIntentPolicyValidator:
     """Treat model output as untrusted suggestions constrained by active context."""
 
+    def validate_semantic_integrity(
+        self,
+        result: ArchitecturalIntentResult,
+        request: ConversationRequest,
+    ) -> None:
+        """Validate post-schema semantic rules and forbid internal system jargon."""
+
+        public_texts = [
+            result.assistant_message,
+            *([result.follow_up_question] if result.follow_up_question is not None else []),
+            *result.user_requirements,
+            *result.interpreted_priorities,
+            *result.constraints_to_check,
+            *result.missing_information,
+            *result.warnings,
+            *(action.description for action in result.proposed_actions),
+        ]
+        combined = " ".join(public_texts).casefold()
+        for pattern in _FORBIDDEN_SYSTEM_PATTERNS:
+            match = pattern.search(combined)
+            if match:
+                raise PolicyValidationError(
+                    f"İç sistem dili / yasaklı terim saptandı: {match.group(0)!r}"
+                )
+
+        msg_lower = request.message.casefold()
+        is_compare = any(
+            kw in msg_lower
+            for kw in (
+                "alternatif",
+                "karşılaştır",
+                "seçenek",
+                "iki farklı",
+                "2 alternatif",
+                "düzenleme alternatifi",
+            )
+        )
+
+        if is_compare:
+            if result.intent != IntentType.COMPARE_ALTERNATIVES:
+                raise PolicyValidationError(
+                    "Alternatif talebi için intent 'compare_alternatives' olmalıdır."
+                )
+
+            if result.needs_follow_up:
+                raise PolicyValidationError(
+                    "Kavramsal alternatif talebinde takip sorusu üretilmemelidir "
+                    "(needs_follow_up=false olmalı)."
+                )
+
+            assistant_msg = result.assistant_message.casefold()
+            has_alt1 = (
+                "alternatif 1" in assistant_msg
+                or "birinci alternatif" in assistant_msg
+                or "1." in assistant_msg
+            )
+            has_alt2 = (
+                "alternatif 2" in assistant_msg
+                or "ikinci alternatif" in assistant_msg
+                or "2." in assistant_msg
+            )
+            if not (has_alt1 and has_alt2):
+                raise PolicyValidationError(
+                    "İki alternatif istendiğinde assistant_message 'Alternatif 1' ve "
+                    "'Alternatif 2' içermelidir."
+                )
+
     def validate(
         self,
         result: ArchitecturalIntentResult,
         request: ConversationRequest,
     ) -> ArchitecturalIntentResult:
         result = self._normalize_intent(result, request)
+        self.validate_semantic_integrity(result, request)
         result = self._sanitize_public_fields(result, request.visible_entities)
         active = request.active_context
         target = result.target
+
+        if result.intent == IntentType.COMPARE_ALTERNATIVES:
+            return result.model_copy(
+                update={
+                    "target": EntityTarget(
+                        project_id=None,
+                        building_id=None,
+                        level_id=None,
+                        zone_id=None,
+                        entity_id=None,
+                    ),
+                    "proposed_actions": [],
+                    "needs_user_confirmation": False,
+                    "needs_follow_up": False,
+                    "follow_up_question": None,
+                }
+            )
 
         self._match_scope("project_id", target.project_id, active.project_id)
         self._match_scope("building_id", target.building_id, active.building_id)
@@ -230,11 +340,11 @@ class ArchitecturalIntentPolicyValidator:
             ),
             None,
         )
-        subject = f"{entity_name} ile ilgili" if entity_name else "İlgili mekânla ilgili"
+        subject = f"{entity_name} ile ilgili" if entity_name else "Talep ettiğiniz mekânla ilgili"
         question = (
             f"{entity_name} seçildikten sonra bu talebi birlikte inceleyelim mi?"
             if entity_name
-            else "İlgili mekânı seçerek bu talebi birlikte inceleyelim mi?"
+            else "Mekânı seçerek bu talebi birlikte inceleyelim mi?"
         )
         active = request.active_context
         recovered = result.model_copy(

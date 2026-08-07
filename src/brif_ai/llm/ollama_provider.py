@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import math
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,6 +16,10 @@ from brif_ai.llm.contracts import (
     ConversationRequest,
     LocalModelInfo,
     ProviderHealth,
+)
+from brif_ai.llm.policy_validator import (
+    ArchitecturalIntentPolicyValidator,
+    PolicyValidationError,
 )
 from brif_ai.llm.prompts import SCHEMA_REPAIR_PROMPT, SYSTEM_PROMPT, build_user_prompt
 from brif_ai.llm.provider import (
@@ -37,7 +40,7 @@ def _duration_seconds(payload: dict[str, Any], field: str) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
     seconds = float(value) / _NANOSECONDS_PER_SECOND
-    return seconds if seconds >= 0 and math.isfinite(seconds) else None
+    return seconds if seconds >= 0 and float(seconds) == seconds else None
 
 
 def _token_count(payload: dict[str, Any], field: str) -> int | None:
@@ -61,44 +64,20 @@ class OllamaPerformanceMetrics:
 
     @classmethod
     def from_response(cls, payload: dict[str, Any]) -> OllamaPerformanceMetrics:
-        eval_seconds = _duration_seconds(payload, "eval_duration")
-        generated_tokens = _token_count(payload, "eval_count")
-        tokens_per_second = (
-            generated_tokens / eval_seconds
-            if generated_tokens is not None and eval_seconds is not None and eval_seconds > 0
-            else None
-        )
+        eval_count = _token_count(payload, "eval_count")
+        eval_duration = _duration_seconds(payload, "eval_duration")
+        tps: float | None = None
+        if eval_count is not None and eval_duration is not None and eval_duration > 0:
+            tps = round(eval_count / eval_duration, 2)
         return cls(
             total_seconds=_duration_seconds(payload, "total_duration"),
             load_seconds=_duration_seconds(payload, "load_duration"),
             prompt_tokens=_token_count(payload, "prompt_eval_count"),
             prompt_eval_seconds=_duration_seconds(payload, "prompt_eval_duration"),
-            generated_tokens=generated_tokens,
-            eval_seconds=eval_seconds,
-            tokens_per_second=tokens_per_second,
+            generated_tokens=eval_count,
+            eval_seconds=eval_duration,
+            tokens_per_second=tps,
         )
-
-
-def _safe_error_details(error: Exception) -> list[dict[str, str]]:
-    if isinstance(error, ValidationError):
-        details: list[dict[str, str]] = []
-        for item in error.errors():
-            location = ".".join(str(part) for part in item.get("loc", ()))
-            details.append(
-                {
-                    "location": location,
-                    "type": str(item.get("type", "validation_error")),
-                    "message": str(item.get("msg", "Schema doğrulama hatası.")),
-                }
-            )
-        return details
-    return [
-        {
-            "location": "response",
-            "type": type(error).__name__,
-            "message": str(error),
-        }
-    ]
 
 
 def _write_schema_diagnostic(
@@ -109,14 +88,31 @@ def _write_schema_diagnostic(
     attempt: str,
     path: Path = _SCHEMA_DIAGNOSTIC_PATH,
 ) -> None:
-    """Write validation locations and performance only; never persist model/user text."""
+    errors_list: list[dict[str, str]] = []
+    if isinstance(error, ValidationError):
+        for raw_err in error.errors():
+            errors_list.append(
+                {
+                    "location": " -> ".join(str(loc) for loc in raw_err.get("loc", ())),
+                    "type": str(raw_err.get("type", "validation_error")),
+                    "message": str(raw_err.get("msg", "")),
+                }
+            )
+    else:
+        errors_list.append(
+            {
+                "location": "root",
+                "type": type(error).__name__,
+                "message": str(error),
+            }
+        )
 
     record: dict[str, object] = {
         "timestamp": datetime.now(timezone.utc).isoformat(),  # noqa: UP017
         "attempt": attempt,
         "done": payload.get("done"),
         "done_reason": payload.get("done_reason"),
-        "errors": _safe_error_details(error),
+        "errors": errors_list,
         "metrics": asdict(metrics) if metrics is not None else None,
     }
     try:
@@ -135,9 +131,11 @@ class OllamaProvider:
         self,
         settings: LocalLLMSettings,
         client: httpx.AsyncClient | None = None,
+        policy_validator: ArchitecturalIntentPolicyValidator | None = None,
     ) -> None:
         self.settings = settings
         self._client = client
+        self.policy_validator = policy_validator or ArchitecturalIntentPolicyValidator()
         self.last_performance_metrics: OllamaPerformanceMetrics | None = None
 
     async def health(self) -> ProviderHealth:
@@ -192,7 +190,7 @@ class OllamaProvider:
         payload = self._build_chat_payload(request, output_schema)
         response = await self._request("POST", "/api/chat", json=payload)
         try:
-            return self._parse_chat_response(response, attempt="initial")
+            return self._parse_chat_response(response, request, attempt="initial")
         except ProviderResponseError:
             repair_payload = self._build_chat_payload(
                 request,
@@ -200,7 +198,7 @@ class OllamaProvider:
                 repair=True,
             )
             repair_response = await self._request("POST", "/api/chat", json=repair_payload)
-            return self._parse_chat_response(repair_response, attempt="repair")
+            return self._parse_chat_response(repair_response, request, attempt="repair")
 
     def _build_chat_payload(
         self,
@@ -229,6 +227,7 @@ class OllamaProvider:
     def _parse_chat_response(
         self,
         response: httpx.Response,
+        request: ConversationRequest,
         *,
         attempt: str,
     ) -> ArchitecturalIntentResult:
@@ -246,8 +245,13 @@ class OllamaProvider:
             content = message["content"]
             if not isinstance(content, str):
                 raise TypeError("message content must be a string")
-            return ArchitecturalIntentResult.model_validate_json(content)
-        except (KeyError, TypeError, ValueError, ValidationError) as error:
+            parsed_result = ArchitecturalIntentResult.model_validate_json(content)
+            sanitized = self.policy_validator._sanitize_public_fields(
+                parsed_result, request.visible_entities
+            )
+            self.policy_validator.validate_semantic_integrity(sanitized, request)
+            return parsed_result
+        except (KeyError, TypeError, ValueError, ValidationError, PolicyValidationError) as error:
             _write_schema_diagnostic(
                 error,
                 response_payload,
