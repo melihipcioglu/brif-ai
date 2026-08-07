@@ -26,6 +26,9 @@ param(
     [string]$OllamaUrl = "http://127.0.0.1:11434",
 
     [Parameter(Mandatory=$false)]
+    [double]$LlmTimeout = 300,
+
+    [Parameter(Mandatory=$false)]
     [switch]$NoBrowser,
 
     [Parameter(Mandatory=$false)]
@@ -57,7 +60,8 @@ $LauncherArgs = @(
     "--api-port", $ApiPort,
     "--ui-port", $UiPort,
     "--model", $Model,
-    "--ollama-url", $OllamaUrl
+    "--ollama-url", $OllamaUrl,
+    "--llm-timeout", $LlmTimeout
 )
 
 if ($NoBrowser) {

@@ -32,3 +32,6 @@ htmlcov/
 .vscode/
 Thumbs.db
 .DS_Store
+
+# Demo diagnostic logs
+.demo_logs/

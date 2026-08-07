@@ -103,8 +103,8 @@ def test_length_limited_json_gets_one_repair_with_the_full_output_budget() -> No
 
     assert result.intent.value == "modify_space"
     assert len(chat_payloads) == 2
-    assert chat_payloads[0]["options"]["num_predict"] == 768
-    assert chat_payloads[1]["options"]["num_predict"] == 768
+    assert chat_payloads[0]["options"]["num_predict"] == 512
+    assert chat_payloads[1]["options"]["num_predict"] == 512
 
 
 def test_valid_json_with_invalid_schema_is_repaired_once() -> None:

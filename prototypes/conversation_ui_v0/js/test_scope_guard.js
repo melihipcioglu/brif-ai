@@ -2071,7 +2071,7 @@ class TestScopeGuard {
       !unreachableLastMsg125?.text.includes("Failed to fetch") &&
       !unreachableLastMsg125?.text.includes("500");
 
-    // Test 126: Timeout shows natural Turkish timeout message and Retry button
+    // Test 126: Timeout shows natural Turkish timeout message and Retry button without demo fallback
     const timeoutHarness126 = createPendingHarness114("126");
     const timeoutGateway126 = new LocalLLMGateway({
       hierarchy: this.hierarchy,
@@ -2086,9 +2086,15 @@ class TestScopeGuard {
     timeoutHarness126.orchestrator.setLocalLLMGateway(timeoutGateway126);
     const timeoutOutcome126 = await timeoutHarness126.orchestrator.handleUserMessage("Zaman aşımı testi");
     const timeoutLastMsg126 = timeoutHarness126.orchestrator.allChatMessages.at(-1);
+    const timeoutAssistantMsgs126 = timeoutHarness126.orchestrator.allChatMessages.filter(
+      m => m.role === 'assistant' && !m.isWaitingIndicator
+    );
+    const singleMsgNoDemo126 = timeoutAssistantMsgs126.length === 1 &&
+      !timeoutAssistantMsgs126.some(m => m.text.includes("Banyoyu kuzey"));
     const test126Pass = timeoutOutcome126?.status === "timeout" &&
       timeoutLastMsg126?.text.includes("zaman aşımına uğradı") &&
-      timeoutLastMsg126?.retryMessage === "Zaman aşımı testi";
+      timeoutLastMsg126?.retryMessage === "Zaman aşımı testi" &&
+      singleMsgNoDemo126;
 
     // Test 127: Safe 502 / Invalid server response shows Turkish error and Retry button without 502 leak
     const invalidHarness127 = createPendingHarness114("127");
@@ -2129,6 +2135,28 @@ class TestScopeGuard {
     retryHarness128.orchestrator.cancelCurrentRequest();
     if (resolveRetry128) resolveRetry128({ ok: true, json: async () => ({ llm_enabled: false }) });
     await retryPromise128;
+
+    // Test 129: Browser gateway timeout constant is safely larger than API timeout (330,000 ms vs 300,000 ms)
+    const browserTimeout129 = LocalLLMGateway.DEFAULT_TIMEOUT_MS;
+    const test129Pass = browserTimeout129 === 330000 && browserTimeout129 > 300000;
+
+    // Test 130: Submit button never shows [object Object] and always resets to Gönder
+    const sendBtnHarness130 = createPendingHarness114("130");
+    const testSendBtn130 = document.createElement("button");
+    testSendBtn130.id = "sendBtn";
+    const testSpan130 = document.createElement("span");
+    testSpan130.textContent = "Gönder";
+    testSendBtn130.appendChild(testSpan130);
+    sendBtnHarness130.chat.parentElement.appendChild(testSendBtn130);
+
+    sendBtnHarness130.orchestrator.startPendingRequest("Düğme testi");
+    const isLocked130 = testSendBtn130.disabled === true;
+    sendBtnHarness130.orchestrator.finishPendingRequest();
+
+    const isUnlocked130 = testSendBtn130.disabled === false;
+    const btnText130 = testSendBtn130.textContent.trim();
+    const notObject130 = !btnText130.includes("[object Object]") && btnText130 === "Gönder";
+    const test130Pass = isLocked130 && isUnlocked130 && notObject130;
 
     this.cleanupTestNodes();
     this.restoreGlobals(productionGlobals);
@@ -2239,6 +2267,8 @@ class TestScopeGuard {
     results.push({ name: "Test 126: Timeout Error Shows Turkish Timeout Message and Retry Option", pass: test126Pass });
     results.push({ name: "Test 127: Safe 502 Response Hides Technical Leak and Offers Retry", pass: test127Pass });
     results.push({ name: "Test 128: Manual Retry Re-initiates Controlled Request Flow", pass: test128Pass });
+    results.push({ name: "Test 129: Browser Gateway Timeout Value Is Longer Than API Timeout", pass: test129Pass });
+    results.push({ name: "Test 130: Submit Button Text Is Never [object Object] And Resets To Gönder", pass: test130Pass });
 
     window.scopeGuardLastRun = {
       runId: this.runId,

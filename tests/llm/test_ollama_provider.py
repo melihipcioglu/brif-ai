@@ -31,16 +31,16 @@ def test_inference_performance_settings_defaults_and_environment() -> None:
         {
             "BRIF_AI_LLM_THINK": "false",
             "BRIF_AI_LLM_KEEP_ALIVE": "15m",
-            "BRIF_AI_LLM_NUM_PREDICT": "512",
+            "BRIF_AI_LLM_NUM_PREDICT": "256",
         }
     )
 
     assert defaults.think is False
     assert defaults.keep_alive == "30m"
-    assert defaults.num_predict == 768
+    assert defaults.num_predict == 512
     assert configured.think is False
     assert configured.keep_alive == "15m"
-    assert configured.num_predict == 512
+    assert configured.num_predict == 256
 
 
 def test_thinking_mode_cannot_be_enabled_for_mvp() -> None:
@@ -81,7 +81,7 @@ def test_structured_schema_is_sent_in_ollama_format_field() -> None:
     assert requests[0]["stream"] is False
     assert requests[0]["think"] is False
     assert requests[0]["keep_alive"] == "30m"
-    assert requests[0]["options"] == {"temperature": 0.0, "num_predict": 768}
+    assert requests[0]["options"] == {"temperature": 0.0, "num_predict": 512}
 
 
 def test_performance_metrics_are_calculated_from_ollama_response() -> None:

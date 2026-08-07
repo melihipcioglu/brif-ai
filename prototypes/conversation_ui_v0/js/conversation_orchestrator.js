@@ -67,6 +67,14 @@ class ConversationOrchestrator {
     }
     if (sendBtn) {
       sendBtn.disabled = locked;
+      if (!locked) {
+        const span = sendBtn.querySelector('span');
+        if (span) {
+          span.textContent = 'Gönder';
+        } else {
+          sendBtn.textContent = 'Gönder';
+        }
+      }
     }
   }
 
@@ -596,7 +604,9 @@ class ConversationOrchestrator {
     }
 
     this.appendAssistantMessage(reason, [], [], { retryMessage: messageText });
-    this.handleDemoUserMessage(messageText);
+    if (status === 'disabled') {
+      this.handleDemoUserMessage(messageText);
+    }
     return { status: status, failureStatus: status };
   }
 

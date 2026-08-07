@@ -317,6 +317,8 @@ def test_launch_demo_passes_isolated_llm_env_to_api_subprocess(tmp_path: Path) -
         assert spawn_env.get("BRIF_AI_LLM_PROVIDER") == "ollama"
         assert spawn_env.get("BRIF_AI_LLM_BASE_URL") == "http://127.0.0.1:11434"
         assert spawn_env.get("BRIF_AI_LLM_MODEL") == "qwen3:4b-instruct"
+        assert spawn_env.get("BRIF_AI_LLM_TIMEOUT_SECONDS") == "300"
+        assert spawn_env.get("BRIF_AI_LLM_NUM_PREDICT") == "512"
 
         # Parent process environment must NOT be mutated
         assert "BRIF_AI_LLM_ENABLED" not in os.environ

@@ -4,12 +4,14 @@
  */
 
 class LocalLLMGateway {
+  static DEFAULT_TIMEOUT_MS = 330000;
+
   constructor(options = {}) {
     this.stateMachine = options.stateMachine;
     this.hierarchy = options.hierarchy;
     this.orchestrator = options.orchestrator;
     this.baseUrl = (options.baseUrl || 'http://127.0.0.1:8000').replace(/\/$/, '');
-    this.timeoutMs = options.timeoutMs || 600000;
+    this.timeoutMs = options.timeoutMs || LocalLLMGateway.DEFAULT_TIMEOUT_MS;
     this.fetchFn = options.fetchFn || ((...args) => fetch(...args));
   }
 

@@ -299,6 +299,10 @@ class DemoProcessManager:
         self.processes.clear()
 
 
+DEFAULT_DEMO_LLM_TIMEOUT_SECONDS: float = 300.0
+DEFAULT_DEMO_NUM_PREDICT: int = 512
+
+
 def launch_demo(
     project_root: Path | str = ".",
     api_port: int = 8000,
@@ -307,6 +311,8 @@ def launch_demo(
     ollama_url: str = "http://127.0.0.1:11434",
     open_browser: bool = True,
     check_ollama: bool = True,
+    llm_timeout: float = DEFAULT_DEMO_LLM_TIMEOUT_SECONDS,
+    num_predict: int = DEFAULT_DEMO_NUM_PREDICT,
 ) -> None:
     """Run checks, start API & UI servers, wait for readiness, open browser, and manage exit."""
     root = Path(project_root).resolve()
@@ -363,9 +369,10 @@ def launch_demo(
     api_env["BRIF_AI_LLM_PROVIDER"] = "ollama"
     api_env["BRIF_AI_LLM_BASE_URL"] = ollama_url
     api_env["BRIF_AI_LLM_MODEL"] = model_name
+    api_env["BRIF_AI_LLM_TIMEOUT_SECONDS"] = str(int(llm_timeout))
     api_env["BRIF_AI_LLM_TEMPERATURE"] = "0"
     api_env["BRIF_AI_LLM_THINK"] = "false"
-    api_env["BRIF_AI_LLM_NUM_PREDICT"] = "768"
+    api_env["BRIF_AI_LLM_NUM_PREDICT"] = str(num_predict)
 
     api_cmd = [
         python_executable,
@@ -439,6 +446,8 @@ def launch_demo(
     print("[*] Yerel yapay zekâ etkin")
     print(f"[*] Kullanılan sağlayıcı: Ollama ({ollama_url})")
     print(f"[*] Kullanılan model: {model_name}")
+    print(f"[*] API zaman aşımı: {int(llm_timeout)} sn")
+    print(f"[*] Tahmin token sınırı: {num_predict}")
     print("[*] Demo/fallback modu kullanılmıyor")
     print("[!] Güvenli Kapatma: Demoyu sonlandırmak için Ctrl+C tuşlarına basın.")
     print("-" * 60)
@@ -470,6 +479,18 @@ def main() -> None:
     )
     parser.add_argument("--no-browser", action="store_true", help="Tarayıcıyı otomatik açma")
     parser.add_argument("--no-ollama-check", action="store_true", help="Ollama kontrolünü atla")
+    parser.add_argument(
+        "--llm-timeout",
+        type=float,
+        default=DEFAULT_DEMO_LLM_TIMEOUT_SECONDS,
+        help="LLM API zaman aşımı süresi saniye cinsinden",
+    )
+    parser.add_argument(
+        "--num-predict",
+        type=int,
+        default=DEFAULT_DEMO_NUM_PREDICT,
+        help=f"Maksimum tahmin token sayısı (varsayılan: {DEFAULT_DEMO_NUM_PREDICT})",
+    )
 
     args = parser.parse_args()
     launch_demo(
@@ -479,6 +500,8 @@ def main() -> None:
         ollama_url=args.ollama_url,
         open_browser=not args.no_browser,
         check_ollama=not args.no_ollama_check,
+        llm_timeout=args.llm_timeout,
+        num_predict=args.num_predict,
     )
 
 

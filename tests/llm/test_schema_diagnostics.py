@@ -50,3 +50,22 @@ def test_schema_diagnostic_omits_model_and_user_text(tmp_path: Path) -> None:
     assert any(item["location"] == "user_requirements" for item in record["errors"])
     assert "özel kullanıcı metni" not in raw
     assert "gizli model çıktısı" not in raw
+
+
+def test_timeout_diagnostic_omits_raw_text(tmp_path: Path) -> None:
+    diagnostic_path = tmp_path / "llm_schema_errors.jsonl"
+    _write_schema_diagnostic(
+        TimeoutError("Yerel yapay zekâ isteği zaman aşımına uğradı."),
+        {},
+        None,
+        attempt="timeout",
+        path=diagnostic_path,
+    )
+
+    raw = diagnostic_path.read_text(encoding="utf-8")
+    record = json.loads(raw)
+
+    assert record["attempt"] == "timeout"
+    assert record["done"] is None
+    assert record["metrics"] is None
+    assert any(item["type"] == "TimeoutError" for item in record["errors"])

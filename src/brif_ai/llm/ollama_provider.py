@@ -278,6 +278,12 @@ class OllamaProvider:
             response.raise_for_status()
             return response
         except httpx.TimeoutException as error:
+            _write_schema_diagnostic(
+                error,
+                {},
+                self.last_performance_metrics,
+                attempt="timeout",
+            )
             raise ProviderTimeoutError("Yerel yapay zekâ isteği zaman aşımına uğradı.") from error
         except (httpx.ConnectError, httpx.NetworkError, httpx.HTTPStatusError) as error:
             raise ProviderUnavailableError(
