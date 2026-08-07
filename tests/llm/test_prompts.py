@@ -136,6 +136,15 @@ def test_system_prompt_preserves_pending_proposal_continuity() -> None:
     assert "onaylama, ayrıntılandırma veya vazgeçme" in SYSTEM_PROMPT
 
 
+def test_system_prompt_requires_real_alternatives_without_unnecessary_follow_up() -> None:
+    assert "intent compare_alternatives" in SYSTEM_PROMPT
+    assert "istenen alternatif sayısını" in SYSTEM_PROMPT
+    assert "gerçekten üret" in SYSTEM_PROMPT
+    assert "yine de alternatifleri sun" in SYSTEM_PROMPT
+    assert "her alternatifi ayrı adlandırarak" in SYSTEM_PROMPT
+    assert "doğrudan talebini yerine getirebiliyorsan sorma" in SYSTEM_PROMPT
+
+
 def test_schema_repair_prompt_states_cross_field_consistency_rules() -> None:
     assert "target her zaman bir JSON nesnesi" in SCHEMA_REPAIR_PROMPT
     assert "her zaman JSON dizisi" in SCHEMA_REPAIR_PROMPT
