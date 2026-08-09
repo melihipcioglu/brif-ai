@@ -140,9 +140,10 @@ def test_system_prompt_requires_real_alternatives_without_unnecessary_follow_up(
     assert "intent compare_alternatives" in SYSTEM_PROMPT
     assert "istenen alternatif sayısını" in SYSTEM_PROMPT
     assert "gerçekten üret" in SYSTEM_PROMPT
-    assert "yine de alternatifleri sun" in SYSTEM_PROMPT
-    assert "her alternatifi ayrı adlandırarak" in SYSTEM_PROMPT
-    assert "doğrudan talebini yerine getirebiliyorsan sorma" in SYSTEM_PROMPT
+    assert "olmayan yön" in SYSTEM_PROMPT
+    assert "Kesin yön ve konum belirtmeden" in SYSTEM_PROMPT
+    assert "kavramsal" in SYSTEM_PROMPT
+    assert "tek takip sorusu sor" in SYSTEM_PROMPT
 
 
 def test_schema_repair_prompt_states_cross_field_consistency_rules() -> None:
@@ -154,3 +155,18 @@ def test_schema_repair_prompt_states_cross_field_consistency_rules() -> None:
     assert "yalnız görünür kapsamdaki gerçek target_entity_id" in SCHEMA_REPAIR_PROMPT
     assert "confidence 0 ile 1 arasında" in SCHEMA_REPAIR_PROMPT
     assert "şema dışı hiçbir alan ekleme" in SCHEMA_REPAIR_PROMPT
+    assert "Verilmeyen yön" in SCHEMA_REPAIR_PROMPT
+    assert "kesin yön ve konum belirtmeden" in SCHEMA_REPAIR_PROMPT
+
+
+def test_spatial_assumptions_prevention_guidance_for_conceptual_requests() -> None:
+    data = request_data()
+    data["message"] = "Salon, mutfak ve teras ilişkisi için iki alternatif öner"
+    request = ConversationRequest.model_validate(data)
+    prompt_str = build_user_prompt(request)
+
+    assert "olmayan yön" in SYSTEM_PROMPT
+    assert "kesin konum/yön bilgisi henüz verilmedi" in SYSTEM_PROMPT
+    assert "Kesin yön ve konum belirtmeden" in SYSTEM_PROMPT
+    payload = json.loads(prompt_str)
+    assert payload["message"] == "Salon, mutfak ve teras ilişkisi için iki alternatif öner"
