@@ -185,6 +185,175 @@ class UnsupportedSpatialClaimError(PolicyValidationError):
     """Model output contained spatial/directional claims not supported by request context."""
 
 
+class AlternativeQualityError(PolicyValidationError):
+    """Model-generated architectural alternatives failed quality, distinctness, or format checks."""
+
+
+FORBIDDEN_FILLER_PHRASES: tuple[str, ...] = (
+    "yakınında bir konumda",
+    "yakın bir konumda",
+    "uygun bir konumda",
+    "uygun konumlu",
+    "uygun konum doğrultusunda",
+)
+MAX_FILLER_PHRASE_REPEATS: int = 1
+MIN_ALTERNATIVE_WORD_COUNT: int = 6
+MAX_ALTERNATIVE_WORD_COUNT: int = 70
+MAX_ALTERNATIVE_SIMILARITY_SCORE: float = 0.50
+COMMON_TURKISH_STOP_WORDS: set[str] = {
+    "ve",
+    "ile",
+    "de",
+    "da",
+    "bir",
+    "bu",
+    "için",
+    "olarak",
+    "daha",
+    "en",
+    "veya",
+    "gibi",
+    "hem",
+    "her",
+    "göre",
+    "ise",
+}
+
+
+def compute_alternative_similarity(
+    alt1: str,
+    alt2: str,
+    prompt_text: str = "",
+) -> float:
+    """Compute n-gram similarity between two alternatives excluding prompt words & stop words."""
+    prompt_words = set(re.findall(r"[\wıişğüçÖÇŞİĞÜ]+", prompt_text.casefold()))
+
+    def _tokens(s: str) -> list[str]:
+        words = re.findall(r"[\wıişğüçÖÇŞİĞÜ]+", s.casefold())
+        return [
+            w
+            for w in words
+            if len(w) > 1 and w not in COMMON_TURKISH_STOP_WORDS and w not in prompt_words
+        ]
+
+    tokens1 = _tokens(alt1)
+    tokens2 = _tokens(alt2)
+
+    if not tokens1 or not tokens2:
+        return 0.0
+
+    set1, set2 = set(tokens1), set(tokens2)
+    jaccard_1gram = len(set1 & set2) / max(1, len(set1 | set2))
+
+    def _ngrams(toks: list[str], n: int) -> set[tuple[str, ...]]:
+        return {tuple(toks[i : i + n]) for i in range(len(toks) - n + 1)}
+
+    ngrams2_1 = _ngrams(tokens1, 2)
+    ngrams2_2 = _ngrams(tokens2, 2)
+    min2 = min(len(ngrams2_1), len(ngrams2_2))
+    overlap_2gram = len(ngrams2_1 & ngrams2_2) / max(1, min2) if min2 > 0 else 0.0
+
+    ngrams3_1 = _ngrams(tokens1, 3)
+    ngrams3_2 = _ngrams(tokens2, 3)
+    min3 = min(len(ngrams3_1), len(ngrams3_2))
+    overlap_3gram = len(ngrams3_1 & ngrams3_2) / max(1, min3) if min3 > 0 else 0.0
+
+    return max(jaccard_1gram, overlap_2gram, overlap_3gram)
+
+
+def validate_alternative_quality(
+    result: ArchitecturalIntentResult,
+    request: ConversationRequest,
+) -> None:
+    """Validate format, distinctness, word limits, and phrasing for comparison responses."""
+    text = result.assistant_message.strip()
+
+    # 1. Filler phrase repetition check
+    text_lower = text.casefold()
+    total_fillers = sum(text_lower.count(phrase) for phrase in FORBIDDEN_FILLER_PHRASES)
+    single_repeated = any(text_lower.count(phrase) >= 2 for phrase in FORBIDDEN_FILLER_PHRASES)
+    if single_repeated or total_fillers > MAX_FILLER_PHRASE_REPEATS:
+        raise AlternativeQualityError(
+            "Yapay dolgu ifadesi ('yakınında bir konumda' vb.) yanıtta tekrarlandı. "
+            "Daha doğal Türkçe anlatım kullanılmalıdır."
+        )
+
+    # 2. Extract sections: Alternatif 1, Alternatif 2, Temel fark
+    section1_match = re.search(
+        r"(?:Alternatif\s*1|1\.|Birinci\s+alternatif)[^\n:\-–—]*[:\-–—]?\s*",
+        text,
+        re.IGNORECASE,
+    )
+    section2_match = re.search(
+        r"(?:Alternatif\s*2|2\.|İkinci\s+alternatif)[^\n:\-–—]*[:\-–—]?\s*",
+        text,
+        re.IGNORECASE,
+    )
+    key_diff_match = re.search(
+        r"(?:Temel\s+fark|Fark)[^\n:\-–—]*[:\-–—]?\s*",
+        text,
+        re.IGNORECASE,
+    )
+
+    if not (section1_match and section2_match and key_diff_match):
+        raise AlternativeQualityError(
+            "Karşılaştırma yanıtı 'Alternatif 1', 'Alternatif 2' ve 'Temel fark:' "
+            "bölümlerini içermelidir."
+        )
+
+    pos1_end = section1_match.end()
+    pos2_start = section2_match.start()
+    pos2_end = section2_match.end()
+    diff_start = key_diff_match.start()
+    diff_end = key_diff_match.end()
+
+    if not (pos1_end < pos2_start < diff_start):
+        raise AlternativeQualityError(
+            "Karşılaştırma yanıtındaki bölümler sırasıyla 'Alternatif 1', 'Alternatif 2' "
+            "ve 'Temel fark:' şeklinde dizilmelidir."
+        )
+
+    alt1_content = text[pos1_end:pos2_start].strip()
+    alt2_content = text[pos2_end:diff_start].strip()
+    diff_content = text[diff_end:].strip()
+
+    if not alt1_content or not alt2_content or not diff_content:
+        raise AlternativeQualityError(
+            "Alternatif başlıkları ve 'Temel fark:' içeriği boş kalmamalıdır."
+        )
+
+    # 3. Word count / length check
+    words_alt1 = re.findall(r"[\wıişğüçÖÇŞİĞÜ]+", alt1_content)
+    words_alt2 = re.findall(r"[\wıişğüçÖÇŞİĞÜ]+", alt2_content)
+    words_diff = re.findall(r"[\wıişğüçÖÇŞİĞÜ]+", diff_content)
+
+    if len(words_alt1) < MIN_ALTERNATIVE_WORD_COUNT or len(words_alt2) < MIN_ALTERNATIVE_WORD_COUNT:
+        raise AlternativeQualityError(
+            "Alternatif açıklamaları çok kısa "
+            f"(en az {MIN_ALTERNATIVE_WORD_COUNT} kelime olmalıdır)."
+        )
+
+    if len(words_alt1) > MAX_ALTERNATIVE_WORD_COUNT or len(words_alt2) > MAX_ALTERNATIVE_WORD_COUNT:
+        raise AlternativeQualityError(
+            "Alternatif açıklamaları çok uzun "
+            f"(en fazla {MAX_ALTERNATIVE_WORD_COUNT} kelime olmalıdır)."
+        )
+
+    if len(words_diff) < 3:
+        raise AlternativeQualityError("Temel fark açıklaması yetersiz veya boş.")
+
+    # 4. Distinctness / Similarity check
+    similarity = compute_alternative_similarity(alt1_content, alt2_content, request.message)
+    if (
+        alt1_content.casefold() == alt2_content.casefold()
+        or similarity > MAX_ALTERNATIVE_SIMILARITY_SCORE
+    ):
+        raise AlternativeQualityError(
+            "Önerilen iki alternatif birbirinden yeterince farklı değil. "
+            "İki ayrı mimari yaklaşım sunulmalıdır."
+        )
+
+
 _TURKISH_WORD_BOUND_PRE = r"(?<![\wıişğüçÖÇŞİĞÜ])"
 _TURKISH_WORD_BOUND_POST = r"(?=[^\wıişğüçÖÇŞİĞÜ]|$)"
 
@@ -525,22 +694,7 @@ class ArchitecturalIntentPolicyValidator:
                     "(needs_follow_up=false olmalı)."
                 )
 
-            assistant_msg = result.assistant_message.casefold()
-            has_alt1 = (
-                "alternatif 1" in assistant_msg
-                or "birinci alternatif" in assistant_msg
-                or "1." in assistant_msg
-            )
-            has_alt2 = (
-                "alternatif 2" in assistant_msg
-                or "ikinci alternatif" in assistant_msg
-                or "2." in assistant_msg
-            )
-            if not (has_alt1 and has_alt2):
-                raise PolicyValidationError(
-                    "İki alternatif istendiğinde assistant_message 'Alternatif 1' ve "
-                    "'Alternatif 2' içermelidir."
-                )
+            validate_alternative_quality(result, request)
 
     def validate(
         self,

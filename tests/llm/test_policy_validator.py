@@ -9,6 +9,7 @@ from brif_ai.llm.contracts import (
     VisibleEntity,
 )
 from brif_ai.llm.policy_validator import (
+    AlternativeQualityError,
     ArchitecturalIntentPolicyValidator,
     PolicyValidationError,
     UnsupportedSpatialClaimError,
@@ -428,13 +429,11 @@ def test_conceptual_space_alternatives_regression() -> None:
         {
             "intent": "compare_alternatives",
             "assistant_message": (
-                "Varsayım olarak terasın salon ve mutfakla aynı yaşam cephesinde kurulabileceği "
-                "kabul edilmiştir.\n"
-                "Alternatif 1: Girişten salon doğrudan algılanır; mutfak salonun yanında "
-                "kalır ve salon geniş bir açıklıkla terasa bağlanır, böylece teras günlük "
-                "oturmanın devamı olur.\n"
-                "Alternatif 2: Giriş salonla teras arasındaki ortak hole açılır; mutfak terasa "
-                "daha doğrudan bağlanır, salon ise daha sakin ve kontrollü bir ilişki kurar."
+                "Alternatif 1 — Açık Geçiş Planı: Girişten salon algılanır; mutfak "
+                "salonun yanında kalır ve terasa bağlanarak sohbet alanına katılır.\n\n"
+                "Alternatif 2 — Bağımsız Hol Kurgusu: Giriş sirkülasyon holüne açılır; "
+                "mutfak terasa doğrudan bağlanır, salon sakin kalır.\n\n"
+                "Temel fark: Alternatif 1 açık düzen sunarken Alternatif 2 bağımsız hol sağlar."
             ),
             "user_requirements": [
                 "Terasın gün ışığı alan oturma ve sohbet alanı olarak kullanılması"
@@ -518,7 +517,7 @@ def test_semantic_validation_rejects_single_alternative_on_comparison_request() 
     )
 
     validator = ArchitecturalIntentPolicyValidator()
-    with pytest.raises(PolicyValidationError, match="Alternatif 1"):
+    with pytest.raises(PolicyValidationError, match="Alternatif 1|bölümlerini içermelidir"):
         validator.validate_semantic_integrity(ArchitecturalIntentResult.model_validate(data), req)
 
 
@@ -751,3 +750,249 @@ def test_sanitization_preserves_structured_target_fields() -> None:
     assert sanitized.target.entity_id == "space_living"
     assert sanitized.target.project_id == "proj_house_2story"
     assert "target nesnesi" not in sanitized.assistant_message
+
+
+def test_compare_alternatives_quality_accepts_distinct_valid_alternatives() -> None:
+    req = conversation_request().model_copy(
+        update={"message": "Salon ve mutfak için iki farklı düzenleme alternatifi sun."}
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": (
+                "Alternatif 1 — Açık Bölüntü Planı: Salon ve mutfak arasındaki "
+                "seperatör kaldırılarak geniş bir adalı tezgah eklenir.\n\n"
+                "Alternatif 2 — Şeffaf Geçiş Kurgusu: Salon ve mutfak arasına temperli "
+                "cam kayar kapı eklenerek mahremiyet korunur.\n\n"
+                "Temel fark: Alternatif 1 kesintisiz bütünsellik sağlarken "
+                "Alternatif 2 esnek bölüntü olanağı sunar."
+            ),
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(result, req)
+    validator.validate_semantic_integrity(sanitized, req)
+
+
+def test_compare_alternatives_rejects_identical_alternatives() -> None:
+    req = conversation_request().model_copy(
+        update={"message": "Salon ve mutfak için iki farklı düzenleme alternatifi sun."}
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": (
+                "Alternatif 1 — Aynı Düzen: Salon ve mutfak arasında kapı kurgulanır.\n"
+                "Alternatif 2 — Aynı Düzen: Salon ve mutfak arasında kapı kurgulanır.\n"
+                "Temel fark: İki alternatif arasında fark yoktur."
+            ),
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(result, req)
+    with pytest.raises(AlternativeQualityError, match="yeterince farklı değil"):
+        validator.validate_semantic_integrity(sanitized, req)
+
+
+def test_compare_alternatives_rejects_minor_word_swap_repetitions() -> None:
+    req = conversation_request().model_copy(
+        update={"message": "Salon ve mutfak için iki farklı düzenleme alternatifi sun."}
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": (
+                "Alternatif 1 — Bölüntü: Salon ve mutfak arasına şeffaf bölüntü konur.\n"
+                "Alternatif 2 — Bölüntü: Salon ve mutfak arasına şeffaf bölüntü konacaktır.\n"
+                "Temel fark: İki alternatif benzerdir."
+            ),
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(result, req)
+    with pytest.raises(AlternativeQualityError, match="yeterince farklı değil"):
+        validator.validate_semantic_integrity(sanitized, req)
+
+
+def test_compare_alternatives_rejects_missing_key_difference() -> None:
+    req = conversation_request().model_copy(
+        update={"message": "Salon ve mutfak için iki farklı düzenleme alternatifi sun."}
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": (
+                "Alternatif 1 — Açık Plan: Salon ve mutfak birleştirilir.\n"
+                "Alternatif 2 — Kapalı Plan: Salon ve mutfak ayrılır."
+            ),
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(result, req)
+    with pytest.raises(AlternativeQualityError, match="Temel fark"):
+        validator.validate_semantic_integrity(sanitized, req)
+
+
+def test_compare_alternatives_rejects_empty_alternative_content() -> None:
+    req = conversation_request().model_copy(
+        update={"message": "Salon ve mutfak için iki farklı düzenleme alternatifi sun."}
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": (
+                "Alternatif 1 — Açık Plan: \n"
+                "Alternatif 2 — Kapalı Plan: Mutfak ile salon arasında kapı yerleştirilir.\n"
+                "Temel fark: Açık ve kapalı mekân farkıdır."
+            ),
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(result, req)
+    with pytest.raises(AlternativeQualityError, match="boş kalmamalıdır|çok kısa"):
+        validator.validate_semantic_integrity(sanitized, req)
+
+
+def test_compare_alternatives_rejects_too_short_alternative() -> None:
+    req = conversation_request().model_copy(
+        update={"message": "Salon ve mutfak için iki farklı düzenleme alternatifi sun."}
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": (
+                "Alternatif 1 — Kısa: Kapı eklenir.\n"
+                "Alternatif 2 — Kapalı Plan: Mutfak ile salon arasında cam kapı kurgulanır.\n"
+                "Temel fark: Geçiş türüdür."
+            ),
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(result, req)
+    with pytest.raises(AlternativeQualityError, match="çok kısa"):
+        validator.validate_semantic_integrity(sanitized, req)
+
+
+def test_compare_alternatives_rejects_too_long_alternative() -> None:
+    req = conversation_request().model_copy(
+        update={"message": "Salon ve mutfak için iki farklı düzenleme alternatifi sun."}
+    )
+    long_text = " ".join(["detay"] * 75)
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": (
+                f"Alternatif 1 — Uzun: {long_text}\n"
+                "Alternatif 2 — Normal Plan: Mutfak ile salon arasında cam kapı kurgulanır.\n"
+                "Temel fark: Detay seviyesidir."
+            ),
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(result, req)
+    with pytest.raises(AlternativeQualityError, match="çok uzun"):
+        validator.validate_semantic_integrity(sanitized, req)
+
+
+def test_compare_alternatives_rejects_repeated_filler_phrase() -> None:
+    req = conversation_request().model_copy(
+        update={"message": "Salon ve mutfak için iki farklı düzenleme alternatifi sun."}
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": (
+                "Alternatif 1 — Düzen A: Teras salonun yakınında bir konumda yer alacaktır.\n"
+                "Alternatif 2 — Düzen B: Mutfak terasın yakınında bir konumda konumlanır.\n"
+                "Temel fark: Teras yerleşimidir."
+            ),
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(result, req)
+    with pytest.raises(AlternativeQualityError, match="Yapay dolgu ifadesi"):
+        validator.validate_semantic_integrity(sanitized, req)
+
+
+def test_compare_alternatives_does_not_false_positive_on_shared_prompt_words() -> None:
+    req = conversation_request().model_copy(
+        update={
+            "message": "Salon ile mutfak arasındaki ilişkiyi güçlendirmek için alternatif öner."
+        }
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": (
+                "Alternatif 1 — Ada Tezgah: Salon ve mutfağa ada kurgulanır.\n"
+                "Alternatif 2 — Sürgü Cam: Akustik cam panel eklenir.\n"
+                "Temel fark: Alternatif 1 açık alan sunarken Alternatif 2 yalıtım sağlar."
+            ),
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(result, req)
+    validator.validate_semantic_integrity(sanitized, req)
+
+
+def test_other_intents_are_not_affected_by_alternative_quality_checks() -> None:
+    req = conversation_request().model_copy(
+        update={"message": "Salon ile mutfak arasına kapı ekle."}
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "modify_relationship",
+            "assistant_message": "Salon ile mutfak arasında geçiş kapısı planlandı.",
+        }
+    )
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(result, req)
+    validator.validate_semantic_integrity(sanitized, req)

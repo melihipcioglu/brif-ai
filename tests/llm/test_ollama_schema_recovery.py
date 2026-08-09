@@ -345,7 +345,9 @@ def test_semantic_validation_triggers_single_repair_call() -> None:
                 {
                     "intent": "compare_alternatives",
                     "assistant_message": (
-                        "Alternatif 1: Salon terasla birleşir. Alternatif 2: Mutfak terasa açılır."
+                        "Alternatif 1 — Açık Plan: Salon ve mutfak duvarı kaldırılır.\n\n"
+                        "Alternatif 2 — Cam Geçiş: Salon ile mutfağa akustik kapı konur.\n\n"
+                        "Temel fark: Alternatif 1 açık alan, Alternatif 2 esnek bölme sunar."
                     ),
                     "needs_follow_up": False,
                     "follow_up_question": None,
@@ -394,7 +396,9 @@ def test_semantic_validation_failure_triggers_single_repair_and_succeeds_if_repa
                 {
                     "intent": "compare_alternatives",
                     "assistant_message": (
-                        "Alternatif 1: Salon terasla birleşir. Alternatif 2: Mutfak terasa açılır."
+                        "Alternatif 1 — Açık Plan: Salon ve mutfak duvarı kaldırılır.\n\n"
+                        "Alternatif 2 — Cam Geçiş: Salon ile mutfağa akustik kapı konur.\n\n"
+                        "Temel fark: Alternatif 1 açık alan, Alternatif 2 esnek bölme sunar."
                     ),
                     "needs_follow_up": False,
                     "follow_up_question": None,
