@@ -373,3 +373,145 @@ def test_semantic_validation_triggers_single_repair_call() -> None:
     assert result.intent.value == "compare_alternatives"
     assert "Alternatif 1" in result.assistant_message
     assert "Alternatif 2" in result.assistant_message
+
+
+def test_semantic_validation_failure_triggers_single_repair_and_succeeds_if_repair_is_safe() -> (
+    None
+):
+    chat_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal chat_calls
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
+        chat_calls += 1
+        data = valid_result_data()
+        if chat_calls == 1:
+            data["assistant_message"] = "Plan için inceleme."
+            data["intent"] = "modify_space"
+        else:
+            data.update(
+                {
+                    "intent": "compare_alternatives",
+                    "assistant_message": (
+                        "Alternatif 1: Salon terasla birleşir. Alternatif 2: Mutfak terasa açılır."
+                    ),
+                    "needs_follow_up": False,
+                    "follow_up_question": None,
+                }
+            )
+        return httpx.Response(
+            200,
+            json={"message": {"content": json.dumps(data, ensure_ascii=False)}},
+        )
+
+    req = conversation_request().model_copy(
+        update={"message": "Salon ve teras için iki farklı düzenleme alternatifi sun."}
+    )
+
+    async def run() -> ArchitecturalIntentResult:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:11434"
+        ) as client:
+            provider = OllamaProvider(settings(), client)
+            return await provider.interpret(req, schema())
+
+    result = asyncio.run(run())
+
+    assert chat_calls == 2
+    assert result.intent.value == "compare_alternatives"
+    assert "Alternatif 1" in result.assistant_message
+    assert "Alternatif 2" in result.assistant_message
+
+
+def test_repair_fails_if_repair_response_is_also_invalid() -> None:
+    chat_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal chat_calls
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
+        chat_calls += 1
+        data = valid_result_data()
+        data["intent"] = "modify_space"
+        return httpx.Response(
+            200,
+            json={"message": {"content": json.dumps(data, ensure_ascii=False)}},
+        )
+
+    req = conversation_request().model_copy(
+        update={"message": "Salon ve teras için iki farklı düzenleme alternatifi sun."}
+    )
+
+    async def run() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:11434"
+        ) as client:
+            provider = OllamaProvider(settings(), client)
+            with pytest.raises(ProviderResponseError, match="doğrulanabilir bir mimari niyet"):
+                await provider.interpret(req, schema())
+
+    asyncio.run(run())
+    assert chat_calls == 2
+
+
+def test_initial_response_containing_target_succeeds_via_sanitization_without_repair() -> None:
+    chat_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal chat_calls
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
+        chat_calls += 1
+        data = valid_result_data()
+        data["assistant_message"] = "Plan üzerinde target alanı düzenlenmiştir."
+        return httpx.Response(
+            200,
+            json={"message": {"content": json.dumps(data, ensure_ascii=False)}},
+        )
+
+    req = conversation_request()
+
+    async def run() -> ArchitecturalIntentResult:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:11434"
+        ) as client:
+            provider = OllamaProvider(settings(), client)
+            return await provider.interpret(req, schema())
+
+    result = asyncio.run(run())
+
+    assert chat_calls == 1
+    assert "target" not in result.assistant_message.casefold()
+    assert "hedef" in result.assistant_message.casefold()
+
+
+def test_initial_response_with_unsupported_direction_succeeds_via_sanitization() -> None:
+    chat_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal chat_calls
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
+        chat_calls += 1
+        data = valid_result_data()
+        data["assistant_message"] = "Teras salonun doğusundadır."
+        return httpx.Response(
+            200,
+            json={"message": {"content": json.dumps(data, ensure_ascii=False)}},
+        )
+
+    req = conversation_request()
+
+    async def run() -> ArchitecturalIntentResult:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:11434"
+        ) as client:
+            provider = OllamaProvider(settings(), client)
+            return await provider.interpret(req, schema())
+
+    result = asyncio.run(run())
+
+    assert chat_calls == 1
+    assert "doğusunda" not in result.assistant_message.casefold()
+    assert "yakınında" in result.assistant_message.casefold()

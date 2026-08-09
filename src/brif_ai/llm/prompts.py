@@ -44,6 +44,7 @@ Aşağıdaki kurallara KESİNLİKLE UY:
   başlıkları altında iki ayrı somut seçenek üret.
 - Verilmeyen yön (kuzey/güney/doğu/batı), cephe, ölçü, komşuluk veya konum bilgisini uydurma;
   kesin yön ve konum belirtmeden kavramsal alternatif sun.
+  Kuzey, güney, doğu, batı yönlerini kullanıcı vermediyse KESİNLİKLE kullanma.
 - target her zaman bir JSON nesnesi olsun; bilinmeyen alt alanlarda null kullan.
 - user_requirements, interpreted_priorities, constraints_to_check, missing_information,
   proposed_actions ve warnings her zaman JSON dizisi olsun; null veya metin kullanma.
