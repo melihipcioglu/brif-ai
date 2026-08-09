@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from apps.api.main import ALLOWED_ORIGINS, create_app
+import pytest
+from apps.api.main import (
+    ALLOWED_ORIGINS,
+    UI_ORIGIN_ENV,
+    create_app,
+    resolve_allowed_origins,
+)
 from fastapi.testclient import TestClient
 
 from brif_ai.llm.contracts import (
@@ -14,6 +20,7 @@ from brif_ai.llm.contracts import (
 from brif_ai.llm.provider import (
     ModelNotAvailableError,
     ModelNotSelectedError,
+    ProviderResponseError,
     ProviderTimeoutError,
     ProviderUnavailableError,
 )
@@ -26,12 +33,20 @@ class APIProvider:
     def __init__(self) -> None:
         self.result = ArchitecturalIntentResult.model_validate(valid_result_data())
         self.error: Exception | None = None
+        self.list_models_error: Exception | None = None
+        self.models = [LocalModelInfo(name="local-model:latest", size=42)]
+        self.health_calls = 0
+        self.list_models_calls = 0
 
     async def health(self) -> ProviderHealth:
+        self.health_calls += 1
         return ProviderHealth(provider="ollama", reachable=True)
 
     async def list_models(self) -> list[LocalModelInfo]:
-        return [LocalModelInfo(name="local-model:latest", size=42)]
+        self.list_models_calls += 1
+        if self.list_models_error is not None:
+            raise self.list_models_error
+        return self.models
 
     async def interpret(
         self, request: ConversationRequest, output_schema: dict[str, object]
@@ -78,7 +93,7 @@ def request_data(message: str = "Çalışma odasını biraz büyüt.") -> dict[s
 
 
 def test_health_endpoint() -> None:
-    test_client, _provider = client()
+    test_client, provider = client()
 
     response = test_client.get("/api/v1/health")
 
@@ -90,7 +105,144 @@ def test_health_endpoint() -> None:
         "provider_reachable": True,
         "selected_model": "local-model:latest",
         "model_available": True,
+        "message": "Yerel yapay zekâ bağlantısı hazır.",
     }
+    assert provider.list_models_calls == 1
+    assert provider.health_calls == 0
+
+
+def test_health_disabled_is_degraded_without_provider_call() -> None:
+    test_client, provider = client(enabled=False)
+
+    payload = test_client.get("/api/v1/health").json()
+
+    assert payload["status"] == "degraded"
+    assert payload["llm_enabled"] is False
+    assert payload["provider_reachable"] is False
+    assert provider.list_models_calls == 0
+
+
+def test_health_without_selected_model_is_degraded() -> None:
+    test_client, provider = client(model="")
+
+    payload = test_client.get("/api/v1/health").json()
+
+    assert payload["status"] == "degraded"
+    assert payload["provider_reachable"] is True
+    assert payload["selected_model"] is None
+    assert provider.list_models_calls == 1
+
+
+def test_health_missing_model_is_degraded() -> None:
+    test_client, provider = client()
+    provider.models = [LocalModelInfo(name="another-model:latest")]
+
+    payload = test_client.get("/api/v1/health").json()
+
+    assert payload["status"] == "degraded"
+    assert payload["provider_reachable"] is True
+    assert payload["model_available"] is False
+    assert provider.list_models_calls == 1
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        ProviderUnavailableError("offline"),
+        ProviderTimeoutError("timeout"),
+    ],
+)
+def test_health_provider_access_failure_is_unavailable(error: Exception) -> None:
+    test_client, provider = client()
+    provider.list_models_error = error
+
+    response = test_client.get("/api/v1/health")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "unavailable"
+    assert response.json()["provider_reachable"] is False
+    assert provider.list_models_calls == 1
+
+
+def test_health_invalid_provider_response_is_degraded() -> None:
+    test_client, provider = client()
+    provider.list_models_error = ProviderResponseError("invalid")
+
+    response = test_client.get("/api/v1/health")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "degraded"
+    assert response.json()["provider_reachable"] is True
+    assert provider.list_models_calls == 1
+
+
+def test_health_unexpected_error_returns_typed_safe_response() -> None:
+    test_client, provider = client()
+    provider.list_models_error = RuntimeError("must-not-leak")
+
+    response = test_client.get("/api/v1/health")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "unavailable"
+    assert "must-not-leak" not in response.text
+
+
+def test_default_cors_origins_remain_backward_compatible() -> None:
+    assert resolve_allowed_origins({}) == ALLOWED_ORIGINS
+    assert "*" not in resolve_allowed_origins({})
+
+
+def test_custom_loopback_ui_origin_adds_both_host_spellings() -> None:
+    origins = resolve_allowed_origins({UI_ORIGIN_ENV: "http://127.0.0.1:8090"})
+
+    assert "http://127.0.0.1:8090" in origins
+    assert "http://localhost:8090" in origins
+    assert "*" not in origins
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://127.0.0.1:8090",
+        "http://example.com:8090",
+        "http://user:pass@localhost:8090",
+        "http://localhost:8090/path",
+        "http://localhost:8090?wide=true",
+        "http://localhost:8090#fragment",
+        "http://localhost",
+        "*",
+    ],
+)
+def test_invalid_or_external_ui_origin_is_rejected(origin: str) -> None:
+    with pytest.raises(ValueError, match=UI_ORIGIN_ENV):
+        resolve_allowed_origins({UI_ORIGIN_ENV: origin})
+
+
+def test_invalid_ui_origin_fails_app_startup() -> None:
+    provider = APIProvider()
+    settings = LocalLLMSettings(enabled=True, model="local-model:latest")
+
+    with pytest.raises(ValueError, match=UI_ORIGIN_ENV):
+        create_app(settings, provider, {UI_ORIGIN_ENV: "http://example.com:8090"})
+
+
+def test_custom_ui_origin_is_accepted_by_cors_middleware() -> None:
+    provider = APIProvider()
+    settings = LocalLLMSettings(enabled=True, model="local-model:latest")
+    test_client = TestClient(
+        create_app(settings, provider, {UI_ORIGIN_ENV: "http://127.0.0.1:8090"})
+    )
+
+    response = test_client.options(
+        "/api/v1/health",
+        headers={
+            "Origin": "http://localhost:8090",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:8090"
 
 
 def test_models_endpoint_lists_installed_local_models() -> None:

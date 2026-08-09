@@ -277,6 +277,7 @@ class OllamaProvider:
                 async with httpx.AsyncClient(
                     base_url=self.settings.base_url,
                     timeout=timeout,
+                    trust_env=False,
                 ) as client:
                     response = await client.request(method, path, json=json)
             response.raise_for_status()

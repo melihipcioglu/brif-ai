@@ -32,7 +32,8 @@ param(
     [switch]$NoBrowser,
 
     [Parameter(Mandatory=$false)]
-    [switch]$NoOllamaCheck
+    [Alias("NoOllamaCheck")]
+    [switch]$SkipOllamaPreflight
 )
 
 $ErrorActionPreference = "Stop"
@@ -68,8 +69,8 @@ if ($NoBrowser) {
     $LauncherArgs += "--no-browser"
 }
 
-if ($NoOllamaCheck) {
-    $LauncherArgs += "--no-ollama-check"
+if ($SkipOllamaPreflight) {
+    $LauncherArgs += "--skip-ollama-preflight"
 }
 
 Push-Location $ProjectRoot

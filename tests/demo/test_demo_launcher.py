@@ -13,6 +13,7 @@ import pytest
 
 from brif_ai.demo.launcher import (
     DemoProcessManager,
+    build_argument_parser,
     check_model_available,
     check_ollama_service,
     check_port_free,
@@ -204,11 +205,44 @@ def test_wait_for_api_ready_verifies_llm_health_success() -> None:
         assert "hazır" in msg.lower()
 
 
-def test_wait_for_api_ready_fails_when_llm_disabled() -> None:
-    json_bytes = (
-        b'{"status": "ok", "llm_enabled": false, "provider": "ollama", '
+def test_wait_for_api_ready_retries_until_real_llm_becomes_ready() -> None:
+    unavailable_response = MagicMock()
+    unavailable_response.status = 200
+    unavailable_response.read.return_value = (
+        b'{"status": "unavailable", "llm_enabled": true, "provider": "ollama", '
+        b'"provider_reachable": false, "selected_model": "qwen3:4b-instruct", '
+        b'"model_available": false}'
+    )
+    unavailable_response.__enter__.return_value = unavailable_response
+
+    ready_response = MagicMock()
+    ready_response.status = 200
+    ready_response.read.return_value = (
+        b'{"status": "ok", "llm_enabled": true, "provider": "ollama", '
         b'"provider_reachable": true, "selected_model": "qwen3:4b-instruct", '
         b'"model_available": true}'
+    )
+    ready_response.__enter__.return_value = ready_response
+
+    with (
+        patch(
+            "urllib.request.urlopen",
+            side_effect=[unavailable_response, ready_response],
+        ) as request,
+        patch("time.sleep"),
+    ):
+        ready, msg = wait_for_api_ready("http://127.0.0.1:8000", timeout=1.0)
+
+    assert ready is True
+    assert "hazır" in msg.lower()
+    assert request.call_count == 2
+
+
+def test_wait_for_api_ready_fails_when_llm_disabled() -> None:
+    json_bytes = (
+        b'{"status": "degraded", "llm_enabled": false, "provider": "ollama", '
+        b'"provider_reachable": false, "selected_model": "qwen3:4b-instruct", '
+        b'"model_available": false}'
     )
     fake_response = MagicMock()
     fake_response.status = 200
@@ -220,7 +254,7 @@ def test_wait_for_api_ready_fails_when_llm_disabled() -> None:
             "http://127.0.0.1:8000", timeout=0.5, expected_model="qwen3:4b-instruct"
         )
         assert ready is False
-        assert "llm_enabled=false" in msg.lower() or "etkinleştirilmedi" in msg.lower()
+        assert "devre dışı" in msg.lower()
 
 
 def test_wait_for_api_ready_fails_when_model_mismatch() -> None:
@@ -244,7 +278,7 @@ def test_wait_for_api_ready_fails_when_model_mismatch() -> None:
 
 def test_wait_for_api_ready_fails_when_provider_unreachable_or_model_missing() -> None:
     json_bytes = (
-        b'{"status": "ok", "llm_enabled": true, "provider": "ollama", '
+        b'{"status": "unavailable", "llm_enabled": true, "provider": "ollama", '
         b'"provider_reachable": false, "selected_model": "qwen3:4b-instruct", '
         b'"model_available": false}'
     )
@@ -258,6 +292,47 @@ def test_wait_for_api_ready_fails_when_provider_unreachable_or_model_missing() -
             "http://127.0.0.1:8000", timeout=0.5, expected_model="qwen3:4b-instruct"
         )
         assert ready is False
+        assert "ulaşılamıyor" in msg.lower()
+
+
+def test_wait_for_api_ready_reports_degraded_missing_model() -> None:
+    json_bytes = (
+        b'{"status": "degraded", "llm_enabled": true, "provider": "ollama", '
+        b'"provider_reachable": true, "selected_model": "qwen3:4b-instruct", '
+        b'"model_available": false}'
+    )
+    fake_response = MagicMock()
+    fake_response.status = 200
+    fake_response.read.return_value = json_bytes
+    fake_response.__enter__.return_value = fake_response
+
+    with patch("urllib.request.urlopen", return_value=fake_response):
+        ready, msg = wait_for_api_ready("http://127.0.0.1:8000", timeout=1.0)
+
+    assert ready is False
+    assert "yüklü değil" in msg.lower()
+
+
+def test_wait_for_api_ready_does_not_leak_connection_exception() -> None:
+    with patch("urllib.request.urlopen", side_effect=OSError("private technical detail")):
+        ready, msg = wait_for_api_ready("http://127.0.0.1:8000", timeout=0.01)
+
+    assert ready is False
+    assert "private technical detail" not in msg
+
+
+def test_wait_for_api_ready_stops_when_owned_process_exits() -> None:
+    stopped_process = MagicMock()
+    stopped_process.poll.return_value = 1
+
+    ready, msg = wait_for_api_ready(
+        "http://127.0.0.1:8000",
+        timeout=1.0,
+        processes=(stopped_process,),
+    )
+
+    assert ready is False
+    assert "kapandı" in msg.lower()
 
 
 def test_wait_for_ui_ready_success() -> None:
@@ -281,6 +356,14 @@ def test_demo_process_manager_only_stops_owned_processes() -> None:
     mock_proc.terminate.assert_called_once()
 
 
+def test_launcher_cli_accepts_new_and_legacy_preflight_names() -> None:
+    parser = build_argument_parser()
+
+    assert parser.parse_args(["--skip-ollama-preflight"]).skip_ollama_preflight is True
+    assert parser.parse_args(["--no-ollama-check"]).skip_ollama_preflight is True
+    assert "--skip-ollama-preflight" in parser.format_help()
+
+
 def test_launch_demo_passes_isolated_llm_env_to_api_subprocess(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text("[project]\nname='test'", encoding="utf-8")
     ui_dir = tmp_path / "prototypes" / "conversation_ui_v0"
@@ -294,7 +377,9 @@ def test_launch_demo_passes_isolated_llm_env_to_api_subprocess(tmp_path: Path) -
 
     with (
         patch("subprocess.Popen", return_value=mock_popen) as mock_spawn,
-        patch("brif_ai.demo.launcher.wait_for_api_ready", return_value=(True, "ok")),
+        patch(
+            "brif_ai.demo.launcher.wait_for_api_ready", return_value=(True, "ok")
+        ) as mock_api_ready,
         patch("brif_ai.demo.launcher.wait_for_ui_ready", return_value=True),
         patch("webbrowser.open"),
         patch("time.sleep", side_effect=KeyboardInterrupt),
@@ -319,9 +404,19 @@ def test_launch_demo_passes_isolated_llm_env_to_api_subprocess(tmp_path: Path) -
         assert spawn_env.get("BRIF_AI_LLM_MODEL") == "qwen3:4b-instruct"
         assert spawn_env.get("BRIF_AI_LLM_TIMEOUT_SECONDS") == "300"
         assert spawn_env.get("BRIF_AI_LLM_NUM_PREDICT") == "512"
+        assert spawn_env.get("BRIF_AI_UI_ORIGIN") == "http://127.0.0.1:8098"
+        mock_api_ready.assert_called_once()
 
         # Parent process environment must NOT be mutated
         assert "BRIF_AI_LLM_ENABLED" not in os.environ
+
+
+def test_powershell_launcher_uses_new_name_with_legacy_alias() -> None:
+    script = Path("run_demo.ps1").read_text(encoding="utf-8")
+
+    assert '[Alias("NoOllamaCheck")]' in script
+    assert "$SkipOllamaPreflight" in script
+    assert '"--skip-ollama-preflight"' in script
 
 
 def test_launch_demo_cleans_up_and_exits_when_api_llm_readiness_fails(tmp_path: Path) -> None:
@@ -354,6 +449,36 @@ def test_launch_demo_cleans_up_and_exits_when_api_llm_readiness_fails(tmp_path: 
             )
 
         assert mock_proc.terminate.called or mock_proc.kill.called
+
+
+def test_launch_demo_cleans_up_and_exits_when_ui_readiness_fails(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='test'", encoding="utf-8")
+    ui_dir = tmp_path / "prototypes" / "conversation_ui_v0"
+    ui_dir.mkdir(parents=True)
+    (ui_dir / "index.html").write_text("<html></html>", encoding="utf-8")
+    (tmp_path / ".venv" / "Scripts").mkdir(parents=True)
+    (tmp_path / ".venv" / "Scripts" / "python.exe").write_text("", encoding="utf-8")
+
+    mock_proc = MagicMock()
+    mock_proc.poll.return_value = None
+
+    with (
+        patch("subprocess.Popen", return_value=mock_proc),
+        patch("brif_ai.demo.launcher.wait_for_api_ready", return_value=(True, "ok")),
+        patch("brif_ai.demo.launcher.wait_for_ui_ready", return_value=False),
+        patch("sys.exit", side_effect=SystemExit),
+        pytest.raises(SystemExit),
+    ):
+        launch_demo(
+            project_root=tmp_path,
+            api_port=8097,
+            ui_port=8098,
+            model_name="qwen3:4b-instruct",
+            open_browser=False,
+            check_ollama=False,
+        )
+
+    assert mock_proc.terminate.called or mock_proc.kill.called
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Requires Windows PowerShell environment")

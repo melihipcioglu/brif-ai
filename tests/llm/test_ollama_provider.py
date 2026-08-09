@@ -237,6 +237,48 @@ def test_ollama_unreachable() -> None:
     asyncio.run(run())
 
 
+def test_default_ollama_client_ignores_environment_proxies(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_options: dict[str, object] = {}
+
+    class FakeClient:
+        async def __aenter__(self) -> FakeClient:
+            return self
+
+        async def __aexit__(
+            self,
+            exc_type: type[BaseException] | None,
+            exc: BaseException | None,
+            traceback: object,
+        ) -> None:
+            return None
+
+        async def request(
+            self,
+            method: str,
+            path: str,
+            *,
+            json: dict[str, object] | None = None,
+        ) -> httpx.Response:
+            return httpx.Response(
+                200,
+                request=httpx.Request(method, f"http://127.0.0.1:11434{path}"),
+                json={"models": [{"name": "local-model:latest"}]},
+            )
+
+    def fake_async_client(**options: object) -> FakeClient:
+        captured_options.update(options)
+        return FakeClient()
+
+    monkeypatch.setattr(httpx, "AsyncClient", fake_async_client)
+
+    models = asyncio.run(OllamaProvider(settings()).list_models())
+
+    assert models[0].name == "local-model:latest"
+    assert captured_options["trust_env"] is False
+
+
 def test_model_not_installed() -> None:
     def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"models": [{"name": "another-model:latest"}]})
