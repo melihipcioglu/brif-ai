@@ -373,3 +373,66 @@ def test_semantic_validation_triggers_single_repair_call() -> None:
     assert result.intent.value == "compare_alternatives"
     assert "Alternatif 1" in result.assistant_message
     assert "Alternatif 2" in result.assistant_message
+
+
+def test_unsupported_spatial_claim_triggers_single_repair_and_succeeds_if_repair_is_safe() -> None:
+    chat_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal chat_calls
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
+        chat_calls += 1
+        data = valid_result_data()
+        if chat_calls == 1:
+            data["assistant_message"] = "Teras salonun doğusunda yer alır."
+        else:
+            data["assistant_message"] = "Teras salonun yanında konumlandırılmıştır."
+        return httpx.Response(
+            200,
+            json={"message": {"content": json.dumps(data, ensure_ascii=False)}},
+        )
+
+    req = conversation_request()
+
+    async def run() -> ArchitecturalIntentResult:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:11434"
+        ) as client:
+            provider = OllamaProvider(settings(), client)
+            return await provider.interpret(req, schema())
+
+    result = asyncio.run(run())
+
+    assert chat_calls == 2
+    assert "yanında" in result.assistant_message
+    assert "doğusunda" not in result.assistant_message
+
+
+def test_unsupported_spatial_claim_fails_if_repair_also_contains_unsupported_direction() -> None:
+    chat_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal chat_calls
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
+        chat_calls += 1
+        data = valid_result_data()
+        data["assistant_message"] = "Teras salonun güneyinde yer alacaktır."
+        return httpx.Response(
+            200,
+            json={"message": {"content": json.dumps(data, ensure_ascii=False)}},
+        )
+
+    req = conversation_request()
+
+    async def run() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:11434"
+        ) as client:
+            provider = OllamaProvider(settings(), client)
+            with pytest.raises(ProviderResponseError, match="doğrulanabilir bir mimari niyet"):
+                await provider.interpret(req, schema())
+
+    asyncio.run(run())
+    assert chat_calls == 2

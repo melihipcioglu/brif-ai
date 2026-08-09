@@ -11,6 +11,7 @@ from brif_ai.llm.contracts import (
 from brif_ai.llm.policy_validator import (
     ArchitecturalIntentPolicyValidator,
     PolicyValidationError,
+    UnsupportedSpatialClaimError,
 )
 
 from .test_contracts import valid_result_data
@@ -518,4 +519,136 @@ def test_semantic_validation_rejects_single_alternative_on_comparison_request() 
 
     validator = ArchitecturalIntentPolicyValidator()
     with pytest.raises(PolicyValidationError, match="Alternatif 1"):
+        validator.validate_semantic_integrity(ArchitecturalIntentResult.model_validate(data), req)
+
+
+@pytest.mark.parametrize(
+    "unsupported_word",
+    ["doğusunda", "güneyinde", "kuzeye", "batı cephesinde"],
+)
+def test_unsupported_spatial_claim_rejected_when_absent_from_context(unsupported_word: str) -> None:
+    req = conversation_request()
+    data = valid_result_data()
+    data["assistant_message"] = f"Teras {unsupported_word} konumlandırılmıştır."
+
+    validator = ArchitecturalIntentPolicyValidator()
+    with pytest.raises(UnsupportedSpatialClaimError, match="yön bilgisi"):
+        validator.validate_semantic_integrity(ArchitecturalIntentResult.model_validate(data), req)
+
+
+def test_dogrudan_connection_is_not_false_positive_for_dogu() -> None:
+    req = conversation_request().model_copy(
+        update={"message": "Salon ile mutfak arasında doğrudan bağlantı olsun."}
+    )
+    data = valid_result_data()
+    data["assistant_message"] = "Mutfak ve salon arasında doğrudan geçiş sağlanmıştır."
+
+    validator = ArchitecturalIntentPolicyValidator()
+    validator.validate_semantic_integrity(ArchitecturalIntentResult.model_validate(data), req)
+
+
+def test_direction_allowed_when_present_in_user_message() -> None:
+    req = conversation_request().model_copy(update={"message": "Teras güneyde yer alsın."})
+    data = valid_result_data()
+    data["assistant_message"] = "Teras güney cephesinde düzenlenmiştir."
+
+    validator = ArchitecturalIntentPolicyValidator()
+    validator.validate_semantic_integrity(ArchitecturalIntentResult.model_validate(data), req)
+
+
+def test_direction_allowed_when_present_in_conversation_summary() -> None:
+    req = conversation_request().model_copy(
+        update={"conversation_summary": "user: Kuzeye bakan bir teras istiyorum."}
+    )
+    data = valid_result_data()
+    data["assistant_message"] = "Kuzey alanında açık teras kurgulandı."
+
+    validator = ArchitecturalIntentPolicyValidator()
+    validator.validate_semantic_integrity(ArchitecturalIntentResult.model_validate(data), req)
+
+
+def test_direction_allowed_when_present_in_current_decisions() -> None:
+    req = conversation_request().model_copy(
+        update={"current_decisions": ["Terasın batıda olmasına karar verildi."]}
+    )
+    data = valid_result_data()
+    data["assistant_message"] = "Batı tarafındaki teras alanı korundu."
+
+    validator = ArchitecturalIntentPolicyValidator()
+    validator.validate_semantic_integrity(ArchitecturalIntentResult.model_validate(data), req)
+
+
+def test_direction_allowed_when_present_in_pending_proposals() -> None:
+    req = conversation_request().model_copy(
+        update={
+            "pending_proposals": [
+                {
+                    "status": "pending_user_confirmation",
+                    "context_fingerprint": "house|main|ground|living|study",
+                    "generation_id": 4,
+                    "action": {
+                        "action_type": "suggest_relationship_change",
+                        "target_entity_id": "space_study",
+                        "description": "Çalışma odasını doğu kanadına al.",
+                        "requires_user_confirmation": True,
+                    },
+                }
+            ]
+        }
+    )
+    data = valid_result_data()
+    data["assistant_message"] = "Doğusunda yer alan alan onay bekliyor."
+
+    validator = ArchitecturalIntentPolicyValidator()
+    validator.validate_semantic_integrity(ArchitecturalIntentResult.model_validate(data), req)
+
+
+def test_direction_allowed_when_present_in_visible_entity_name() -> None:
+    req = conversation_request().model_copy(
+        update={
+            "visible_entities": [
+                VisibleEntity(
+                    entity_id="space_terrace",
+                    entity_type="space",
+                    name="Güney Terası",
+                    project_id="proj_house_2story",
+                    building_id="bldg_main",
+                    level_id="lvl_ground",
+                    zone_id="zone_living",
+                )
+            ]
+        }
+    )
+    data = valid_result_data()
+    data["assistant_message"] = "Güney alanındaki kullanım değerlendirildi."
+
+    validator = ArchitecturalIntentPolicyValidator()
+    validator.validate_semantic_integrity(ArchitecturalIntentResult.model_validate(data), req)
+
+
+@pytest.mark.parametrize("field_name", ["warnings", "user_requirements", "missing_information"])
+def test_unsupported_direction_detected_in_other_public_fields(field_name: str) -> None:
+    req = conversation_request()
+    data = valid_result_data()
+    data[field_name] = ["Planın batı kısmında belirsizlik var."]
+
+    validator = ArchitecturalIntentPolicyValidator()
+    with pytest.raises(UnsupportedSpatialClaimError, match="yön bilgisi"):
+        validator.validate_semantic_integrity(ArchitecturalIntentResult.model_validate(data), req)
+
+
+def test_unsupported_direction_detected_in_proposed_action_description() -> None:
+    req = conversation_request()
+    data = valid_result_data()
+    data["proposed_actions"] = [
+        {
+            "action_type": "suggest_relationship_change",
+            "target_entity_id": "space_study",
+            "description": "Terası kuzey tarafına taşı.",
+            "requires_user_confirmation": True,
+        }
+    ]
+
+    validator = ArchitecturalIntentPolicyValidator()
+    with pytest.raises(UnsupportedSpatialClaimError, match="yön bilgisi"):
         validator.validate_semantic_integrity(ArchitecturalIntentResult.model_validate(data), req)

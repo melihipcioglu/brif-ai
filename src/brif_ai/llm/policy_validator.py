@@ -168,6 +168,111 @@ class ScopeMismatchError(PolicyValidationError):
     """A schema-valid response referenced a scope that is not currently active."""
 
 
+class UnsupportedSpatialClaimError(PolicyValidationError):
+    """Model output contained spatial/directional claims not supported by request context."""
+
+
+_TURKISH_WORD_BOUND_PRE = r"(?<![\wıişğüçÖÇŞİĞÜ])"
+_TURKISH_WORD_BOUND_POST = r"(?=[^\wıişğüçÖÇŞİĞÜ]|$)"
+
+DIRECTION_PATTERNS: dict[str, re.Pattern[str]] = {
+    "kuzey": re.compile(
+        _TURKISH_WORD_BOUND_PRE
+        + r"kuzey(?:doğu|batı|e|de|den|in|ine|ini|inde|inden|inin|i|deki|indek[iı]|lü|lük)?"
+        + _TURKISH_WORD_BOUND_POST,
+        re.IGNORECASE,
+    ),
+    "güney": re.compile(
+        _TURKISH_WORD_BOUND_PRE
+        + r"güney(?:doğu|batı|e|de|den|in|ine|ini|inde|inden|inin|i|deki|indek[iı]|li|lik)?"
+        + _TURKISH_WORD_BOUND_POST,
+        re.IGNORECASE,
+    ),
+    "doğu": re.compile(
+        _TURKISH_WORD_BOUND_PRE
+        + r"doğu(?:da|dan|ya|su|sunda|sundan|suna|sunu|sunun|daki|sundak[iı]|lu|luk)?"
+        + _TURKISH_WORD_BOUND_POST,
+        re.IGNORECASE,
+    ),
+    "batı": re.compile(
+        _TURKISH_WORD_BOUND_PRE
+        + r"batı(?:da|dan|ya|sı|sında|sından|sına|sını|sının|daki|sındak[iı]|lı|lık)?"
+        + _TURKISH_WORD_BOUND_POST,
+        re.IGNORECASE,
+    ),
+}
+
+
+def extract_trusted_direction_evidence(request: ConversationRequest) -> set[str]:
+    """Extract canonical compass directions explicitly present in trusted request context."""
+    texts: list[str] = [request.message]
+
+    if request.conversation_summary:
+        texts.append(request.conversation_summary)
+
+    for decision in request.current_decisions:
+        if isinstance(decision, str):
+            texts.append(decision)
+        elif hasattr(decision, "description") and decision.description:
+            texts.append(str(decision.description))
+        elif isinstance(decision, dict) and decision.get("description"):
+            texts.append(str(decision["description"]))
+
+    for proposal in request.pending_proposals:
+        if hasattr(proposal, "action") and hasattr(proposal.action, "description"):
+            if proposal.action.description:
+                texts.append(proposal.action.description)
+        elif isinstance(proposal, dict):
+            action = proposal.get("action", {})
+            if isinstance(action, dict) and action.get("description"):
+                texts.append(str(action["description"]))
+
+    for entity in request.visible_entities:
+        if entity.name:
+            texts.append(entity.name)
+
+    evidence: set[str] = set()
+    combined = " ".join(texts)
+    for canonical, pattern in DIRECTION_PATTERNS.items():
+        if pattern.search(combined):
+            evidence.add(canonical)
+
+    return evidence
+
+
+def validate_spatial_direction_claims(
+    result: ArchitecturalIntentResult,
+    request: ConversationRequest,
+) -> None:
+    """Ensure no ungrounded compass directions exist in public model output fields."""
+    trusted_evidence = extract_trusted_direction_evidence(request)
+
+    public_texts = [
+        result.assistant_message,
+        *([result.follow_up_question] if result.follow_up_question is not None else []),
+        *result.user_requirements,
+        *result.interpreted_priorities,
+        *result.constraints_to_check,
+        *result.missing_information,
+        *result.warnings,
+        *(action.description for action in result.proposed_actions if action.description),
+    ]
+
+    combined = " ".join(public_texts)
+    model_directions: set[str] = set()
+    for canonical, pattern in DIRECTION_PATTERNS.items():
+        if pattern.search(combined):
+            model_directions.add(canonical)
+
+    unsupported = model_directions - trusted_evidence
+    if unsupported:
+        sorted_unsupported = sorted(unsupported)
+        unsupported_str = ", ".join(sorted_unsupported)
+        raise UnsupportedSpatialClaimError(
+            f"Kullanıcı bağlamında bulunmayan yön bilgisi ({unsupported_str}) kullanıldı."
+        )
+
+
 class ArchitecturalIntentPolicyValidator:
     """Treat model output as untrusted suggestions constrained by active context."""
 
@@ -195,6 +300,8 @@ class ArchitecturalIntentPolicyValidator:
                 raise PolicyValidationError(
                     f"İç sistem dili / yasaklı terim saptandı: {match.group(0)!r}"
                 )
+
+        validate_spatial_direction_claims(result, request)
 
         msg_lower = request.message.casefold()
         is_compare = any(
