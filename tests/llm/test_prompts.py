@@ -7,7 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from brif_ai.llm.contracts import ConversationRequest
-from brif_ai.llm.prompts import SYSTEM_PROMPT, build_user_prompt
+from brif_ai.llm.prompts import SCHEMA_REPAIR_PROMPT, SYSTEM_PROMPT, build_user_prompt
 
 
 def request_data() -> dict[str, object]:
@@ -134,3 +134,39 @@ def test_system_prompt_preserves_pending_proposal_continuity() -> None:
     assert "ilk analizi tekrarlama" in SYSTEM_PROMPT
     assert "henüz onaylanmış karar değildir" in SYSTEM_PROMPT
     assert "onaylama, ayrıntılandırma veya vazgeçme" in SYSTEM_PROMPT
+
+
+def test_system_prompt_requires_real_alternatives_without_unnecessary_follow_up() -> None:
+    assert "intent compare_alternatives" in SYSTEM_PROMPT
+    assert "istenen alternatif sayısını" in SYSTEM_PROMPT
+    assert "gerçekten üret" in SYSTEM_PROMPT
+    assert "olmayan yön" in SYSTEM_PROMPT
+    assert "Kesin yön ve konum belirtmeden" in SYSTEM_PROMPT
+    assert "kavramsal" in SYSTEM_PROMPT
+    assert "tek takip sorusu sor" in SYSTEM_PROMPT
+
+
+def test_schema_repair_prompt_states_cross_field_consistency_rules() -> None:
+    assert "target her zaman bir JSON nesnesi" in SCHEMA_REPAIR_PROMPT
+    assert "her zaman JSON dizisi" in SCHEMA_REPAIR_PROMPT
+    assert "needs_follow_up=true" in SCHEMA_REPAIR_PROMPT
+    assert "needs_user_confirmation=true" in SCHEMA_REPAIR_PROMPT
+    assert "requires_user_confirmation=true" in SCHEMA_REPAIR_PROMPT
+    assert "yalnız görünür kapsamdaki gerçek target_entity_id" in SCHEMA_REPAIR_PROMPT
+    assert "confidence 0 ile 1 arasında" in SCHEMA_REPAIR_PROMPT
+    assert "şema dışı hiçbir alan ekleme" in SCHEMA_REPAIR_PROMPT
+    assert "Verilmeyen yön" in SCHEMA_REPAIR_PROMPT
+    assert "kesin yön ve konum belirtmeden" in SCHEMA_REPAIR_PROMPT
+
+
+def test_spatial_assumptions_prevention_guidance_for_conceptual_requests() -> None:
+    data = request_data()
+    data["message"] = "Salon, mutfak ve teras ilişkisi için iki alternatif öner"
+    request = ConversationRequest.model_validate(data)
+    prompt_str = build_user_prompt(request)
+
+    assert "olmayan yön" in SYSTEM_PROMPT
+    assert "kesin konum/yön bilgisi henüz verilmedi" in SYSTEM_PROMPT
+    assert "Kesin yön ve konum belirtmeden" in SYSTEM_PROMPT
+    payload = json.loads(prompt_str)
+    assert payload["message"] == "Salon, mutfak ve teras ilişkisi için iki alternatif öner"

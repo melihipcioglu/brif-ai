@@ -26,10 +26,14 @@ param(
     [string]$OllamaUrl = "http://127.0.0.1:11434",
 
     [Parameter(Mandatory=$false)]
+    [double]$LlmTimeout = 300,
+
+    [Parameter(Mandatory=$false)]
     [switch]$NoBrowser,
 
     [Parameter(Mandatory=$false)]
-    [switch]$NoOllamaCheck
+    [Alias("NoOllamaCheck")]
+    [switch]$SkipOllamaPreflight
 )
 
 $ErrorActionPreference = "Stop"
@@ -57,15 +61,16 @@ $LauncherArgs = @(
     "--api-port", $ApiPort,
     "--ui-port", $UiPort,
     "--model", $Model,
-    "--ollama-url", $OllamaUrl
+    "--ollama-url", $OllamaUrl,
+    "--llm-timeout", $LlmTimeout
 )
 
 if ($NoBrowser) {
     $LauncherArgs += "--no-browser"
 }
 
-if ($NoOllamaCheck) {
-    $LauncherArgs += "--no-ollama-check"
+if ($SkipOllamaPreflight) {
+    $LauncherArgs += "--skip-ollama-preflight"
 }
 
 Push-Location $ProjectRoot

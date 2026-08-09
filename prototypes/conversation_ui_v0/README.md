@@ -10,7 +10,11 @@ Bu klasör, BRIF.AI platformu için hazırlanmış **Kapsam-Güdümlü Çalışm
 
 ## Prototipi Çalıştırma
 
-Prototipi yerel bilgisayarınızda görüntülemek için şu komutu çalıştırın:
+Bu klasör teknik MVP arayüz prototipidir. Gerçek yerel LLM ile birlikte çalıştırmak için
+proje kökünde `run_demo.ps1` kullanılması önerilir; launcher özel API/UI portlarını ve
+dinamik loopback CORS origin'ini birlikte yapılandırır.
+
+Yalnız statik arayüzü yerel bilgisayarınızda görüntülemek için şu komutu çalıştırın:
 
 ```powershell
 py -3.13 -m http.server 8080 -d prototypes/conversation_ui_v0

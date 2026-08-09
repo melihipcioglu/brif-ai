@@ -349,7 +349,7 @@ def test_internal_technical_terms_are_localized_in_each_public_response_field(
         ("proposed_actions", "önerilen adımlar"),
         ("modifyRelationship", "mekânsal ilişki düzenleme önerisi"),
         ("active_context", "aktif bağlam"),
-        ("targetEntityId", "ilgili öğe bilgisi"),
+        ("targetEntityId", "mekân bilgisi"),
         ("requires_user_confirmation", "kullanıcı onayı gerekiyor"),
         ("followUpQuestion", "takip sorusu"),
         ("request_visual_preference", "görsel tercih talebi"),
@@ -396,7 +396,7 @@ def test_unmatched_internal_ids_use_safe_natural_fallbacks() -> None:
         ArchitecturalIntentResult.model_validate(data), conversation_request()
     )
 
-    assert "ilgili mekân" in safe_result.warnings[0]
+    assert "mekân" in safe_result.warnings[0]
     assert_no_internal_ids(safe_result)
 
 
@@ -412,3 +412,110 @@ def test_machine_target_id_is_preserved_while_public_text_is_sanitized() -> None
     assert safe_result.proposed_actions[0].target_entity_id == "space_study"
     assert "Çalışma Odası" in safe_result.assistant_message
     assert_no_internal_ids(safe_result)
+
+
+def test_conceptual_space_alternatives_regression() -> None:
+    request_msg = (
+        "Terası gün ışığı alan günlük oturma ve sohbet alanı olarak kullanmak istiyorum. "
+        "Salon, mutfak, teras ve giriş için iki farklı düzenleme alternatifini "
+        "ayrıntılı şekilde sun."
+    )
+    req = conversation_request().model_copy(update={"message": request_msg})
+
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": (
+                "Varsayım olarak terasın salon ve mutfakla aynı yaşam cephesinde kurulabileceği "
+                "kabul edilmiştir.\n"
+                "Alternatif 1: Girişten salon doğrudan algılanır; mutfak salonun yanında "
+                "kalır ve salon geniş bir açıklıkla terasa bağlanır, böylece teras günlük "
+                "oturmanın devamı olur.\n"
+                "Alternatif 2: Giriş salonla teras arasındaki ortak hole açılır; mutfak terasa "
+                "daha doğrudan bağlanır, salon ise daha sakin ve kontrollü bir ilişki kurar."
+            ),
+            "user_requirements": [
+                "Terasın gün ışığı alan oturma ve sohbet alanı olarak kullanılması"
+            ],
+            "interpreted_priorities": [
+                "Salon, mutfak, teras ve giriş ilişki alternatiflerinin sunulması"
+            ],
+            "constraints_to_check": ["Terasın oryantasyonu ve ışık alımı"],
+            "missing_information": [],
+            "proposed_actions": [],
+            "needs_user_confirmation": False,
+            "needs_follow_up": False,
+            "follow_up_question": None,
+            "warnings": [],
+            "target": {
+                "project_id": None,
+                "building_id": None,
+                "level_id": None,
+                "zone_id": None,
+                "entity_id": None,
+            },
+        }
+    )
+
+    validator = ArchitecturalIntentPolicyValidator()
+    validator.validate_semantic_integrity(ArchitecturalIntentResult.model_validate(data), req)
+
+    safe_result = validator.validate(ArchitecturalIntentResult.model_validate(data), req)
+
+    assert safe_result.intent.value == "compare_alternatives"
+    assert safe_result.needs_follow_up is False
+    assert safe_result.follow_up_question is None
+    assert safe_result.proposed_actions == []
+    assert safe_result.target.entity_id is None
+    assert "Alternatif 1" in safe_result.assistant_message
+    assert "Alternatif 2" in safe_result.assistant_message
+    for space in ("salon", "mutfak", "teras", "giriş"):
+        assert space in safe_result.assistant_message.casefold()
+    for forbidden in ("öğe bilgisi", "entity", "ilgili mekân", "visible_entities"):
+        assert forbidden not in safe_result.assistant_message.casefold()
+
+
+@pytest.mark.parametrize(
+    "forbidden_word",
+    [
+        "entity",
+        "entity_id",
+        "target",
+        "enum",
+        "öğe bilgisi",
+        "ilgili mekân",
+        "visible_entities",
+        "aktif kapsam kimliği",
+    ],
+)
+def test_semantic_validation_rejects_forbidden_internal_words(
+    forbidden_word: str,
+) -> None:
+    data = valid_result_data()
+    data["assistant_message"] = f"Plan üzerinde {forbidden_word} incelemesi tamamlandı."
+
+    validator = ArchitecturalIntentPolicyValidator()
+    with pytest.raises(PolicyValidationError, match="İç sistem dili"):
+        validator.validate_semantic_integrity(
+            ArchitecturalIntentResult.model_validate(data), conversation_request()
+        )
+
+
+def test_semantic_validation_rejects_single_alternative_on_comparison_request() -> None:
+    req = conversation_request().model_copy(
+        update={"message": "Salon ve mutfak için iki farklı düzenleme alternatifi sun."}
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": "Yalnızca tek bir alternatif değerlendirildi.",
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+
+    validator = ArchitecturalIntentPolicyValidator()
+    with pytest.raises(PolicyValidationError, match="Alternatif 1"):
+        validator.validate_semantic_integrity(ArchitecturalIntentResult.model_validate(data), req)

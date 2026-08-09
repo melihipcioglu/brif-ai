@@ -17,7 +17,12 @@ from brif_ai.llm.policy_validator import (
     ArchitecturalIntentPolicyValidator,
     ScopeMismatchError,
 )
-from brif_ai.llm.provider import LocalLLMProvider
+from brif_ai.llm.provider import (
+    LocalLLMProvider,
+    ProviderResponseError,
+    ProviderTimeoutError,
+    ProviderUnavailableError,
+)
 from brif_ai.llm.settings import LocalLLMSettings
 
 LLM_DISABLED_MESSAGE = "Yerel yapay zekâ bağlantısı devre dışı. Demo konuşma modu kullanılıyor."
@@ -39,18 +44,75 @@ class LocalLLMConversationService:
         self.policy_validator = policy_validator or ArchitecturalIntentPolicyValidator()
 
     async def health(self) -> HealthResponse:
-        provider_health = await self.provider.health()
-        model_available = False
-        if provider_health.reachable and self.settings.model:
+        selected_model = self.settings.model or None
+        if not self.settings.enabled:
+            return HealthResponse(
+                status="degraded",
+                llm_enabled=False,
+                provider=self.settings.provider,
+                provider_reachable=False,
+                selected_model=selected_model,
+                model_available=False,
+                message="Yerel yapay zekâ bağlantısı bilinçli olarak devre dışı.",
+            )
+
+        try:
             models = await self.provider.list_models()
-            model_available = self.settings.model in {model.name for model in models}
+        except (ProviderUnavailableError, ProviderTimeoutError) as error:
+            return HealthResponse(
+                status="unavailable",
+                llm_enabled=True,
+                provider=self.settings.provider,
+                provider_reachable=False,
+                selected_model=selected_model,
+                model_available=False,
+                message=str(error),
+            )
+        except ProviderResponseError:
+            return HealthResponse(
+                status="degraded",
+                llm_enabled=True,
+                provider=self.settings.provider,
+                provider_reachable=True,
+                selected_model=selected_model,
+                model_available=False,
+                message="Yerel sağlayıcının model listesi doğrulanamadı.",
+            )
+        except Exception:
+            return HealthResponse(
+                status="unavailable",
+                llm_enabled=True,
+                provider=self.settings.provider,
+                provider_reachable=False,
+                selected_model=selected_model,
+                model_available=False,
+                message="Yerel yapay zekâ sağlık kontrolü tamamlanamadı.",
+            )
+
+        if selected_model is None:
+            return HealthResponse(
+                status="degraded",
+                llm_enabled=True,
+                provider=self.settings.provider,
+                provider_reachable=True,
+                selected_model=None,
+                model_available=False,
+                message="Yerel model seçilmedi.",
+            )
+
+        model_available = selected_model in {model.name for model in models}
         return HealthResponse(
-            status="ok",
-            llm_enabled=self.settings.enabled,
+            status="ok" if model_available else "degraded",
+            llm_enabled=True,
             provider=self.settings.provider,
-            provider_reachable=provider_health.reachable,
-            selected_model=self.settings.model or None,
+            provider_reachable=True,
+            selected_model=selected_model,
             model_available=model_available,
+            message=(
+                "Yerel yapay zekâ bağlantısı hazır."
+                if model_available
+                else "Seçilen yerel model yüklü değil."
+            ),
         )
 
     async def list_models(self) -> list[LocalModelInfo]:

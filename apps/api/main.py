@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import os
+from collections.abc import Mapping
+from urllib.parse import urlsplit
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -31,11 +35,50 @@ ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ]
+UI_ORIGIN_ENV = "BRIF_AI_UI_ORIGIN"
+
+
+def resolve_allowed_origins(environ: Mapping[str, str] | None = None) -> list[str]:
+    """Return fixed development origins plus one validated loopback UI port."""
+
+    values = os.environ if environ is None else environ
+    configured_origin = values.get(UI_ORIGIN_ENV, "").strip()
+    origins = list(ALLOWED_ORIGINS)
+    if not configured_origin:
+        return origins
+
+    try:
+        parsed = urlsplit(configured_origin)
+        port = parsed.port
+    except ValueError as error:
+        raise ValueError(
+            f"{UI_ORIGIN_ENV} must be an HTTP origin on localhost or 127.0.0.1"
+        ) from error
+
+    if (
+        parsed.scheme != "http"
+        or parsed.hostname not in {"127.0.0.1", "localhost"}
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+        or port is None
+        or not 1 <= port <= 65535
+    ):
+        raise ValueError(f"{UI_ORIGIN_ENV} must be an HTTP origin on localhost or 127.0.0.1")
+
+    for host in ("127.0.0.1", "localhost"):
+        origin = f"http://{host}:{port}"
+        if origin not in origins:
+            origins.append(origin)
+    return origins
 
 
 def create_app(
     settings: LocalLLMSettings | None = None,
     provider: LocalLLMProvider | None = None,
+    cors_environ: Mapping[str, str] | None = None,
 ) -> FastAPI:
     resolved_settings = settings or LocalLLMSettings.from_env()
     resolved_provider = provider or OllamaProvider(resolved_settings)
@@ -44,7 +87,7 @@ def create_app(
     application = FastAPI(title="BRIF.AI Local LLM API", version="0.1.0")
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=ALLOWED_ORIGINS,
+        allow_origins=resolve_allowed_origins(cors_environ),
         allow_credentials=False,
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["Content-Type"],

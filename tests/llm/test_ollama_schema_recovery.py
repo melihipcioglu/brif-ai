@@ -103,8 +103,8 @@ def test_length_limited_json_gets_one_repair_with_the_full_output_budget() -> No
 
     assert result.intent.value == "modify_space"
     assert len(chat_payloads) == 2
-    assert chat_payloads[0]["options"]["num_predict"] == 768
-    assert chat_payloads[1]["options"]["num_predict"] == 768
+    assert chat_payloads[0]["options"]["num_predict"] == 512
+    assert chat_payloads[1]["options"]["num_predict"] == 512
 
 
 def test_valid_json_with_invalid_schema_is_repaired_once() -> None:
@@ -327,3 +327,49 @@ def test_recovered_response_still_hides_internal_terms_from_user_text() -> None:
     ):
         assert technical_term not in combined
     assert chat_calls == 2
+
+
+def test_semantic_validation_triggers_single_repair_call() -> None:
+    chat_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal chat_calls
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
+        chat_calls += 1
+        data = valid_result_data()
+        if chat_calls == 1:
+            data["assistant_message"] = "Plan için öğe bilgisi incelendi."
+        else:
+            data.update(
+                {
+                    "intent": "compare_alternatives",
+                    "assistant_message": (
+                        "Alternatif 1: Salon terasla birleşir. Alternatif 2: Mutfak terasa açılır."
+                    ),
+                    "needs_follow_up": False,
+                    "follow_up_question": None,
+                }
+            )
+        return httpx.Response(
+            200,
+            json={"message": {"content": json.dumps(data, ensure_ascii=False)}},
+        )
+
+    req = conversation_request().model_copy(
+        update={"message": "Salon ve teras için iki farklı düzenleme alternatifi sun."}
+    )
+
+    async def run() -> ArchitecturalIntentResult:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:11434"
+        ) as client:
+            provider = OllamaProvider(settings(), client)
+            return await provider.interpret(req, schema())
+
+    result = asyncio.run(run())
+
+    assert chat_calls == 2
+    assert result.intent.value == "compare_alternatives"
+    assert "Alternatif 1" in result.assistant_message
+    assert "Alternatif 2" in result.assistant_message

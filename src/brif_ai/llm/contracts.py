@@ -189,12 +189,13 @@ class LocalModelInfo(StrictContract):
 
 
 class HealthResponse(StrictContract):
-    status: str
+    status: Literal["ok", "degraded", "unavailable"]
     llm_enabled: bool
     provider: str
     provider_reachable: bool
     selected_model: str | None
     model_available: bool
+    message: str | None = None
 
 
 class ConversationInterpretationResponse(StrictContract):
