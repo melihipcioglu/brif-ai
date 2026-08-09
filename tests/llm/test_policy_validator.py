@@ -652,3 +652,102 @@ def test_unsupported_direction_detected_in_proposed_action_description() -> None
     validator = ArchitecturalIntentPolicyValidator()
     with pytest.raises(UnsupportedSpatialClaimError, match="yön bilgisi"):
         validator.validate_semantic_integrity(ArchitecturalIntentResult.model_validate(data), req)
+
+
+def test_sanitize_removes_target_from_assistant_message() -> None:
+    req = conversation_request()
+    data = valid_result_data()
+    data["assistant_message"] = "Plan üzerinde target alanı düzenlenmiştir."
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    sanitized = ArchitecturalIntentPolicyValidator().sanitize(result, req)
+    assert "target" not in sanitized.assistant_message.casefold()
+    assert "hedef" in sanitized.assistant_message.casefold()
+
+
+def test_sanitize_removes_entity_id_from_warnings() -> None:
+    req = conversation_request()
+    data = valid_result_data()
+    data["warnings"] = ["Aktif kapsamda entity_id bilgisi bulunamadı."]
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    sanitized = ArchitecturalIntentPolicyValidator().sanitize(result, req)
+    assert "entity_id" not in " ".join(sanitized.warnings).casefold()
+    assert "mekân bilgisi" in " ".join(sanitized.warnings).casefold()
+
+
+def test_sanitize_neutralizes_unsupported_salonun_dogusunda() -> None:
+    req = conversation_request()
+    data = valid_result_data()
+    data["assistant_message"] = "Teras salonun doğusundadır."
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    sanitized = ArchitecturalIntentPolicyValidator().sanitize(result, req)
+    assert "doğusunda" not in sanitized.assistant_message.casefold()
+    assert "doğu" not in sanitized.assistant_message.casefold()
+    assert "yakınında" in sanitized.assistant_message.casefold()
+
+
+def test_sanitize_neutralizes_unsupported_ortak_alanin_guneyinde() -> None:
+    req = conversation_request()
+    data = valid_result_data()
+    data["assistant_message"] = "Oturma köşesi ortak alanın güneyinde kalmaktadır."
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    sanitized = ArchitecturalIntentPolicyValidator().sanitize(result, req)
+    assert "güneyinde" not in sanitized.assistant_message.casefold()
+    assert "güney" not in sanitized.assistant_message.casefold()
+    assert "yakınında" in sanitized.assistant_message.casefold()
+
+
+def test_sanitize_preserves_dogrudan_baglanti() -> None:
+    req = conversation_request()
+    data = valid_result_data()
+    data["assistant_message"] = "Salon ile mutfak arasında doğrudan bağlantı kurulmalıdır."
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    sanitized = ArchitecturalIntentPolicyValidator().sanitize(result, req)
+    assert "doğrudan bağlantı" in sanitized.assistant_message.casefold()
+
+
+def test_sanitize_does_not_neutralize_direction_present_in_request_message() -> None:
+    req = conversation_request().model_copy(update={"message": "Güney cephesinde teras istiyorum."})
+    data = valid_result_data()
+    data["assistant_message"] = "Güney cephesinde teras planlandı."
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    sanitized = ArchitecturalIntentPolicyValidator().sanitize(result, req)
+    assert "güney" in sanitized.assistant_message.casefold()
+
+
+def test_sanitization_allows_semantic_validation_to_pass() -> None:
+    req = conversation_request()
+    data = valid_result_data()
+    data["assistant_message"] = "Plan için target alanı ve teras salonun doğusundadır."
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(result, req)
+    validator.validate_semantic_integrity(sanitized, req)
+
+    assert "target" not in sanitized.assistant_message.casefold()
+    assert "doğusunda" not in sanitized.assistant_message.casefold()
+
+
+def test_sanitization_preserves_structured_target_fields() -> None:
+    req = conversation_request()
+    data = valid_result_data()
+    data["assistant_message"] = "target nesnesi incelendi."
+    data["target"] = {
+        "project_id": "proj_house_2story",
+        "building_id": "bldg_main",
+        "level_id": "lvl_ground",
+        "zone_id": "zone_living",
+        "entity_id": "space_living",
+    }
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    sanitized = ArchitecturalIntentPolicyValidator().sanitize(result, req)
+    assert sanitized.target.entity_id == "space_living"
+    assert sanitized.target.project_id == "proj_house_2story"
+    assert "target nesnesi" not in sanitized.assistant_message

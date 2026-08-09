@@ -13,6 +13,10 @@ from brif_ai.llm.contracts import (
     VisibleEntity,
 )
 
+_TURKISH_WORD_BOUND_PRE = r"(?<![\wıişğüçÖÇŞİĞÜ])"
+_TURKISH_WORD_BOUND_POST = r"(?=[^\wıişğüçÖÇŞİĞÜ]|$)"
+_COPULA = r"(?:dır|dir|dur|dür|tır|tir|tur|tür)?"
+
 _INTERNAL_ID_PATTERN = re.compile(
     r"(?<![\w])(?P<identifier>"
     r"(?:space|project|building|block|level|lvl|zone|entity)_"
@@ -55,7 +59,7 @@ _PUBLIC_TECHNICAL_TERM_REPLACEMENTS = (
     ("proposed_action", "önerilen adım"),
     ("conversation_summary", "konuşma özeti"),
     ("current_decisions", "mevcut kararlar"),
-    ("visible_entities", "görünür öğeler"),
+    ("visible_entities", "görünür mekânlar"),
     ("active_context", "aktif bağlam"),
     ("context_fingerprint", "bağlam bilgisi"),
     ("generation_id", "bağlam sürümü"),
@@ -84,13 +88,22 @@ _PUBLIC_TECHNICAL_TERM_REPLACEMENTS = (
     ("suggest_space_resize", "mekân boyutu önerisi"),
     ("suggest_relationship_change", "mekânsal ilişki önerisi"),
     ("suggest_orientation_change", "yönlenme önerisi"),
+    ("aktif kapsam kimliği", "aktif proje kapsamı"),
+    ("aktif kapsam kimligi", "aktif proje kapsamı"),
+    ("ilgili mekân", "ilgili alan"),
+    ("ilgili mekan", "ilgili alan"),
+    ("öğe bilgisi", "mekân bilgisi"),
+    ("oge bilgisi", "mekan bilgisi"),
+    ("target", "hedef"),
+    ("entity", "mekân"),
+    ("enum", "seçenek"),
 )
 
 
 def _internal_term_pattern(term: str) -> re.Pattern[str]:
-    words = term.split("_")
+    words = term.split(" ") if " " in term else term.split("_")
     return re.compile(
-        r"(?<![\w])" + r"[_\s-]*".join(map(re.escape, words)) + r"(?![\w])",
+        _TURKISH_WORD_BOUND_PRE + r"[_\s-]*".join(map(re.escape, words)) + _TURKISH_WORD_BOUND_POST,
         re.IGNORECASE,
     )
 
@@ -179,24 +192,28 @@ DIRECTION_PATTERNS: dict[str, re.Pattern[str]] = {
     "kuzey": re.compile(
         _TURKISH_WORD_BOUND_PRE
         + r"kuzey(?:doğu|batı|e|de|den|in|ine|ini|inde|inden|inin|i|deki|indek[iı]|lü|lük)?"
+        + _COPULA
         + _TURKISH_WORD_BOUND_POST,
         re.IGNORECASE,
     ),
     "güney": re.compile(
         _TURKISH_WORD_BOUND_PRE
         + r"güney(?:doğu|batı|e|de|den|in|ine|ini|inde|inden|inin|i|deki|indek[iı]|li|lik)?"
+        + _COPULA
         + _TURKISH_WORD_BOUND_POST,
         re.IGNORECASE,
     ),
     "doğu": re.compile(
         _TURKISH_WORD_BOUND_PRE
         + r"doğu(?:da|dan|ya|su|sunda|sundan|suna|sunu|sunun|daki|sundak[iı]|lu|luk)?"
+        + _COPULA
         + _TURKISH_WORD_BOUND_POST,
         re.IGNORECASE,
     ),
     "batı": re.compile(
         _TURKISH_WORD_BOUND_PRE
         + r"batı(?:da|dan|ya|sı|sında|sından|sına|sını|sının|daki|sındak[iı]|lı|lık)?"
+        + _COPULA
         + _TURKISH_WORD_BOUND_POST,
         re.IGNORECASE,
     ),
@@ -273,8 +290,188 @@ def validate_spatial_direction_claims(
         )
 
 
+_NOUN_GENITIVE = (
+    r"(?<![\wıişğüçÖÇŞİĞÜ])(?P<noun>[A-Za-z0-9ıişğüçÖÇŞİĞÜ]+(?:ın|in|un|ün|nın|nin|nun|nün))\s+"
+)
+_COPULA = r"(?:dır|dir|dur|dür|tır|tir|tur|tür)?"
+
+
+def neutralize_unsupported_spatial_directions(
+    text: str,
+    unsupported_directions: set[str],
+) -> str:
+    """Neutralize ungrounded compass directions in text to directionless natural Turkish phrases."""
+    if not unsupported_directions:
+        return text
+
+    sanitized = text
+    for d in sorted(unsupported_directions):
+        rules = (
+            (
+                re.compile(
+                    _TURKISH_WORD_BOUND_PRE
+                    + d
+                    + r"(?:doğu|batı)?\s+cephe(?:sindeki|sinden|sine|sinde|si|siyle)?"
+                    + _COPULA
+                    + _TURKISH_WORD_BOUND_POST,
+                    re.IGNORECASE,
+                ),
+                "uygun bir cephe kurgusunda",
+            ),
+            (
+                re.compile(
+                    _NOUN_GENITIVE + d + r"(?:doğu|batı)?(?:si|sı|su|sü|i|ı|u|ü)?"
+                    r"(?:nde|nda|ne|na|nden|ndan|deki|daki|ndaki|ndeki|de|da|ye|ya|e|a)?"
+                    + _COPULA
+                    + _TURKISH_WORD_BOUND_POST,
+                    re.IGNORECASE,
+                ),
+                r"\g<noun> yakınında bir konumda",
+            ),
+            (
+                re.compile(
+                    _TURKISH_WORD_BOUND_PRE
+                    + d
+                    + r"(?:doğu|batı)?\s+tarafı(?:nda|na|ndan|nı|nı)?"
+                    + _COPULA
+                    + _TURKISH_WORD_BOUND_POST,
+                    re.IGNORECASE,
+                ),
+                "yakınındaki alanda",
+            ),
+            (
+                re.compile(
+                    _TURKISH_WORD_BOUND_PRE
+                    + d
+                    + r"(?:doğu|batı)?\s+yönü(?:nde|ne|nden|nü)?"
+                    + _COPULA
+                    + _TURKISH_WORD_BOUND_POST,
+                    re.IGNORECASE,
+                ),
+                "uygun konum doğrultusunda",
+            ),
+            (
+                re.compile(
+                    _TURKISH_WORD_BOUND_PRE
+                    + d
+                    + r"(?:doğu|batı)?(?:si|sı|su|sü|i|ı|u|ü)?(?:nde|nda|deki|daki|ndaki|ndeki)"
+                    + _COPULA
+                    + _TURKISH_WORD_BOUND_POST,
+                    re.IGNORECASE,
+                ),
+                "yakın bir konumda",
+            ),
+            (
+                re.compile(
+                    _TURKISH_WORD_BOUND_PRE
+                    + d
+                    + r"(?:doğu|batı)?(?:si|sı|su|sü|i|ı|u|ü)?(?:ne|na|ye|ya|e|a)"
+                    + _COPULA
+                    + _TURKISH_WORD_BOUND_POST,
+                    re.IGNORECASE,
+                ),
+                "uygun bir konuma",
+            ),
+            (
+                re.compile(
+                    _TURKISH_WORD_BOUND_PRE
+                    + d
+                    + r"(?:doğu|batı)?(?:si|sı|su|sü|i|ı|u|ü)?(?:nden|ndan|den|dan)"
+                    + _COPULA
+                    + _TURKISH_WORD_BOUND_POST,
+                    re.IGNORECASE,
+                ),
+                "yakın konumundan",
+            ),
+            (
+                re.compile(
+                    _TURKISH_WORD_BOUND_PRE
+                    + d
+                    + r"(?:doğu|batı)?(?:de|da)"
+                    + _COPULA
+                    + _TURKISH_WORD_BOUND_POST,
+                    re.IGNORECASE,
+                ),
+                "uygun bir konumda",
+            ),
+            (
+                re.compile(
+                    _TURKISH_WORD_BOUND_PRE
+                    + d
+                    + r"(?:doğu|batı)?"
+                    + _COPULA
+                    + _TURKISH_WORD_BOUND_POST,
+                    re.IGNORECASE,
+                ),
+                "uygun konumlu",
+            ),
+        )
+        for pattern, replacement in rules:
+            sanitized = pattern.sub(replacement, sanitized)
+
+    sanitized = re.sub(r"[ \t]+", " ", sanitized)
+    sanitized = re.sub(r" +([,.!?;:])", r"\1", sanitized)
+    return sanitized
+
+
 class ArchitecturalIntentPolicyValidator:
     """Treat model output as untrusted suggestions constrained by active context."""
+
+    def sanitize(
+        self,
+        result: ArchitecturalIntentResult,
+        request: ConversationRequest,
+    ) -> ArchitecturalIntentResult:
+        """Sanitize machine IDs, internal terms, and neutralize unsupported spatial directions."""
+        trusted_evidence = extract_trusted_direction_evidence(request)
+
+        public_texts = [
+            result.assistant_message,
+            *([result.follow_up_question] if result.follow_up_question is not None else []),
+            *result.user_requirements,
+            *result.interpreted_priorities,
+            *result.constraints_to_check,
+            *result.missing_information,
+            *result.warnings,
+            *(action.description for action in result.proposed_actions if action.description),
+        ]
+        combined = " ".join(public_texts)
+        model_directions: set[str] = set()
+        for canonical, pattern in DIRECTION_PATTERNS.items():
+            if pattern.search(combined):
+                model_directions.add(canonical)
+
+        unsupported_directions = model_directions - trusted_evidence
+
+        def _clean(text: str) -> str:
+            text = sanitize_public_text(text, request.visible_entities)
+            if unsupported_directions:
+                text = neutralize_unsupported_spatial_directions(text, unsupported_directions)
+            return text
+
+        actions = [
+            action.model_copy(update={"description": _clean(action.description)})
+            for action in result.proposed_actions
+        ]
+        sanitized = result.model_copy(
+            update={
+                "assistant_message": _clean(result.assistant_message),
+                "follow_up_question": (
+                    _clean(result.follow_up_question)
+                    if result.follow_up_question is not None
+                    else None
+                ),
+                "user_requirements": [_clean(text) for text in result.user_requirements],
+                "interpreted_priorities": [_clean(text) for text in result.interpreted_priorities],
+                "constraints_to_check": [_clean(text) for text in result.constraints_to_check],
+                "missing_information": [_clean(text) for text in result.missing_information],
+                "proposed_actions": actions,
+                "warnings": [_clean(text) for text in result.warnings],
+            }
+        )
+        if not sanitized.needs_follow_up:
+            return sanitized.model_copy(update={"follow_up_question": None})
+        return sanitized
 
     def validate_semantic_integrity(
         self,
@@ -351,8 +548,8 @@ class ArchitecturalIntentPolicyValidator:
         request: ConversationRequest,
     ) -> ArchitecturalIntentResult:
         result = self._normalize_intent(result, request)
+        result = self.sanitize(result, request)
         self.validate_semantic_integrity(result, request)
-        result = self._sanitize_public_fields(result, request.visible_entities)
         active = request.active_context
         target = result.target
 

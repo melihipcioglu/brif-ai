@@ -246,11 +246,9 @@ class OllamaProvider:
             if not isinstance(content, str):
                 raise TypeError("message content must be a string")
             parsed_result = ArchitecturalIntentResult.model_validate_json(content)
-            sanitized = self.policy_validator._sanitize_public_fields(
-                parsed_result, request.visible_entities
-            )
+            sanitized = self.policy_validator.sanitize(parsed_result, request)
             self.policy_validator.validate_semantic_integrity(sanitized, request)
-            return parsed_result
+            return sanitized
         except (KeyError, TypeError, ValueError, ValidationError, PolicyValidationError) as error:
             _write_schema_diagnostic(
                 error,
