@@ -234,3 +234,80 @@ def test_scenario_f_provider_failure_preserves_request_state() -> None:
         asyncio.run(llm_service.interpret(request))
 
     assert request.model_dump() == original
+
+
+def test_successful_record_brief_mutation_approval() -> None:
+    from brif_ai.brief.models.common import BriefItemKind, Priority
+    from brif_ai.brief.models.snapshot import BriefSnapshot, Stakeholder
+    from brif_ai.brief.mutation import (
+        BriefItemProposalPayload,
+        BriefMutationType,
+        ProposedBriefMutation,
+    )
+
+    snapshot = BriefSnapshot(
+        project_id="proj_01",
+        schema_version="brief.v0",
+        brief_version=1,
+        created_at=datetime.now(timezone.utc),  # noqa: UP017
+        stakeholders=[
+            Stakeholder(
+                id="stk_client_owner",
+                display_name="Melih İpçioğlu",
+                role="CLIENT_OWNER",
+                active=True,
+            )
+        ],
+        evidence=[],
+        brief_items=[],
+        space_requests=[],
+        usage_scenarios=[],
+        contradictions=[],
+        open_questions=[],
+    )
+    llm_service, _provider = service()
+    orig_snapshot_dump = snapshot.model_dump(mode="python")
+
+    mutation = ProposedBriefMutation(
+        mutation_id="mut_rec_01",
+        mutation_type=BriefMutationType.ADD_BRIEF_ITEM,
+        brief_item=BriefItemProposalPayload(
+            kind=BriefItemKind.NEED,
+            normalized_statement="Mutfak ile teras doğrudan bağlantılı olsun.",
+            priority=Priority.MUST,
+        ),
+    )
+
+    fp = "house|main|ground|living|kitchen"
+    gen_id = 7
+    approved_at = datetime(2026, 8, 10, 12, 0, tzinfo=timezone.utc)  # noqa: UP017
+
+    new_snapshot, record = llm_service.record_brief_mutation_approval(
+        proposal_fingerprint=fp,
+        current_fingerprint=fp,
+        proposal_generation_id=gen_id,
+        current_generation_id=gen_id,
+        proposed_mutation=mutation,
+        user_message="Mutfak ile teras doğrudan bağlantılı olsun.",
+        snapshot=snapshot,
+        approved_at=approved_at,
+    )
+
+    assert new_snapshot is not None
+    assert record is not None
+    assert len(new_snapshot.brief_items) == len(snapshot.brief_items) + 1
+    assert (
+        new_snapshot.brief_items[-1].normalized_statement
+        == "Mutfak ile teras doğrudan bağlantılı olsun."
+    )
+
+    assert record.proposal_status == "user_approved"
+    assert record.approved_at == approved_at
+    assert record.context_fingerprint == fp
+    assert record.generation_id == gen_id
+    assert record.mutation_id == "mut_rec_01"
+    assert record.proposed_brief_mutation == mutation
+    assert record.resulting_brief_version == new_snapshot.brief_version
+
+    assert new_snapshot.brief_version == snapshot.brief_version + 1
+    assert snapshot.model_dump(mode="python") == orig_snapshot_dump

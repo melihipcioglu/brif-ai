@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 
+from brif_ai.brief.mutation import ProposedBriefMutation
 from brif_ai.llm.contracts import (
     PLAN_CHANGE_ACTIONS,
     ArchitecturalIntentResult,
@@ -459,6 +460,21 @@ DIRECTION_PATTERNS: dict[str, re.Pattern[str]] = {
 
 def extract_trusted_direction_evidence(request: ConversationRequest) -> set[str]:
     """Extract canonical compass directions explicitly present in trusted request context."""
+    texts = _trusted_spatial_texts(request)
+    for entity in request.visible_entities:
+        if entity.name:
+            texts.append(entity.name)
+
+    evidence: set[str] = set()
+    combined = " ".join(texts)
+    for canonical, pattern in DIRECTION_PATTERNS.items():
+        if pattern.search(combined):
+            evidence.add(canonical)
+
+    return evidence
+
+
+def _trusted_spatial_texts(request: ConversationRequest) -> list[str]:
     texts: list[str] = [request.message]
 
     if request.conversation_summary:
@@ -473,25 +489,54 @@ def extract_trusted_direction_evidence(request: ConversationRequest) -> set[str]
             texts.append(str(decision["description"]))
 
     for proposal in request.pending_proposals:
-        if hasattr(proposal, "action") and hasattr(proposal.action, "description"):
-            if proposal.action.description:
-                texts.append(proposal.action.description)
+        if (
+            hasattr(proposal, "action")
+            and proposal.action is not None
+            and proposal.action.description
+        ):
+            texts.append(proposal.action.description)
+        if hasattr(proposal, "brief_mutation") and proposal.brief_mutation is not None:
+            bm = proposal.brief_mutation
+            if bm.brief_item is not None:
+                texts.append(bm.brief_item.normalized_statement)
+            if bm.space_request is not None:
+                texts.append(bm.space_request.display_name)
+            if bm.usage_scenario is not None:
+                texts.append(bm.usage_scenario.title)
+                texts.append(bm.usage_scenario.description)
         elif isinstance(proposal, dict):
-            action = proposal.get("action", {})
+            action = proposal.get("action")
             if isinstance(action, dict) and action.get("description"):
                 texts.append(str(action["description"]))
+            bm_dict = proposal.get("brief_mutation")
+            if isinstance(bm_dict, dict):
+                bi_dict = bm_dict.get("brief_item")
+                if isinstance(bi_dict, dict) and bi_dict.get("normalized_statement"):
+                    texts.append(str(bi_dict["normalized_statement"]))
+                sr_dict = bm_dict.get("space_request")
+                if isinstance(sr_dict, dict) and sr_dict.get("display_name"):
+                    texts.append(str(sr_dict["display_name"]))
+                us_dict = bm_dict.get("usage_scenario")
+                if isinstance(us_dict, dict):
+                    if us_dict.get("title"):
+                        texts.append(str(us_dict["title"]))
+                    if us_dict.get("description"):
+                        texts.append(str(us_dict["description"]))
 
-    for entity in request.visible_entities:
-        if entity.name:
-            texts.append(entity.name)
+    return texts
 
-    evidence: set[str] = set()
-    combined = " ".join(texts)
-    for canonical, pattern in DIRECTION_PATTERNS.items():
-        if pattern.search(combined):
-            evidence.add(canonical)
 
-    return evidence
+def _result_mutation_texts(result: ArchitecturalIntentResult) -> list[str]:
+    texts: list[str] = []
+    for m in result.proposed_brief_mutations:
+        if m.brief_item is not None:
+            texts.append(m.brief_item.normalized_statement)
+        if m.space_request is not None:
+            texts.append(m.space_request.display_name)
+        if m.usage_scenario is not None:
+            texts.append(m.usage_scenario.title)
+            texts.append(m.usage_scenario.description)
+    return texts
 
 
 def validate_spatial_direction_claims(
@@ -510,6 +555,7 @@ def validate_spatial_direction_claims(
         *result.missing_information,
         *result.warnings,
         *(action.description for action in result.proposed_actions if action.description),
+        *_result_mutation_texts(result),
     ]
 
     combined = " ".join(public_texts)
@@ -788,32 +834,6 @@ def _extract_entity_keys(text: str, aliases: dict[str, str]) -> set[str]:
     return entity_keys
 
 
-def _trusted_spatial_texts(request: ConversationRequest) -> list[str]:
-    texts: list[str] = [request.message]
-
-    if request.conversation_summary:
-        texts.append(request.conversation_summary)
-
-    for decision in request.current_decisions:
-        if isinstance(decision, str):
-            texts.append(decision)
-        elif hasattr(decision, "description") and decision.description:
-            texts.append(str(decision.description))
-        elif isinstance(decision, dict) and decision.get("description"):
-            texts.append(str(decision["description"]))
-
-    for proposal in request.pending_proposals:
-        if hasattr(proposal, "action") and hasattr(proposal.action, "description"):
-            if proposal.action.description:
-                texts.append(proposal.action.description)
-        elif isinstance(proposal, dict):
-            action = proposal.get("action", {})
-            if isinstance(action, dict) and action.get("description"):
-                texts.append(str(action["description"]))
-
-    return texts
-
-
 def extract_trusted_proximity_pairs(request: ConversationRequest) -> set[frozenset[str]]:
     """Extract trusted space entity pairs for proximity/distance claims from request context."""
     combined = " ".join(_trusted_spatial_texts(request))
@@ -834,28 +854,7 @@ def extract_trusted_proximity_pairs(request: ConversationRequest) -> set[frozens
 
 def extract_trusted_relative_spatial_evidence(request: ConversationRequest) -> set[str]:
     """Extract trusted relative spatial claim categories present in request context."""
-    texts: list[str] = [request.message]
-
-    if request.conversation_summary:
-        texts.append(request.conversation_summary)
-
-    for decision in request.current_decisions:
-        if isinstance(decision, str):
-            texts.append(decision)
-        elif hasattr(decision, "description") and decision.description:
-            texts.append(str(decision.description))
-        elif isinstance(decision, dict) and decision.get("description"):
-            texts.append(str(decision["description"]))
-
-    for proposal in request.pending_proposals:
-        if hasattr(proposal, "action") and hasattr(proposal.action, "description"):
-            if proposal.action.description:
-                texts.append(proposal.action.description)
-        elif isinstance(proposal, dict):
-            action = proposal.get("action", {})
-            if isinstance(action, dict) and action.get("description"):
-                texts.append(str(action["description"]))
-
+    texts = _trusted_spatial_texts(request)
     for entity in request.visible_entities:
         if entity.name:
             texts.append(entity.name)
@@ -889,6 +888,7 @@ def validate_relative_spatial_claims(
         *result.missing_information,
         *result.warnings,
         *(action.description for action in result.proposed_actions if action.description),
+        *_result_mutation_texts(result),
     ]
 
     combined = " ".join(public_texts)
@@ -1324,6 +1324,16 @@ class ArchitecturalIntentPolicyValidator:
         trusted_evidence = extract_trusted_direction_evidence(request)
         trusted_relative = extract_trusted_relative_spatial_evidence(request)
 
+        mutation_texts: list[str] = []
+        for m in result.proposed_brief_mutations:
+            if m.brief_item is not None:
+                mutation_texts.append(m.brief_item.normalized_statement)
+            if m.space_request is not None:
+                mutation_texts.append(m.space_request.display_name)
+            if m.usage_scenario is not None:
+                mutation_texts.append(m.usage_scenario.title)
+                mutation_texts.append(m.usage_scenario.description)
+
         public_texts = [
             result.assistant_message,
             *([result.follow_up_question] if result.follow_up_question is not None else []),
@@ -1333,6 +1343,7 @@ class ArchitecturalIntentPolicyValidator:
             *result.missing_information,
             *result.warnings,
             *(action.description for action in result.proposed_actions if action.description),
+            *mutation_texts,
         ]
         combined = " ".join(public_texts)
         model_directions: set[str] = set()
@@ -1361,6 +1372,43 @@ class ArchitecturalIntentPolicyValidator:
             action.model_copy(update={"description": _clean(action.description)})
             for action in result.proposed_actions
         ]
+
+        sanitized_mutations: list[ProposedBriefMutation] = []
+        for m in result.proposed_brief_mutations:
+            bi_update = (
+                m.brief_item.model_copy(
+                    update={"normalized_statement": _clean(m.brief_item.normalized_statement)}
+                )
+                if m.brief_item is not None
+                else None
+            )
+            sr_update = (
+                m.space_request.model_copy(
+                    update={"display_name": _clean(m.space_request.display_name)}
+                )
+                if m.space_request is not None
+                else None
+            )
+            us_update = (
+                m.usage_scenario.model_copy(
+                    update={
+                        "title": _clean(m.usage_scenario.title),
+                        "description": _clean(m.usage_scenario.description),
+                    }
+                )
+                if m.usage_scenario is not None
+                else None
+            )
+            sanitized_mutations.append(
+                m.model_copy(
+                    update={
+                        "brief_item": bi_update,
+                        "space_request": sr_update,
+                        "usage_scenario": us_update,
+                    }
+                )
+            )
+
         sanitized = result.model_copy(
             update={
                 "assistant_message": _clean(result.assistant_message),
@@ -1374,6 +1422,7 @@ class ArchitecturalIntentPolicyValidator:
                 "constraints_to_check": [_clean(text) for text in result.constraints_to_check],
                 "missing_information": [_clean(text) for text in result.missing_information],
                 "proposed_actions": actions,
+                "proposed_brief_mutations": sanitized_mutations,
                 "warnings": [_clean(text) for text in result.warnings],
             }
         )
@@ -1412,6 +1461,7 @@ class ArchitecturalIntentPolicyValidator:
                 "constraints_to_check": [_clean(text) for text in result.constraints_to_check],
                 "missing_information": [_clean(text) for text in result.missing_information],
                 "proposed_actions": actions,
+                "proposed_brief_mutations": [],
                 "warnings": [_clean(text) for text in result.warnings],
             }
         )
@@ -1432,6 +1482,10 @@ class ArchitecturalIntentPolicyValidator:
                     "Kullanıcı alternatif karşılaştırması istediğinde "
                     "sonuç intent'i COMPARE_ALTERNATIVES olmalıdır."
                 )
+            if result.proposed_brief_mutations:
+                raise PolicyValidationError(
+                    "Alternatif karşılaştırması brief değişiklik önerisi üretemez."
+                )
             validate_alternative_quality(result, request)
 
             if result.needs_follow_up:
@@ -1443,6 +1497,16 @@ class ArchitecturalIntentPolicyValidator:
         validate_spatial_direction_claims(result, request)
         validate_relative_spatial_claims(result, request)
 
+        mutation_texts: list[str] = []
+        for m in result.proposed_brief_mutations:
+            if m.brief_item is not None:
+                mutation_texts.append(m.brief_item.normalized_statement)
+            if m.space_request is not None:
+                mutation_texts.append(m.space_request.display_name)
+            if m.usage_scenario is not None:
+                mutation_texts.append(m.usage_scenario.title)
+                mutation_texts.append(m.usage_scenario.description)
+
         public_texts = [
             result.assistant_message,
             *([result.follow_up_question] if result.follow_up_question is not None else []),
@@ -1452,6 +1516,7 @@ class ArchitecturalIntentPolicyValidator:
             *result.missing_information,
             *result.warnings,
             *(action.description for action in result.proposed_actions),
+            *mutation_texts,
         ]
         combined = " ".join(public_texts).casefold()
         for pattern in _FORBIDDEN_SYSTEM_PATTERNS:
@@ -1487,6 +1552,7 @@ class ArchitecturalIntentPolicyValidator:
                         entity_id=None,
                     ),
                     "proposed_actions": [],
+                    "proposed_brief_mutations": [],
                     "needs_user_confirmation": False,
                     "needs_follow_up": False,
                     "follow_up_question": None,
@@ -1533,11 +1599,13 @@ class ArchitecturalIntentPolicyValidator:
                         "Hangi görünür mekân veya öğe için değişiklik önerisi "
                         "hazırlamamı istersiniz?"
                     ),
-                    "needs_user_confirmation": bool(result.proposed_actions),
+                    "needs_user_confirmation": bool(
+                        result.proposed_actions or result.proposed_brief_mutations
+                    ),
                 }
             )
 
-        if result.proposed_actions:
+        if result.proposed_actions or result.proposed_brief_mutations:
             actions = [
                 action.model_copy(update={"requires_user_confirmation": True})
                 if action.action_type in PLAN_CHANGE_ACTIONS

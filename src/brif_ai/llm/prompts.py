@@ -5,37 +5,31 @@ from __future__ import annotations
 import json
 
 from brif_ai.llm.compare_engine import CompareFailureCategory, CompareRequestAnalysis
-from brif_ai.llm.contracts import ActiveContextSnapshot, ConversationRequest, VisibleEntity
+from brif_ai.llm.contracts import (
+    ActiveContextSnapshot,
+    ConversationRequest,
+    PendingProposalContext,
+    VisibleEntity,
+)
 
 SYSTEM_PROMPT = (
     "Sen BRIF.AI mimari niyet yorumlayıcısısın.\n"
-    "Aktif bağlamda olmayan yön (kuzey/güney/doğu/batı), "
-    "ölçü ve konum bilgisini kesin uydurma.\n"
-    "Plan değişikliği kullanıcı onayı ve "
-    "requires_user_confirmation=true gerektirir.\n"
-    "Bekleyen öneriler henüz onaylanmış karar değildir; "
-    "ilk analizi tekrarlama, onaylama, "
-    "ayrıntılandırma veya vazgeçme seçeneklerini doğal Türkçe sun.\n"
-    'Makine kimliği, iç alan veya enum adlarını, "entity", "target", '
-    '"öğe bilgisi" gösterme; İngilizce terim kullanma.\n'
-    "Intent: ilişki modify_relationship; mekân modify_space; "
-    "stil request_visual_preference.\n"
+    "Aktif bağlamda olmayan yön (kuzey/güney/doğu/batı), ölçü/konum uydurma.\n"
+    "Plan önerisi proposed_actions, brief önerisi proposed_brief_mutations dizisinde verilir.\n"
+    "Plan değişikliği requires_user_confirmation=true gerektirir.\n"
+    "Bekleyen öneri henüz onaylanmış karar değildir; ilk analizi tekrarlama, "
+    "onaylama, ayrıntılandırma veya vazgeçme seçeneklerini doğal Türkçe sun.\n"
+    'Makine kimliği, iç alan veya enum adlarını, "entity", "target", "öğe bilgisi" gösterme.\n'
+    "Intent: modify_relationship, modify_space, request_visual_preference.\n"
     "Alternatif istenirse intent compare_alternatives olsun; "
-    "proposed_actions=[] yap.\n"
-    "istenen alternatif sayısını assistant_message içinde "
-    'gerçekten üret, "Alternatif 1:" ve "Alternatif 2:" yaz.\n'
-    "Kesin yön ve konum belirtmeden kavramsal alternatif sun; "
-    "zorunluysa tek takip sorusu sor.\n"
+    "proposed_actions=[], proposed_brief_mutations=[] yap.\n"
+    "istenen alternatif sayısını assistant_message içinde gerçekten üret.\n"
+    "Kesin yön ve konum belirtmeden kavramsal alternatif sun; tek takip sorusu sor.\n"
     "Alternatif 1 - <ad>: <açıklama>/Alternatif 2 - <ad>: <açıklama>/Temel fark: <fark>\n"
-    "İki alternatif farklı mekânsal ilke sunmalı.\n"
-    "Belirsizliği 'kesin konum/yön bilgisi henüz verilmedi' "
-    "diyerek açıkla.\n"
-    "Yanıt yalnız JSON Schema ile uyumlu olsun; "
-    "aynı bilgiyi alanlar arasında tekrarlama.\n"
-    "Her metin listesinde en fazla bir kısa öğe kullan; "
-    "gereksizse boş liste kullan.\n"
-    "Önerilen eylemlerde normalde en fazla bir eylem üret; "
-    "karşılaştırmada plan eylemi üretme.\n"
+    "İki alternatif farklı ilke sunmalı; 'kesin konum/yön bilgisi henüz verilmedi' de.\n"
+    "Yanıt JSON Schema ile uyumlu olsun; aynı bilgiyi alanlar arasında tekrarlama.\n"
+    "Her metin listesinde en fazla bir öğe kullan; gereksizse boş liste kullan.\n"
+    "Önerilen eylemlerde normalde en fazla bir eylem üret; karşılaştırmada plan eylemi üretme.\n"
 )
 
 SCHEMA_REPAIR_PROMPT = f"""{SYSTEM_PROMPT}
@@ -46,7 +40,8 @@ Aşağıdaki kurallara KESİNLİKLE UY:
 - "entity", "entity_id", "target", "enum", "öğe bilgisi", "ilgili mekân", "visible_entities"
   terimlerini kullanma.
 - İngilizce kelime kullanma; tüm anlatım öz Türkçe ve doğal olsun.
-- Karşılaştırmada intent=compare_alternatives, target tüm alanları null, proposed_actions=[],
+- Karşılaştırmada intent=compare_alternatives, target tüm alanları null,
+  proposed_actions=[], proposed_brief_mutations=[],
   needs_user_confirmation=false, needs_follow_up=false, follow_up_question=null yap.
 - assistant_message içinde kesin yön ve konum belirtmeden şu 3 bölümü eksiksiz üret:
   Alternatif 1 - <Türkçe kısa ad>: <tek veya iki kısa cümle>
@@ -58,8 +53,9 @@ Aşağıdaki kurallara KESİNLİKLE UY:
   yapay dolguları KESİNLİKLE kullanma.
 - Verilmeyen yön (kuzey/güney/doğu/batı), cephe, ölçü veya konum bilgisini uydurma.
 - target her zaman bir JSON nesnesi olsun; bilinmeyen alt alanlarda null kullan.
-- user_requirements, interpreted_priorities, constraints_to_check, missing_information,
-  proposed_actions ve warnings her zaman JSON dizisi olsun; null veya metin kullanma.
+- user_requirements, interpreted_priorities, constraints_to_check,
+  missing_information, proposed_actions, proposed_brief_mutations ve warnings
+  her zaman JSON dizisi olsun; null veya metin kullanma.
 - needs_follow_up=true ise follow_up_question dolu bir metin olsun; false ise null olsun.
 - proposed_actions boş değilse needs_user_confirmation=true olsun ve her eylemde
   requires_user_confirmation=true kullan.
@@ -166,6 +162,15 @@ def _visible_entity_payload(
     return payload
 
 
+def _proposal_payload(proposal: PendingProposalContext) -> dict[str, object]:
+    payload: dict[str, object] = {"status": proposal.status}
+    if proposal.action is not None:
+        payload["action"] = proposal.action.model_dump(mode="json")
+    if proposal.brief_mutation is not None:
+        payload["brief_mutation"] = proposal.brief_mutation.model_dump(mode="json")
+    return payload
+
+
 def build_user_prompt(request: ConversationRequest) -> str:
     """Serialize validated context once, without repeating inherited scope."""
 
@@ -181,11 +186,7 @@ def build_user_prompt(request: ConversationRequest) -> str:
         "conversation_summary": request.conversation_summary,
         "current_decisions": request.current_decisions,
         "pending_proposals": [
-            {
-                "status": proposal.status,
-                "action": proposal.action.model_dump(mode="json"),
-            }
-            for proposal in request.pending_proposals
+            _proposal_payload(proposal) for proposal in request.pending_proposals
         ],
     }
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
@@ -208,7 +209,9 @@ def build_compare_user_prompt(
         "conversation_summary": request.conversation_summary,
         "current_decisions": request.current_decisions,
         "pending_decision_descriptions": [
-            proposal.action.description for proposal in request.pending_proposals
+            proposal.action.description
+            for proposal in request.pending_proposals
+            if proposal.action is not None
         ],
         "compare_context": analysis.prompt_payload(),
         "context_generation": active.generation_id,
