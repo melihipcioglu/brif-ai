@@ -489,16 +489,6 @@ def neutralize_unsupported_spatial_directions(
             ),
             (
                 re.compile(
-                    _NOUN_GENITIVE + d + r"(?:doğu|batı)?(?:si|sı|su|sü|i|ı|u|ü)?"
-                    r"(?:nde|nda|ne|na|nden|ndan|deki|daki|ndaki|ndeki|de|da|ye|ya|e|a)?"
-                    + _COPULA
-                    + _TURKISH_WORD_BOUND_POST,
-                    re.IGNORECASE,
-                ),
-                r"\g<noun> yakınında bir konumda",
-            ),
-            (
-                re.compile(
                     _TURKISH_WORD_BOUND_PRE
                     + d
                     + r"(?:doğu|batı)?\s+tarafı(?:nda|na|ndan|nı|nı)?"
@@ -518,6 +508,16 @@ def neutralize_unsupported_spatial_directions(
                     re.IGNORECASE,
                 ),
                 "uygun konum doğrultusunda",
+            ),
+            (
+                re.compile(
+                    _NOUN_GENITIVE + d + r"(?:doğu|batı)?(?:si|sı|su|sü|i|ı|u|ü)?"
+                    r"(?:nde|nda|ne|na|nden|ndan|deki|daki|ndaki|ndeki|de|da|ye|ya|e|a)?"
+                    + _COPULA
+                    + _TURKISH_WORD_BOUND_POST,
+                    re.IGNORECASE,
+                ),
+                r"\g<noun> yakınında bir konumda",
             ),
             (
                 re.compile(

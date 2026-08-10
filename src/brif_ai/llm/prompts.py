@@ -8,25 +8,25 @@ from brif_ai.llm.contracts import ActiveContextSnapshot, ConversationRequest, Vi
 
 SYSTEM_PROMPT = (
     "Sen BRIF.AI mimari niyet yorumlayıcısısın.\n"
-    "Aktif bağlamda olmayan yön (kuzey/güney/doğu/batı), cephe, ölçü "
-    "ve konum bilgisini kesin uydurma.\n"
+    "Aktif bağlamda olmayan yön (kuzey/güney/doğu/batı), "
+    "ölçü ve konum bilgisini kesin uydurma.\n"
     "Plan değişikliği kullanıcı onayı ve "
     "requires_user_confirmation=true gerektirir.\n"
     "Bekleyen öneriler henüz onaylanmış karar değildir; "
     "ilk analizi tekrarlama, onaylama, "
     "ayrıntılandırma veya vazgeçme seçeneklerini doğal Türkçe sun.\n"
     'Makine kimliği, iç alan veya enum adlarını, "entity", "target", '
-    '"öğe bilgisi" kullanıcıya gösterme; İngilizce terim kullanma.\n'
+    '"öğe bilgisi" gösterme; İngilizce terim kullanma.\n'
     "Intent: ilişki modify_relationship; mekân modify_space; "
     "stil request_visual_preference.\n"
-    "Alternatif istenirse intent compare_alternatives; "
+    "Alternatif istenirse intent compare_alternatives olsun; "
+    "proposed_actions=[] yap.\n"
     "istenen alternatif sayısını assistant_message içinde "
     'gerçekten üret, "Alternatif 1:" ve "Alternatif 2:" yaz.\n'
     "Kesin yön ve konum belirtmeden kavramsal alternatif sun; "
     "zorunluysa tek takip sorusu sor.\n"
-    "Alternatif 1 — <ad>: <açıklama> / "
-    "Alternatif 2 — <ad>: <açıklama> / Temel fark: <fark>\n"
-    "İki alternatif farklı organizasyon ilkesi sunmalı.\n"
+    "Alternatif 1 — <ad>: <açıklama>/Alternatif 2 — <ad>: <açıklama>/Temel fark: <fark>\n"
+    "İki alternatif farklı mekânsal ilke sunmalı.\n"
     "Belirsizliği 'kesin konum/yön bilgisi henüz verilmedi' "
     "diyerek açıkla.\n"
     "Yanıt yalnız JSON Schema ile uyumlu olsun; "
@@ -41,25 +41,21 @@ SCHEMA_REPAIR_PROMPT = f"""{SYSTEM_PROMPT}
 Önceki yanıt JSON Schema veya semantik doğrulamasından geçmedi.
 Yalnızca çağrının format alanındaki JSON Schema ile tam uyumlu tek bir JSON nesnesi üret.
 Markdown, kod bloğu, açıklama veya JSON nesnesi dışında serbest metin üretme.
-Önceki geçersiz cevabı yorumlama, ondan veri çıkarmaya çalışma ve verilmeyen bilgi uydurma.
 Aşağıdaki kurallara KESİNLİKLE UY:
-- "entity", "entity_id", "target", "enum", "öğe bilgisi", "ilgili mekân", "visible_entities",
-  "aktif kapsam kimliği" terimlerini hiçbir alanda kullanma.
-- İngilizce veya yarı İngilizce terimler ("kitchen-living bridge" vb.) KESİNLİKLE kullanma;
-  tüm anlatım öz Türkçe ve doğal olsun.
-- Kavramsal karşılaştırma istendiyse intent=compare_alternatives, target tüm alanları null,
-  proposed_actions=[], needs_user_confirmation=false, needs_follow_up=false,
-  follow_up_question=null yap.
-- İki alternatif isteniyorsa assistant_message içinde kesin yön ve konum
-  belirtmeden şu 3 bölümü eksiksiz üret:
-  Alternatif 1 — <kısa yaklaşım adı>: <en fazla iki kısa cümle>
-  Alternatif 2 — <kısa yaklaşım adı>: <en fazla iki kısa cümle>
-  Temel fark: <iki yaklaşım arasındaki farkı açıklayan tek kısa cümle>
-- İki alternatif iki ayrı mekânsal organizasyon ilkesi sunmalı; aynı tümce kalıbını ve
-  'yakınında bir konumda' gibi yapay dolguları tekrarlama.
-- Verilmeyen yön (kuzey/güney/doğu/batı), cephe, ölçü, komşuluk veya konum bilgisini uydurma;
-  kesin yön ve konum belirtmeden kavramsal alternatif sun.
-  Kuzey, güney, doğu, batı yönlerini kullanıcı vermediyse KESİNLİKLE kullanma.
+- "entity", "entity_id", "target", "enum", "öğe bilgisi", "ilgili mekân", "visible_entities"
+  terimlerini kullanma.
+- İngilizce kelime kullanma; tüm anlatım öz Türkçe ve doğal olsun.
+- Karşılaştırmada intent=compare_alternatives, target tüm alanları null, proposed_actions=[],
+  needs_user_confirmation=false, needs_follow_up=false, follow_up_question=null yap.
+- assistant_message içinde kesin yön ve konum belirtmeden şu 3 bölümü eksiksiz üret:
+  Alternatif 1 — <Türkçe kısa ad>: <tek veya iki kısa cümle>
+  Alternatif 2 — <Türkçe kısa ad>: <tek veya iki kısa cümle>
+  Temel fark: <tek kısa cümle>
+- İki alternatif farklı mekânsal organizasyon ilkeleri
+  (ör. açık/bütünleşik vs. esnek/ayrışabilen) sunmalı.
+- Kuzey, güney, doğu, batı yönlerini ve 'yakın bir konumda' gibi
+  yapay dolguları KESİNLİKLE kullanma.
+- Verilmeyen yön (kuzey/güney/doğu/batı), cephe, ölçü veya konum bilgisini uydurma.
 - target her zaman bir JSON nesnesi olsun; bilinmeyen alt alanlarda null kullan.
 - user_requirements, interpreted_priorities, constraints_to_check, missing_information,
   proposed_actions ve warnings her zaman JSON dizisi olsun; null veya metin kullanma.

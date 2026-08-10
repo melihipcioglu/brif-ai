@@ -6,7 +6,7 @@ import json
 import httpx
 import pytest
 
-from brif_ai.llm.contracts import ArchitecturalIntentResult
+from brif_ai.llm.contracts import ArchitecturalIntentResult, ConversationRequest
 from brif_ai.llm.ollama_provider import OllamaPerformanceMetrics, OllamaProvider
 from brif_ai.llm.provider import (
     ModelNotAvailableError,
@@ -319,3 +319,203 @@ def test_real_ollama_health_when_available() -> None:
             pytest.skip("Local Ollama is not running")
 
     asyncio.run(run())
+
+
+def compare_request() -> ConversationRequest:
+    data = conversation_request().model_dump(mode="json")
+    data["message"] = "Salon ile mutfak ilişkisi için iki alternatif öner."
+    data["visible_entities"] = [
+        {
+            "entity_id": "space_salon",
+            "entity_type": "space",
+            "name": "Salon",
+            "project_id": "proj_house_2story",
+            "building_id": "bldg_main",
+            "level_id": "lvl_upper",
+            "zone_id": "zone_private",
+        },
+        {
+            "entity_id": "space_mutfak",
+            "entity_type": "space",
+            "name": "Mutfak",
+            "project_id": "proj_house_2story",
+            "building_id": "bldg_main",
+            "level_id": "lvl_upper",
+            "zone_id": "zone_private",
+        },
+    ]
+    return ConversationRequest.model_validate(data)
+
+
+def test_quality_initial_response_uses_exactly_one_ollama_call() -> None:
+    chat_calls = 0
+
+    valid_response = {
+        "intent": "compare_alternatives",
+        "assistant_message": (
+            "Alternatif 1 — Açık bütünleşme: Salon ve mutfak günlük kullanımda daha güçlü "
+            "ilişki kurar. Teras ortak yaşamın devamı gibi ele alınır.\n\n"
+            "Alternatif 2 — Kontrollü ayrışma: Salon ve mutfak ilişkisi korunur ancak gerektiğinde "
+            "ayrışabilecek bir kurgu düşünülür. Teras iki kullanımın ortak alanı olur.\n\n"
+            "Temel fark: Birinci yaklaşım sürekliliği, ikinci yaklaşım esnekliği öne çıkarır."
+        ),
+        "confidence": 0.95,
+        "constraints_to_check": [],
+        "follow_up_question": None,
+        "interpreted_priorities": [],
+        "missing_information": [],
+        "needs_follow_up": False,
+        "needs_user_confirmation": False,
+        "proposed_actions": [],
+        "target": {"entity_id": None, "zone_id": "zone_private"},
+        "user_requirements": [],
+        "warnings": [],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal chat_calls
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
+        chat_calls += 1
+        return httpx.Response(200, json={"message": {"content": json.dumps(valid_response)}})
+
+    async def run() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:11434"
+        ) as client:
+            provider = OllamaProvider(settings(), client)
+            schema = ArchitecturalIntentResult.model_json_schema()
+            res = await provider.interpret(compare_request(), schema)
+            assert res.intent.value == "compare_alternatives"
+            assert res.proposed_actions == []
+            assert res.needs_user_confirmation is False
+            assert res.needs_follow_up is False
+
+    asyncio.run(run())
+    assert chat_calls == 1
+
+
+def test_low_quality_initial_triggers_exactly_one_repair_and_succeeds() -> None:
+    chat_calls = 0
+
+    bad_initial = valid_result_data()
+    bad_initial.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": "Alternatif 1: Tekdüze. Alternatif 2: Tekdüze.",
+            "proposed_actions": [],
+        }
+    )
+    good_repair = valid_result_data()
+    good_repair.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": (
+                "Alternatif 1 — Açık Bütünsellik: Salon ve mutfak akıcı birleştirilir.\n\n"
+                "Alternatif 2 — Bölüntülü Düzen: Salon ve mutfağa esnek bölüntü konur.\n\n"
+                "Temel fark: Birinci seçenek sürekliliği, ikinci seçenek ayrışmayı hedefler."
+            ),
+            "proposed_actions": [],
+            "needs_user_confirmation": False,
+            "needs_follow_up": False,
+            "target": {"entity_id": None, "zone_id": "zone_private"},
+        }
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal chat_calls
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
+        chat_calls += 1
+        content = bad_initial if chat_calls == 1 else good_repair
+        return httpx.Response(200, json={"message": {"content": json.dumps(content)}})
+
+    async def run() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:11434"
+        ) as client:
+            provider = OllamaProvider(settings(), client)
+            schema = ArchitecturalIntentResult.model_json_schema()
+            res = await provider.interpret(compare_request(), schema)
+            assert res.intent.value == "compare_alternatives"
+            assert res.proposed_actions == []
+            assert res.needs_user_confirmation is False
+
+    asyncio.run(run())
+    assert chat_calls == 2
+
+
+def test_low_quality_initial_and_low_quality_repair_raises_provider_response_error() -> None:
+    chat_calls = 0
+
+    bad_response = valid_result_data()
+    bad_response.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": "Aynı olan iki alternatif.",
+            "proposed_actions": [],
+        }
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal chat_calls
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
+        chat_calls += 1
+        return httpx.Response(200, json={"message": {"content": json.dumps(bad_response)}})
+
+    async def run() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:11434"
+        ) as client:
+            provider = OllamaProvider(settings(), client)
+            schema = ArchitecturalIntentResult.model_json_schema()
+            with pytest.raises(ProviderResponseError, match="doğrulanabilir bir mimari niyet"):
+                await provider.interpret(compare_request(), schema)
+
+    asyncio.run(run())
+    assert chat_calls == 2
+
+
+def test_sanitize_and_quality_validator_preserve_structured_target_and_action_fields() -> None:
+    chat_calls = 0
+
+    response_data = valid_result_data()
+    response_data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": (
+                "Alternatif 1 — Şeffaf Seperatör: Salon ile mutfak arasına cam panel konur.\n\n"
+                "Alternatif 2 — Geniş Geçiş: İki alan geniş açıklıkla birbirine bağlanır.\n\n"
+                "Temel fark: Alternatif 1 esnek bölüntü, Alternatif 2 kesintisiz alan sunar."
+            ),
+            "proposed_actions": [],
+            "needs_user_confirmation": False,
+            "needs_follow_up": False,
+            "target": {"entity_id": None, "zone_id": "zone_private"},
+        }
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal chat_calls
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
+        chat_calls += 1
+        return httpx.Response(200, json={"message": {"content": json.dumps(response_data)}})
+
+    async def run() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:11434"
+        ) as client:
+            provider = OllamaProvider(settings(), client)
+            schema = ArchitecturalIntentResult.model_json_schema()
+            result = await provider.interpret(compare_request(), schema)
+            assert result.intent.value == "compare_alternatives"
+            assert result.target.zone_id == "zone_private"
+            assert result.target.entity_id is None
+            assert result.proposed_actions == []
+            assert result.needs_user_confirmation is False
+            assert result.needs_follow_up is False
+
+    asyncio.run(run())
+    assert chat_calls == 1

@@ -996,3 +996,35 @@ def test_other_intents_are_not_affected_by_alternative_quality_checks() -> None:
     validator = ArchitecturalIntentPolicyValidator()
     sanitized = validator.sanitize(result, req)
     validator.validate_semantic_integrity(sanitized, req)
+
+
+def test_compare_alternatives_accepts_open_integration_vs_controlled_separation() -> None:
+    req = conversation_request().model_copy(
+        update={
+            "message": (
+                "Salon ile mutfak arasındaki ilişkiyi güçlendirmek istiyorum. "
+                "Teras da günlük oturma ve sohbet alanına yakın olsun. "
+                "Bana iki farklı düzenleme alternatifi öner."
+            )
+        }
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": (
+                "Alternatif 1 — Açık bütünleşme: Salon ve mutfak günlük kullanımda daha güçlü "
+                "görsel ilişki kurar. Teras ortak yaşamın devamı olarak ele alınır.\n\n"
+                "Alternatif 2 — Kontrollü ayrışma: Salon ve mutfak ilişkisi korunur ancak "
+                "ayrışabilecek kurgu düşünülür. Teras ortak buluşma alanı olur.\n\n"
+                "Temel fark: Birinci yaklaşım sürekliliği, ikinci yaklaşım esnekliği öne çıkarır."
+            ),
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(result, req)
+    validator.validate_semantic_integrity(sanitized, req)
