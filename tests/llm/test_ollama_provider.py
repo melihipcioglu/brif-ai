@@ -553,3 +553,234 @@ def test_other_intents_use_full_schema() -> None:
 
     asyncio.run(run())
     assert chat_calls == 1
+
+
+def test_compare_unsupported_compass_triggers_repair_not_sanitize() -> None:
+    """Compare response with unsupported compass direction should trigger repair, not sanitize."""
+    chat_calls = 0
+
+    bad_initial = {
+        "intent": "compare_alternatives",
+        "assistant_message": (
+            "Alternatif 1 - Doğu Yönelimli: Mutfak salonun doğusundadır. "
+            "Bu yerleşim gün ışığını artırır.\n"
+            "Alternatif 2 - Merkez Odaklı: Salon merkeze alınır.\n"
+            "Temel fark: Birinci yönelimi, ikinci merkeziliği öne çıkarır."
+        ),
+        "confidence": 0.8,
+    }
+    good_repair = {
+        "intent": "compare_alternatives",
+        "assistant_message": (
+            "Alternatif 1 - Açık bütünleşme: Salon ve mutfak günlük kullanımda daha güçlü "
+            "ilişki kurar. Teras ortak yaşamın devamı gibi ele alınır.\n"
+            "Alternatif 2 - Kontrollü ayrışma: Salon ve mutfak ilişkisi korunur ancak gerektiğinde "
+            "ayrışabilecek bir kurgu düşünülür.\n"
+            "Temel fark: Birinci yaklaşım sürekliliği, ikinci yaklaşım esnekliği öne çıkarır."
+        ),
+        "confidence": 0.9,
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal chat_calls
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
+        chat_calls += 1
+        content = bad_initial if chat_calls == 1 else good_repair
+        return httpx.Response(200, json={"message": {"content": json.dumps(content)}})
+
+    async def run() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:11434"
+        ) as client:
+            provider = OllamaProvider(settings(), client)
+            schema = ArchitecturalIntentResult.model_json_schema()
+            res = await provider.interpret(compare_request(), schema)
+            assert res.intent.value == "compare_alternatives"
+            assert "doğusunda" not in res.assistant_message.casefold()
+
+    asyncio.run(run())
+    assert chat_calls == 2  # initial rejected, repair succeeded
+
+
+def test_compare_unsupported_shared_wall_triggers_repair() -> None:
+    """Compare response with shared wall claim should trigger repair, not rewrite."""
+    chat_calls = 0
+
+    bad_initial = {
+        "intent": "compare_alternatives",
+        "assistant_message": (
+            "Alternatif 1 - Birleşik Duvar: Salon ile mutfak ortak bir duvar paylaşır. "
+            "Bu yapı geçirgenliği artırır.\n"
+            "Alternatif 2 - Bağımsız Alanlar: Her alan kendi sınırına sahiptir.\n"
+            "Temel fark: Birinci fiziksel birliği, ikinci bağımsızlığı öne çıkarır."
+        ),
+        "confidence": 0.8,
+    }
+    good_repair = {
+        "intent": "compare_alternatives",
+        "assistant_message": (
+            "Alternatif 1 - Açık bütünleşme: Salon ve mutfak günlük kullanımda daha güçlü "
+            "ilişki kurar.\n"
+            "Alternatif 2 - Kontrollü ayrışma: Her alan kendi bütünlüğünü korur.\n"
+            "Temel fark: Birinci yaklaşım sürekliliği, ikinci esnekliği öne çıkarır."
+        ),
+        "confidence": 0.9,
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal chat_calls
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
+        chat_calls += 1
+        content = bad_initial if chat_calls == 1 else good_repair
+        return httpx.Response(200, json={"message": {"content": json.dumps(content)}})
+
+    async def run() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:11434"
+        ) as client:
+            provider = OllamaProvider(settings(), client)
+            schema = ArchitecturalIntentResult.model_json_schema()
+            res = await provider.interpret(compare_request(), schema)
+            assert res.intent.value == "compare_alternatives"
+            assert (
+                "ortak" not in res.assistant_message.casefold()
+                or "duvar" not in res.assistant_message.casefold()
+            )
+
+    asyncio.run(run())
+    assert chat_calls == 2
+
+
+def test_compare_unsupported_proximity_triggers_repair() -> None:
+    """Model claiming untrusted proximity pair should trigger repair."""
+    chat_calls = 0
+
+    # User says 'Teras salona yakın olsun', model says 'Mutfak salona yakındır' (untrusted pair)
+    bad_initial = {
+        "intent": "compare_alternatives",
+        "assistant_message": (
+            "Alternatif 1 - Mutfak ile salon: Mutfak salona yakındır ve günlük akışı "
+            "destekler.\n"
+            "Alternatif 2 - Ayrık düzen: Her alan kendi bağlamında değerlendirilir.\n"
+            "Temel fark: Birinci fiziksel yakınlığı, ikinci bağımsızlığı tercih eder."
+        ),
+        "confidence": 0.8,
+    }
+    good_repair = {
+        "intent": "compare_alternatives",
+        "assistant_message": (
+            "Alternatif 1 - Açık bütünleşme: Salon ve mutfak arasındaki ilişki güçlendirilir. "
+            "Teras ortak yaşamla bütünleşir.\n"
+            "Alternatif 2 - Kontrollü ayrışma: Her alanın özgün karakteri korunur.\n"
+            "Temel fark: Birinci yaklaşım birliği, ikinci özerkliği vurgular."
+        ),
+        "confidence": 0.9,
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal chat_calls
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
+        chat_calls += 1
+        content = bad_initial if chat_calls == 1 else good_repair
+        return httpx.Response(200, json={"message": {"content": json.dumps(content)}})
+
+    async def run() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:11434"
+        ) as client:
+            provider = OllamaProvider(settings(), client)
+            schema = ArchitecturalIntentResult.model_json_schema()
+            # Use a request where user says 'Teras salona yakın' but NOT 'mutfak salona yakın'
+            req = compare_request().model_copy(
+                update={
+                    "message": (
+                        "Teras salona yakın olsun. Bana iki farklı düzenleme alternatifi öner."
+                    )
+                }
+            )
+            res = await provider.interpret(req, schema)
+            assert res.intent.value == "compare_alternatives"
+
+    asyncio.run(run())
+    assert chat_calls == 2
+
+
+def test_compare_trusted_proximity_accepted() -> None:
+    """Compare response with trusted proximity pair should be accepted without repair."""
+    chat_calls = 0
+
+    response = {
+        "intent": "compare_alternatives",
+        "assistant_message": (
+            "Alternatif 1 - Bütünleşik yaklaşım: Teras salonun yakınında "
+            "konumlandırılarak ortak yaşam alanı desteklenir.\n"
+            "Alternatif 2 - Özerk yaklaşım: Teras kendi başına bağımsız bir kullanım "
+            "alanı olarak kurgulanır.\n"
+            "Temel fark: Birinci yaklaşım sürekliliği, ikinci bağımsızlığı öne çıkarır."
+        ),
+        "confidence": 0.9,
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal chat_calls
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
+        chat_calls += 1
+        return httpx.Response(200, json={"message": {"content": json.dumps(response)}})
+
+    async def run() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:11434"
+        ) as client:
+            provider = OllamaProvider(settings(), client)
+            schema = ArchitecturalIntentResult.model_json_schema()
+            req = compare_request().model_copy(
+                update={
+                    "message": (
+                        "Teras salona yakın olsun. Bana iki farklı düzenleme alternatifi öner."
+                    )
+                }
+            )
+            res = await provider.interpret(req, schema)
+            assert res.intent.value == "compare_alternatives"
+            assert res.proposed_actions == []
+
+    asyncio.run(run())
+    assert chat_calls == 1  # No repair needed
+
+
+def test_non_compare_sanitization_unchanged() -> None:
+    """Non-compare requests should still use full sanitize with spatial neutralization."""
+    chat_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal chat_calls
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
+        chat_calls += 1
+        data = valid_result_data()
+        data["assistant_message"] = "Teras salonun doğusundadır."
+        return httpx.Response(
+            200,
+            json={"message": {"content": json.dumps(data, ensure_ascii=False)}},
+        )
+
+    from .test_policy_validator import conversation_request as conv_req
+
+    req = conv_req()
+
+    async def run() -> ArchitecturalIntentResult:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:11434"
+        ) as client:
+            provider = OllamaProvider(settings(), client)
+            schema = ArchitecturalIntentResult.model_json_schema()
+            return await provider.interpret(req, schema)
+
+    result = asyncio.run(run())
+    assert chat_calls == 1
+    assert "doğusunda" not in result.assistant_message.casefold()
+    assert "ilişkili" in result.assistant_message.casefold()

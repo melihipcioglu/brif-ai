@@ -1161,11 +1161,9 @@ def test_regression_failed_real_model_output_relative_spatial_claim() -> None:
     )
     res = ArchitecturalIntentResult.model_validate(data)
     validator = ArchitecturalIntentPolicyValidator()
-    sanitized = validator.sanitize(res, req)
-    validator.validate_semantic_integrity(sanitized, req)
-
-    assert "sağ tarafta" not in sanitized.assistant_message.casefold()
-    assert "kenar ortaklığı" not in sanitized.assistant_message.casefold()
+    sanitized = validator.sanitize_compare(res, req)
+    with pytest.raises(PolicyValidationError):
+        validator.validate_semantic_integrity(sanitized, req)
 
 
 def test_regression_real_model_output_shared_wall_claim() -> None:
@@ -1198,11 +1196,9 @@ def test_regression_real_model_output_shared_wall_claim() -> None:
     )
     res = ArchitecturalIntentResult.model_validate(data)
     validator = ArchitecturalIntentPolicyValidator()
-    sanitized = validator.sanitize(res, req)
-    validator.validate_semantic_integrity(sanitized, req)
-
-    assert "ortak bir duvar" not in sanitized.assistant_message.casefold()
-    assert "duvarla birleşir" not in sanitized.assistant_message.casefold()
+    sanitized = validator.sanitize_compare(res, req)
+    with pytest.raises(PolicyValidationError):
+        validator.validate_semantic_integrity(sanitized, req)
 
 
 def test_full_real_browser_regression_fixture() -> None:
@@ -1237,16 +1233,9 @@ def test_full_real_browser_regression_fixture() -> None:
     )
     res = ArchitecturalIntentResult.model_validate(data)
     validator = ArchitecturalIntentPolicyValidator()
-    sanitized = validator.sanitize(res, req)
-    validator.validate_semantic_integrity(sanitized, req)
-
-    msg_lower = sanitized.assistant_message.casefold()
-    assert "ilişkili bir yapıda ele alınır ile" not in msg_lower
-    assert "yakın bir konumda" not in msg_lower
-    assert "yakınında bir konumda" not in msg_lower
-    assert "birbirinden uzak" not in msg_lower
-    assert "birbirine yakın" not in msg_lower
-    assert "ele alınır ile" not in msg_lower
+    sanitized = validator.sanitize_compare(res, req)
+    with pytest.raises(PolicyValidationError):
+        validator.validate_semantic_integrity(sanitized, req)
 
 
 def test_entity_pair_proximity_trust_isolation() -> None:
@@ -1326,3 +1315,84 @@ def test_language_artifact_rejection() -> None:
         except AlternativeQualityError:
             raised = True
         assert raised, f"Expected AlternativeQualityError for artifact: {artifact_text}"
+
+
+def test_browser_regression_v2_kurgudaligi_kurgu_siralanma() -> None:
+    req = conversation_request().model_copy(
+        update={
+            "message": (
+                "Salon ile mutfak arasındaki ilişkiyi güçlendirmek istiyorum. "
+                "Teras da günlük oturma ve sohbet alanına yakın olsun. "
+                "Bana iki farklı düzenleme alternatifi öner."
+            )
+        }
+    )
+    browser_output_msg = (
+        "Alternatif 1 - Salon ile mutfak arasındaki ilişkiyi doğrudan güçlendirmek "
+        "için iki alanın ilişkili bir kurgu sıralanma ile birleştirilmesi önerilir. "
+        "Bu yapı, günlük etkileşimleri kolaylaştırır ve yaşam alanlarının birbirine ait "
+        "olduğunu vurgular.\n"
+        "Alternatif 2 - Salon ve mutfak, birbirinden ayrılmış ama bütünleşik bir kurguyla "
+        "bağlanan bir yapıda yer alır. Bu yaklaşım, her bir alanın kendi içsel bütünlüğünü "
+        "korurken aynı zamanda ilişkili kurguda olma hissini yaratır.\n"
+        "Temel fark: İlk alternatif, alanların fiziksel ilişkili kurgudalığını doğrudan "
+        "ortaya koyar; ikincisi ise birbirine ait olma hissini koruyarak, her bir alanın "
+        "özgün karakterini korur."
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": browser_output_msg,
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+    res = ArchitecturalIntentResult.model_validate(data)
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize_compare(res, req)
+    with pytest.raises(AlternativeQualityError):
+        validator.validate_semantic_integrity(sanitized, req)
+
+
+def test_excessive_mechanical_phrase_repetition_rejected() -> None:
+    req = conversation_request().model_copy(
+        update={"message": "İki farklı düzenleme alternatifi öner."}
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": (
+                "Alternatif 1 - İlişkili kurgu yaklaşımı: Salon ve mutfak ilişkili bir kurguda "
+                "ele alınır. Teras da ilişkili kurguyla bağlanır.\n"
+                "Alternatif 2 - Esnek kurgu: Alanlar ilişkili kurguda değerlendirilir.\n"
+                "Temel fark: Birinci ilişkili kurguyu, ikinci esnekliği öne çıkarır."
+            ),
+        }
+    )
+    res = ArchitecturalIntentResult.model_validate(data)
+    validator = ArchitecturalIntentPolicyValidator()
+    with pytest.raises(AlternativeQualityError, match="mekanik kalıp"):
+        validator.validate_semantic_integrity(res, req)
+
+
+def test_sanitize_compare_preserves_clean_text() -> None:
+    req = conversation_request()
+    clean_message = (
+        "Alternatif 1 - Açık bütünleşme: Salon ve mutfak arasındaki görsel ve "
+        "işlevsel ilişki güçlendirilir. Teras, ortak yaşamla ilişkilendirilir.\n"
+        "Alternatif 2 - Kontrollü ayrışma: Her alanın kendi bütünlüğü korunur.\n"
+        "Temel fark: Birinci süreklilik, ikinci esneklik sağlar."
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": clean_message,
+        }
+    )
+    res = ArchitecturalIntentResult.model_validate(data)
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize_compare(res, req)
+    assert sanitized.assistant_message == clean_message

@@ -274,7 +274,10 @@ class OllamaProvider:
             else:
                 parsed_result = ArchitecturalIntentResult.model_validate_json(content)
 
-            sanitized = self.policy_validator.sanitize(parsed_result, request)
+            if is_compact:
+                sanitized = self.policy_validator.sanitize_compare(parsed_result, request)
+            else:
+                sanitized = self.policy_validator.sanitize(parsed_result, request)
             self.policy_validator.validate_semantic_integrity(sanitized, request)
             return sanitized
         except (KeyError, TypeError, ValueError, ValidationError, PolicyValidationError) as error:

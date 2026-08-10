@@ -73,34 +73,37 @@ COMPARE_SYSTEM_PROMPT = (
     "Kullanıcı iki farklı düzenleme alternatifi karşılaştırması istedi.\n"
     "Yanıt yalnız JSON Schema ile tam uyumlu tek bir JSON nesnesi olsun.\n"
     'intent her zaman "compare_alternatives" olsun.\n'
-    "assistant_message içinde yön veya konum uydurmadan şu 3 bölümü eksiksiz üret:\n"
+    "assistant_message içinde şu 3 bölümü üret:\n"
     "Alternatif 1 - <Türkçe başlık>: <tek veya iki kısa cümle>\n"
     "Alternatif 2 - <Türkçe başlık>: <tek veya iki kısa cümle>\n"
     "Temel fark: <tek kısa cümle>\n"
-    "İki alternatif iki farklı mimari organizasyon yaklaşımını "
-    "(örneğin açık bütünleşme veya kontrollü ayrışma) anlatmalıdır.\n"
-    "Kullanıcı vermediyse yakın/uzak mesafe ilişkisi, kuzey/güney/doğu/batı yönü, "
-    "sağ/sol, ön/arka, karşı, bitişik, ortak kenar veya ortak duvar KESİNLİKLE UYDURMA.\n"
-    "Tam ve doğal Türkçe cümleler kur. 'ilişkili bir yapıda ele alınır' gibi mekanik kalıpları "
-    "UYGULAMA.\n"
+    "İki alternatif fiziksel plan tarifi değil, iki farklı ORGANİZASYON İLKESİ sunmalıdır "
+    "(örneğin süreklilik/bütünleşme veya esneklik/ayrışma).\n"
+    "Kesin yerleşim tarif etme. Fiziksel mesafe, duvar, kenar, bitişiklik uydurma.\n"
+    "Kullanıcı vermediyse şunları KESİNLİKLE KULLANMA:\n"
+    "- yakın/uzak mesafe ilişkisi\n"
+    "- kuzey/güney/doğu/batı yönü\n"
+    "- sağ/sol, ön/arka, karşı\n"
+    "- bitişik, ortak kenar, ortak duvar\n"
+    "'ilişkili kurgu', 'ilişkili bir yapıda ele alınır' gibi soyut kalıpları "
+    "tekrar tekrar KULLANMA. Her cümlede farklı ve doğal ifade seç.\n"
+    "'dizayn' yerine doğal mimari Türkçe kullan.\n"
+    "Kısa, profesyonel, okunabilir cümleler kur.\n"
     "İngilizce terim kullanma; tüm anlatım öz Türkçe ve doğal olsun.\n"
     "confidence 0 ile 1 arasında bir sayı olsun.\n"
 )
 
 COMPARE_REPAIR_PROMPT = f"""{COMPARE_SYSTEM_PROMPT}
-Önceki yanıt geçersizdi (yön/konum/mesafe uyduruldu veya dolgu/dil hatası tekrarlandı).
-Yalnızca çağrının format alanındaki JSON Schema ile tam uyumlu tek bir JSON nesnesi üret.
-Aşağıdaki kurallara KESİNLİKLE UY:
+Önceki yanıt geçersizdi. Aşağıdaki kurallara KESİNLİKLE UY:
 - Yalnız JSON nesnesi üret.
 - intent: "compare_alternatives"
-- assistant_message içinde yön/konum/mesafe uydurmadan şu 3 bölümü eksiksiz üret:
-  Alternatif 1 - <Türkçe başlık>: <tek veya iki kısa cümle>
-  Alternatif 2 - <Türkçe başlık>: <tek veya iki kısa cümle>
-  Temel fark: <tek kısa cümle>
-- Verilmeyen yakın/uzak mesafe, yön, sağ/sol, ön/arka, karşı, bitişik, "
-  "ortak kenar/duvar UYDURMA.
-- 'yakınında bir konumda', 'yakın bir konumda' gibi yapay ifadeleri tekrarlama.
-- İki alternatifi farklı mekânsal organizasyon ilkeleri olarak anlat.
+- Fiziksel yerleşim, mesafe, yön, sağ/sol, ön/arka, karşı, bitişik,
+  ortak kenar/duvar KESİNLİKLE UYDURMA.
+- Aynı soyut kalıbı ('ilişkili kurgu' vb.) tekrarlama.
+- 'yakınında bir konumda', 'yakın bir konumda' gibi yapay ifadeler KULLANMA.
+- Her alternatif farklı bir organizasyon ilkesi (süreklilik, esneklik, bağımsızlık vb.) sunmalı.
+- Kısa, doğal, profesyonel Türkçe cümleler kur.
+- İngilizce terim ve 'dizayn' kelimesi KULLANMA.
 """
 
 

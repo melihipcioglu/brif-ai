@@ -208,6 +208,8 @@ FORBIDDEN_LANGUAGE_ARTIFACTS: tuple[str, ...] = (
     "kurgulanır bir",
     "ele alınır bir",
     "yer alır bir",
+    "kurgudalığını",
+    "kurgu sıralanma",
 )
 MAX_FILLER_PHRASE_REPEATS: int = 1
 MIN_ALTERNATIVE_WORD_COUNT: int = 6
@@ -294,6 +296,12 @@ def is_compare_request(request_or_msg: ConversationRequest | str) -> bool:
     )
 
 
+_MECHANICAL_PHRASE_PATTERN = re.compile(
+    r"ilişkili(?:\s+bir)?\s+kurgu(?:da|yla|yu|su|sunda|ları|dalığını|nun|ya|dan|de|yla|lar)?",
+    re.IGNORECASE,
+)
+
+
 def validate_alternative_quality(
     result: ArchitecturalIntentResult,
     request: ConversationRequest,
@@ -317,6 +325,13 @@ def validate_alternative_quality(
             raise AlternativeQualityError(
                 f"Yanıtta bozuk Türkçe veya dilbilgisel yapay kalıp ('{artifact}') saptandı."
             )
+
+    # 1c. Excessive mechanical phrase repetition check
+    mechanical_count = len(_MECHANICAL_PHRASE_PATTERN.findall(text_lower))
+    if mechanical_count >= 3:
+        raise AlternativeQualityError(
+            "Yanıtta mekanik kalıp ('ilişkili kurgu' vb.) aşırı tekrarlandı."
+        )
 
     # 2. Extract sections: Alternatif 1, Alternatif 2, Temel fark
     section1_match = re.search(
@@ -1095,6 +1110,39 @@ def neutralize_unsupported_spatial_directions(
     return sanitized
 
 
+_MARKDOWN_BOLD = re.compile(r"\*\*([^*]+)\*\*")
+_MARKDOWN_HEADER = re.compile(r"^#{1,6}\s+", re.MULTILINE)
+_MARKDOWN_ASTERISKS = re.compile(r"\*+")
+
+
+def sanitize_compare_text(text: str, visible_entities: list[VisibleEntity]) -> str:
+    """Minimal cleanup for compare assistant_message: only internal IDs and markdown.
+
+    Unlike sanitize_public_text, this does NOT localize technical terms
+    (e.g. 'target' -> 'hedef') to preserve the model's natural Turkish phrasing.
+    """
+    entity_names = {entity.entity_id.casefold(): entity.name for entity in visible_entities}
+
+    def replacement(match: re.Match[str]) -> str:
+        identifier = match.group("identifier")
+        entity_name = entity_names.get(identifier.casefold())
+        if entity_name is not None:
+            return entity_name
+        prefix = identifier.split("_", maxsplit=1)[0].casefold()
+        return _PUBLIC_FALLBACKS.get(prefix, "öğe")
+
+    sanitized = _INTERNAL_ID_PATTERN.sub(replacement, text)
+    # Strip markdown formatting
+    sanitized = _MARKDOWN_BOLD.sub(r"\1", sanitized)
+    sanitized = _MARKDOWN_HEADER.sub("", sanitized)
+    sanitized = _MARKDOWN_ASTERISKS.sub("", sanitized)
+    # Whitespace normalization
+    sanitized = re.sub(r"[ \t]+", " ", sanitized)
+    sanitized = re.sub(r" +([,.!?;:])", r"\1", sanitized)
+    sanitized = "\n".join(line.strip() for line in sanitized.splitlines()).strip()
+    return sanitized or text
+
+
 class ArchitecturalIntentPolicyValidator:
     """Treat model output as untrusted suggestions constrained by active context."""
 
@@ -1164,6 +1212,44 @@ class ArchitecturalIntentPolicyValidator:
             return sanitized.model_copy(update={"follow_up_question": None})
         return sanitized
 
+    def sanitize_compare(
+        self,
+        result: ArchitecturalIntentResult,
+        request: ConversationRequest,
+    ) -> ArchitecturalIntentResult:
+        """Minimal sanitization for compare responses: internal IDs and markdown only.
+
+        Does NOT apply spatial direction or relative spatial claim neutralization.
+        Unsupported claims will be caught by validate_semantic_integrity and trigger repair.
+        """
+
+        def _clean(text: str) -> str:
+            return sanitize_compare_text(text, request.visible_entities)
+
+        actions = [
+            action.model_copy(update={"description": _clean(action.description)})
+            for action in result.proposed_actions
+        ]
+        sanitized = result.model_copy(
+            update={
+                "assistant_message": _clean(result.assistant_message),
+                "follow_up_question": (
+                    _clean(result.follow_up_question)
+                    if result.follow_up_question is not None
+                    else None
+                ),
+                "user_requirements": [_clean(text) for text in result.user_requirements],
+                "interpreted_priorities": [_clean(text) for text in result.interpreted_priorities],
+                "constraints_to_check": [_clean(text) for text in result.constraints_to_check],
+                "missing_information": [_clean(text) for text in result.missing_information],
+                "proposed_actions": actions,
+                "warnings": [_clean(text) for text in result.warnings],
+            }
+        )
+        if not sanitized.needs_follow_up:
+            return sanitized.model_copy(update={"follow_up_question": None})
+        return sanitized
+
     def validate_semantic_integrity(
         self,
         result: ArchitecturalIntentResult,
@@ -1178,6 +1264,12 @@ class ArchitecturalIntentPolicyValidator:
                     "sonuç intent'i COMPARE_ALTERNATIVES olmalıdır."
                 )
             validate_alternative_quality(result, request)
+
+            if result.needs_follow_up:
+                raise PolicyValidationError(
+                    "Kavramsal alternatif talebinde takip sorusu üretilmemelidir "
+                    "(needs_follow_up=false olmalı)."
+                )
 
         validate_spatial_direction_claims(result, request)
         validate_relative_spatial_claims(result, request)
@@ -1199,23 +1291,6 @@ class ArchitecturalIntentPolicyValidator:
                 raise PolicyValidationError(
                     f"İç sistem dili / yasaklı terim saptandı: {match.group(0)!r}"
                 )
-
-        validate_spatial_direction_claims(result, request)
-        validate_relative_spatial_claims(result, request)
-
-        if is_compare_request(request):
-            if result.intent != IntentType.COMPARE_ALTERNATIVES:
-                raise PolicyValidationError(
-                    "Alternatif talebi için intent 'compare_alternatives' olmalıdır."
-                )
-
-            if result.needs_follow_up:
-                raise PolicyValidationError(
-                    "Kavramsal alternatif talebinde takip sorusu üretilmemelidir "
-                    "(needs_follow_up=false olmalı)."
-                )
-
-            validate_alternative_quality(result, request)
 
     def validate(
         self,
