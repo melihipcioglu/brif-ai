@@ -533,7 +533,10 @@ RELATIVE_SPATIAL_PATTERNS: dict[str, re.Pattern[str]] = {
     ),
     "shared_wall": re.compile(
         _TURKISH_WORD_BOUND_PRE
-        + r"(?:ortak\s+duvar|duvar\s+paylaşımı)"
+        + r"(?:ortak(?:\s+bir)?\s+duvar(?:la|da|dan|lar|ları)?"
+        + r"(?:\s+(?:paylaşır|oluşturur|bulunur|birleşir))?"
+        + r"|(?:bir|aynı)\s+duvarı\s+paylaşır"
+        + r"|duvar\s+paylaşımı)"
         + _COPULA
         + _TURKISH_WORD_BOUND_POST,
         re.IGNORECASE,
@@ -649,7 +652,21 @@ _RELATIVE_NEUTRALIZATION_RULES: list[tuple[re.Pattern[str], str]] = [
     ),
     (
         re.compile(
-            r"ortak\s+duvar(?:\s+paylaşır|\s+bulunur|\s+oluşturur)?" + _COPULA,
+            r"ortak(?:\s+bir)?\s+duvarla\s+birleşir" + _COPULA,
+            re.IGNORECASE,
+        ),
+        "mekânsal ilişkisi güçlendirilecek biçimde ele alınır",
+    ),
+    (
+        re.compile(
+            r"(?:bir|aynı)\s+duvarı\s+paylaşır" + _COPULA,
+            re.IGNORECASE,
+        ),
+        "birbiriyle daha güçlü ilişki kuracak biçimde ele alınır",
+    ),
+    (
+        re.compile(
+            r"ortak(?:\s+bir)?\s+duvar(?:\s+paylaşır|\s+bulunur|\s+oluşturur|\s+la)?" + _COPULA,
             re.IGNORECASE,
         ),
         "ilişkili bir yapıda ele alınır",

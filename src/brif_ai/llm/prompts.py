@@ -77,10 +77,11 @@ COMPARE_SYSTEM_PROMPT = (
     "Alternatif 1 - <Türkçe başlık>: <tek veya iki kısa cümle>\n"
     "Alternatif 2 - <Türkçe başlık>: <tek veya iki kısa cümle>\n"
     "Temel fark: <tek kısa cümle>\n"
-    "İki alternatif tamamen farklı iki mimari organizasyon yaklaşımını "
+    "İki alternatif iki farklı mimari organizasyon yaklaşımını "
     "(örneğin açık bütünleşme ile kontrollü ayrışma) anlatmalıdır.\n"
-    "Kuzey, güney, doğu, batı, sağ, sol, ön, arka, karşı, bitişik, ortak kenar "
-    "KESİNLİKLE UYDURMA.\n"
+    "Kuzey, güney, doğu, batı, sağ, sol, ön, arka, karşı, bitişik, ortak kenar, "
+    "ortak duvar KESİNLİKLE UYDURMA.\n"
+    "'yakınında bir konumda', 'yakın bir konumda', 'uygun bir konumda' gibi dolguları KULLANMA.\n"
     "İngilizce terim kullanma; tüm anlatım öz Türkçe ve doğal olsun.\n"
     "confidence 0 ile 1 arasında bir sayı olsun.\n"
 )
@@ -95,7 +96,9 @@ Aşağıdaki kurallara KESİNLİKLE UY:
   Alternatif 1 - <Türkçe başlık>: <tek veya iki kısa cümle>
   Alternatif 2 - <Türkçe başlık>: <tek veya iki kısa cümle>
   Temel fark: <tek kısa cümle>
-- Verilmeyen yön (kuzey/güney/doğu/batı), sağ/sol, ön/arka, karşı, bitişik, ortak kenar UYDURMA.
+- Verilmeyen yön (kuzey/güney/doğu/batı), sağ/sol, ön/arka, karşı, bitişik,
+  ortak kenar, ortak duvar UYDURMA.
+- 'yakınında bir konumda', 'yakın bir konumda' gibi yapay ifadeleri tekrarlama.
 - İki alternatifi farklı mekânsal organizasyon ilkeleri olarak anlat.
 """
 

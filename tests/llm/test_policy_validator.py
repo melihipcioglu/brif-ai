@@ -1042,6 +1042,10 @@ def test_unsupported_relative_spatial_claims_are_rejected_or_sanitized() -> None
         "Mutfak salonla ortak duvar paylaşır.",
         "Teras salona bitişiktir.",
         "Mutfak girişin hemen yanında yer alır.",
+        "Salon ve mutfak ortak bir duvarla birleşir.",
+        "Salon ile mutfak ortak bir duvar paylaşır.",
+        "Salon ile mutfak aynı duvarı paylaşır.",
+        "Salon ile mutfak bir duvarı paylaşır.",
     ]
 
     for text in unsupported_examples:
@@ -1055,10 +1059,32 @@ def test_unsupported_relative_spatial_claims_are_rejected_or_sanitized() -> None
             "karşısında yer alır",
             "ortak kenar",
             "ortak duvar",
+            "ortak bir duvar",
+            "aynı duvarı",
+            "bir duvarı",
             "bitişiktir",
             "hemen yanında",
         ]:
             assert claim not in sanitized.assistant_message
+
+
+def test_shared_wall_false_positives_not_flagged() -> None:
+    req = conversation_request()
+    validator = ArchitecturalIntentPolicyValidator()
+
+    false_positive_examples = [
+        "Duvar kalınlığı daha sonra belirlenecek.",
+        "Duvar yüzeyi için malzeme seçilebilir.",
+        "Duvar rengi henüz belirlenmedi.",
+    ]
+
+    for text in false_positive_examples:
+        data = valid_result_data()
+        data["assistant_message"] = text
+        res = ArchitecturalIntentResult.model_validate(data)
+        sanitized = validator.sanitize(res, req)
+        validator.validate_semantic_integrity(sanitized, req)
+        assert sanitized.assistant_message == text
 
 
 def test_trusted_relative_spatial_claims_are_accepted() -> None:
@@ -1075,6 +1101,20 @@ def test_trusted_relative_spatial_claims_are_accepted() -> None:
     sanitized = validator.sanitize(res, req)
     validator.validate_semantic_integrity(sanitized, req)
     assert "solunda" in sanitized.assistant_message.casefold()
+
+
+def test_trusted_shared_wall_claim_accepted() -> None:
+    req = conversation_request().model_copy(
+        update={"message": "Salon ile mutfak aynı duvarı paylaşıyor."}
+    )
+    data = valid_result_data()
+    data["assistant_message"] = "Salon ile mutfak aynı duvarı paylaşacak biçimde ele alınabilir."
+    res = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(res, req)
+    validator.validate_semantic_integrity(sanitized, req)
+    assert "aynı duvarı" in sanitized.assistant_message.casefold()
 
 
 def test_conceptual_relative_suggestions_are_accepted() -> None:
@@ -1125,3 +1165,40 @@ def test_regression_failed_real_model_output_relative_spatial_claim() -> None:
 
     assert "sağ tarafta" not in sanitized.assistant_message.casefold()
     assert "kenar ortaklığı" not in sanitized.assistant_message.casefold()
+
+
+def test_regression_real_model_output_shared_wall_claim() -> None:
+    req = conversation_request().model_copy(
+        update={
+            "message": (
+                "Salon ile mutfak arasındaki ilişkiyi güçlendirmek istiyorum. "
+                "Teras da günlük oturma ve sohbet alanına yakın olsun. "
+                "Bana iki farklı düzenleme alternatifi öner."
+            )
+        }
+    )
+    real_output_msg = (
+        "Alternatif 1 - Salon ile mutfak arasındaki ilişkiyi güçlendirmek için birbirine yakın "
+        "yerleştirilme: Salon, mutfakın yakınında bir konumda yer alır ve ortak bir duvarla "
+        "birleşir; bu, günlük etkileşimleri doğrudan destekler.\n"
+        "Alternatif 2 - Mutfak ve teras arasında bir akış ilkesi: Mutfak, terasın ilişkili alanda "
+        "kurgulanır, bir dizi oturma alanına doğrudan bağlanır.\n"
+        "Temel fark: Birinci alternatif fiziksel yakınlığı, "
+        "ikinci alternatif dolaşım akışını öne çıkarır."
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": real_output_msg,
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+    res = ArchitecturalIntentResult.model_validate(data)
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(res, req)
+    validator.validate_semantic_integrity(sanitized, req)
+
+    assert "ortak bir duvar" not in sanitized.assistant_message.casefold()
+    assert "duvarla birleşir" not in sanitized.assistant_message.casefold()
