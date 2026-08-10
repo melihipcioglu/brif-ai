@@ -22,6 +22,14 @@ from brif_ai.llm.provider import LocalLLMError, ProviderResponseError
 from brif_ai.llm.service import LocalLLMConversationService
 from brif_ai.llm.settings import LocalLLMSettings
 
+_RESIDENTIAL_CONTEXT_TERMS = (
+    "yaşam düzeni",
+    "gündelik yaşam",
+    "aile birliği",
+    "birlikte geçirilen zaman",
+    "sohbet",
+)
+
 
 @dataclass(frozen=True, slots=True)
 class Scenario:
@@ -29,6 +37,8 @@ class Scenario:
     message: str
     entity_names: tuple[str, ...]
     expected_mode: CompareMode
+    expected_context_signal_groups: tuple[tuple[str, ...], ...] = ()
+    forbidden_unless_grounded: tuple[str, ...] = ()
 
 
 SCENARIOS = (
@@ -41,6 +51,7 @@ SCENARIOS = (
         ),
         entity_names=("Salon", "Mutfak", "Teras"),
         expected_mode=CompareMode.OPEN_ALTERNATIVES,
+        expected_context_signal_groups=(("sohbet", "etkileşim"),),
     ),
     Scenario(
         name="B_EXPLICIT_AXES_BEDROOM",
@@ -68,6 +79,8 @@ SCENARIOS = (
         ),
         entity_names=("Atölye", "Sergi Alanı"),
         expected_mode=CompareMode.OPEN_ALTERNATIVES,
+        expected_context_signal_groups=(("koordinasyon", "işlevsel", "işleyiş"),),
+        forbidden_unless_grounded=_RESIDENTIAL_CONTEXT_TERMS,
     ),
     Scenario(
         name="E_OPEN_UNKNOWN_2",
@@ -76,6 +89,8 @@ SCENARIOS = (
         ),
         entity_names=("Kütüphane", "Çok Amaçlı Salon"),
         expected_mode=CompareMode.OPEN_ALTERNATIVES,
+        expected_context_signal_groups=(("esnek", "değişen", "dönüş"),),
+        forbidden_unless_grounded=_RESIDENTIAL_CONTEXT_TERMS,
     ),
     Scenario(
         name="F_ENTITY_CHOICE",
@@ -111,6 +126,8 @@ SCENARIOS = (
         ),
         entity_names=("Muayene Alanı", "Bekleme Alanı"),
         expected_mode=CompareMode.OPEN_ALTERNATIVES,
+        expected_context_signal_groups=(("mahrem",), ("akış", "işleyiş")),
+        forbidden_unless_grounded=_RESIDENTIAL_CONTEXT_TERMS,
     ),
     Scenario(
         name="J_EDUCATION",
@@ -121,6 +138,11 @@ SCENARIOS = (
         ),
         entity_names=("Sınıf", "Ortak Çalışma Alanı"),
         expected_mode=CompareMode.OPEN_ALTERNATIVES,
+        expected_context_signal_groups=(
+            ("odak", "dikkat"),
+            ("birlikte çalışma", "bilgi paylaş", "ortak çalışma"),
+        ),
+        forbidden_unless_grounded=_RESIDENTIAL_CONTEXT_TERMS,
     ),
     Scenario(
         name="K_TRUSTED_SPATIAL",
@@ -130,6 +152,7 @@ SCENARIOS = (
         ),
         entity_names=("Teras", "Salon"),
         expected_mode=CompareMode.OPEN_ALTERNATIVES,
+        forbidden_unless_grounded=_RESIDENTIAL_CONTEXT_TERMS,
     ),
     Scenario(
         name="L_DIRECTION_TRUST",
@@ -139,6 +162,72 @@ SCENARIOS = (
         ),
         entity_names=("Çalışma Odası",),
         expected_mode=CompareMode.EXPLICIT_AXES,
+    ),
+    Scenario(
+        name="M_CONTEXT_LAB_PREP",
+        message=(
+            "Laboratuvar ile hazırlık alanının birlikte işleyişi için iki farklı "
+            "organizasyon yaklaşımı öner."
+        ),
+        entity_names=("Laboratuvar", "Hazırlık Alanı"),
+        expected_mode=CompareMode.OPEN_ALTERNATIVES,
+        expected_context_signal_groups=(("koordinasyon", "işlevsel", "işleyiş"),),
+        forbidden_unless_grounded=_RESIDENTIAL_CONTEXT_TERMS,
+    ),
+    Scenario(
+        name="N_CONTEXT_MUSIC_RECORDING",
+        message=(
+            "Müzik stüdyosu ile kayıt alanının birlikte çalışması için iki farklı "
+            "kullanım yaklaşımı öner."
+        ),
+        entity_names=("Müzik Stüdyosu", "Kayıt Alanı"),
+        expected_mode=CompareMode.OPEN_ALTERNATIVES,
+        expected_context_signal_groups=(("koordinasyon", "işlevsel", "işleyiş"),),
+        forbidden_unless_grounded=_RESIDENTIAL_CONTEXT_TERMS,
+    ),
+    Scenario(
+        name="O_CONTEXT_FOYER_EXHIBITION",
+        message=(
+            "Fuaye ile sergi alanının ziyaretçi işleyişini desteklemesi için iki farklı "
+            "organizasyon yaklaşımı öner."
+        ),
+        entity_names=("Fuaye", "Sergi Alanı"),
+        expected_mode=CompareMode.OPEN_ALTERNATIVES,
+        expected_context_signal_groups=(("sıra", "işleyiş", "akış"),),
+        forbidden_unless_grounded=_RESIDENTIAL_CONTEXT_TERMS,
+    ),
+    Scenario(
+        name="P_CONTEXT_MEDITATION_FOCUS",
+        message=(
+            "Meditasyon odası ile çalışma nişinin odak gerektiren kullanımı için iki "
+            "farklı yaklaşım öner."
+        ),
+        entity_names=("Meditasyon Odası", "Çalışma Nişi"),
+        expected_mode=CompareMode.OPEN_ALTERNATIVES,
+        expected_context_signal_groups=(("odak", "dikkat"),),
+        forbidden_unless_grounded=_RESIDENTIAL_CONTEXT_TERMS,
+    ),
+    Scenario(
+        name="Q_CONTEXT_PRODUCTION_SUPPORT",
+        message=(
+            "Üretim alanı ile malzeme hazırlık alanının üretim akışı için iki farklı "
+            "organizasyon yaklaşımı öner."
+        ),
+        entity_names=("Üretim Alanı", "Malzeme Hazırlık Alanı"),
+        expected_mode=CompareMode.OPEN_ALTERNATIVES,
+        expected_context_signal_groups=(("koordinasyon", "işlevsel", "işleyiş"),),
+        forbidden_unless_grounded=_RESIDENTIAL_CONTEXT_TERMS,
+    ),
+    Scenario(
+        name="R_CONTEXT_TEAM_FLEX",
+        message=(
+            "Toplantı alanı ile proje alanının değişen ekip kullanımlarına uyumu için "
+            "iki farklı yaklaşım öner."
+        ),
+        entity_names=("Toplantı Alanı", "Proje Alanı"),
+        expected_mode=CompareMode.OPEN_ALTERNATIVES,
+        expected_context_signal_groups=(("esnek", "değişen", "dönüş"),),
+        forbidden_unless_grounded=_RESIDENTIAL_CONTEXT_TERMS,
     ),
 )
 
@@ -202,6 +291,12 @@ def _acceptance_failure(
     for term in _CROSS_LEAK_TERMS:
         if term not in lowered_message and term in lowered_output:
             return f"semantic cross-leakage: {term}"
+    for signal_group in scenario.expected_context_signal_groups:
+        if not any(signal in lowered_output for signal in signal_group):
+            return f"missing context signal: {' / '.join(signal_group)}"
+    for forbidden in scenario.forbidden_unless_grounded:
+        if forbidden not in lowered_message and forbidden in lowered_output:
+            return f"ungrounded context language: {forbidden}"
     for forbidden in ("entity", "target", "enum", "visible_entities", "proposed_actions"):
         if forbidden in lowered_output:
             return f"internal jargon: {forbidden}"

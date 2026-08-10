@@ -11,12 +11,14 @@ from brif_ai.llm.compare_engine import (
     render_compare_plan,
     semantic_match,
     validate_compare_plan,
+    validate_context_fidelity,
     validate_rendered_compare,
 )
 from brif_ai.llm.contracts import (
     ActiveContextSnapshot,
     CompareApproach,
     CompareDecisionPlan,
+    CompareGoalFamily,
     CompareMode,
     CompareOutcome,
     ConversationRequest,
@@ -58,6 +60,29 @@ def open_plan() -> CompareDecisionPlan:
         outcome_1=CompareOutcome.CONTINUOUS_INTERACTION,
         approach_2=CompareApproach.PARALLEL_RHYTHMS,
         outcome_2=CompareOutcome.INDEPENDENT_SIMULTANEOUS_USE,
+        confidence=0.91,
+    )
+
+
+def open_plan_for_request(request: ConversationRequest) -> CompareDecisionPlan:
+    analysis = analyze_compare_request(request)
+    assert analysis.open_approaches is not None
+    outcomes = {
+        CompareApproach.INTEGRATED_FLOW: CompareOutcome.CONTINUOUS_INTERACTION,
+        CompareApproach.PARALLEL_RHYTHMS: CompareOutcome.INDEPENDENT_SIMULTANEOUS_USE,
+        CompareApproach.ADAPTABLE_USE: CompareOutcome.ADAPTABLE_DAILY_USE,
+        CompareApproach.ORDERED_USE: CompareOutcome.PREDICTABLE_ROUTINE,
+        CompareApproach.SHARED_ACTIVITY: CompareOutcome.SHARED_INTERACTION,
+        CompareApproach.INDIVIDUAL_BALANCE: CompareOutcome.CONTROLLED_PERSONAL_USE,
+        CompareApproach.PRIVACY_BALANCE: CompareOutcome.CONTROLLED_PERSONAL_USE,
+    }
+    approach_1, approach_2 = analysis.open_approaches
+    return CompareDecisionPlan(
+        mode=CompareMode.OPEN_ALTERNATIVES,
+        approach_1=approach_1,
+        outcome_1=outcomes[approach_1],
+        approach_2=approach_2,
+        outcome_2=outcomes[approach_2],
         confidence=0.91,
     )
 
@@ -193,6 +218,172 @@ def test_open_requirement_semantics_select_diverse_safe_families(
 
 
 @pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ("Sohbet ve birlikte geçirilen zaman önemli.", CompareGoalFamily.SOCIAL_INTERACTION),
+        (
+            "Atölye ile sergi alanının birlikte çalışması önemli.",
+            CompareGoalFamily.FUNCTIONAL_COORDINATION,
+        ),
+        ("Hasta mahremiyeti önemli.", CompareGoalFamily.PRIVACY),
+        (
+            "Hem odaklanma hem birlikte çalışma önemli.",
+            CompareGoalFamily.FOCUS_COLLABORATION,
+        ),
+        ("Sessiz ve odaklı kullanım önemli.", CompareGoalFamily.FOCUS),
+        ("Değişen kullanımlara esnek uyum önemli.", CompareGoalFamily.FLEXIBILITY),
+        ("İşleyiş sırası belirgin olsun.", CompareGoalFamily.ORDERED_FLOW),
+        ("İki farklı organizasyon yaklaşımı öner.", CompareGoalFamily.GENERAL_USE),
+    ],
+)
+def test_open_goal_family_uses_behavior_evidence_not_room_type(
+    message: str,
+    expected: CompareGoalFamily,
+) -> None:
+    request = compare_request(message, [])
+    assert analyze_compare_request(request).goal_family is expected
+
+
+def test_generic_subject_fallback_removes_genitive_suffix() -> None:
+    request = compare_request(
+        "Atölye ile sergi alanının birlikte çalışması için iki yaklaşım öner.",
+        [],
+    )
+
+    analysis = analyze_compare_request(request)
+
+    assert analysis.subject_labels == ("Atölye", "sergi alanı")
+
+
+@pytest.mark.parametrize("subject", ["zemin", "ürün"])
+def test_generic_subject_fallback_does_not_strip_natural_word_endings(subject: str) -> None:
+    request = compare_request(
+        f"Atölye ile {subject} için iki yaklaşım öner.",
+        [],
+    )
+
+    assert analyze_compare_request(request).subject_labels == ("Atölye", subject)
+
+
+@pytest.mark.parametrize(
+    ("message", "names"),
+    [
+        (
+            "Atölye ile Sergi Alanının birlikte çalışması için iki yaklaşım öner.",
+            ["Atölye", "Sergi Alanı"],
+        ),
+        (
+            "Laboratuvar ile Hazırlık Alanının birlikte işleyişi için iki yaklaşım öner.",
+            ["Laboratuvar", "Hazırlık Alanı"],
+        ),
+        (
+            "Kütüphane ile Çok Amaçlı Salon için iki esnek kullanım yaklaşımı öner.",
+            ["Kütüphane", "Çok Amaçlı Salon"],
+        ),
+        (
+            "Muayene Alanı ile Bekleme Alanı için iki yaklaşım öner. Hasta mahremiyeti önemli.",
+            ["Muayene Alanı", "Bekleme Alanı"],
+        ),
+        (
+            "Sınıf ile Ortak Çalışma Alanı için iki yaklaşım öner. "
+            "Öğrenciler hem odaklanabilsin hem birlikte çalışabilsin.",
+            ["Sınıf", "Ortak Çalışma Alanı"],
+        ),
+        (
+            "Müzik Stüdyosu ile Kayıt Alanının birlikte çalışması için iki yaklaşım öner.",
+            ["Müzik Stüdyosu", "Kayıt Alanı"],
+        ),
+    ],
+)
+def test_open_renderer_generalizes_without_residential_language(
+    message: str,
+    names: list[str],
+) -> None:
+    request = compare_request(message, names)
+    analysis = analyze_compare_request(request)
+    plan = open_plan_for_request(request)
+
+    validate_compare_plan(plan, request, analysis)
+    result = render_compare_plan(plan, request, analysis)
+    validate_rendered_compare(result, request)
+
+    lowered = result.assistant_message.casefold()
+    for phrase in (
+        "yaşam düzeni",
+        "gündelik yaşam",
+        "aile birliği",
+        "birlikte geçirilen zaman",
+        "sohbet",
+    ):
+        assert phrase not in lowered
+
+
+def test_social_language_is_allowed_when_request_supplies_evidence() -> None:
+    request = compare_request(
+        (
+            "Salon ile Mutfak arasındaki ilişkiyi güçlendirmek istiyorum. "
+            "Teras günlük oturma ve sohbet alanı olsun. İki farklı yaklaşım öner."
+        ),
+        ["Salon", "Mutfak", "Teras"],
+    )
+    analysis = analyze_compare_request(request)
+    plan = open_plan_for_request(request)
+
+    result = render_compare_plan(plan, request, analysis)
+    validate_context_fidelity(result, request, analysis)
+
+    assert analysis.goal_family is CompareGoalFamily.SOCIAL_INTERACTION
+    assert "sohbet" in result.assistant_message.casefold()
+
+
+def test_exact_browser_response_fails_context_fidelity() -> None:
+    request = compare_request(
+        (
+            "Atölye ile sergi alanının birlikte çalışması için iki farklı "
+            "organizasyon yaklaşımı öner."
+        ),
+        ["Atölye", "Sergi Alanı"],
+    )
+    analysis = analyze_compare_request(request)
+    valid = render_compare_plan(open_plan_for_request(request), request, analysis)
+    browser_message = (
+        "Alternatif 1 - Ortak etkinlik odağı: Atölye ve sergi alanının ortak "
+        "etkinlikleri öne alan bir yaşam düzeni içinde değerlendirilir; sohbet ve "
+        "birlikte geçirilen zaman gündelik yaşamda daha belirgin olur.\n\n"
+        "Alternatif 2 - Dengeli kullanım ritimleri: Atölye ve sergi alanının farklı "
+        "kullanım ritimlerini koruyan bir düzen içinde değerlendirilir; eşzamanlı "
+        "etkinlikler birbirini daha az etkileyerek sürdürülebilir.\n\n"
+        "Temel fark: İlk yaklaşım ortak etkinliklerin görünürlüğünü artırır; ikinci "
+        "yaklaşım eşzamanlı kullanımların bağımsızlığını korur."
+    )
+    result = valid.model_copy(update={"assistant_message": browser_message})
+
+    with pytest.raises(ComparePlanValidationError) as captured:
+        validate_context_fidelity(result, request, analysis)
+
+    assert captured.value.category is CompareFailureCategory.CONTEXT_FIDELITY
+
+
+def test_open_subject_genitive_grammar_failure_is_rejected() -> None:
+    request = compare_request(
+        "Atölye ile sergi alanının birlikte çalışması için iki yaklaşım öner.",
+        [],
+    )
+    analysis = analyze_compare_request(request)
+    valid = render_compare_plan(open_plan_for_request(request), request, analysis)
+    bad_grammar = valid.assistant_message.replace(
+        "Atölye ve sergi alanı ",
+        "Atölye ve sergi alanının ",
+    )
+    result = valid.model_copy(update={"assistant_message": bad_grammar})
+
+    with pytest.raises(ComparePlanValidationError) as captured:
+        validate_context_fidelity(result, request, analysis)
+
+    assert captured.value.category is CompareFailureCategory.CONTEXT_FIDELITY
+
+
+@pytest.mark.parametrize(
     "message",
     [
         "Salon kullanımını mı teras kullanımını mı öne çıkarmalıyım?",
@@ -299,6 +490,26 @@ def test_explicit_axes_drive_ordered_plan_and_natural_renderer(
     assert analysis.axes[1] in result.assistant_message.casefold()
     assert result.assistant_message.count("Çalışma Alanı") == 2
     assert result.assistant_message.count("Aile Yaşam Alanı") == 2
+
+
+def test_explicit_interaction_axis_keeps_the_trusted_request_language() -> None:
+    request = compare_request(
+        (
+            "Çalışma Alanı ile Aile Yaşam Alanı için iki yaklaşım öner. "
+            "Birinde sessizlik ve odaklanma, diğerinde aileyle etkileşim daha önemli olsun."
+        ),
+        ["Çalışma Alanı", "Aile Yaşam Alanı"],
+    )
+    analysis = analyze_compare_request(request)
+    plan = explicit_plan(
+        CompareOutcome.FOCUSED_ACTIVITY,
+        CompareOutcome.SHARED_INTERACTION,
+    )
+
+    result = render_compare_plan(plan, request, analysis)
+
+    assert "ortak etkinlikler ve karşılıklı etkileşim" in result.assistant_message
+    assert "birlikte çalışma" not in result.assistant_message
 
 
 def test_explicit_axes_rejects_swapped_approaches() -> None:

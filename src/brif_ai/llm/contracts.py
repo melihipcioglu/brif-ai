@@ -43,6 +43,17 @@ class CompareMode(StrEnum):
     ENTITY_CHOICE = "entity_choice"
 
 
+class CompareGoalFamily(StrEnum):
+    GENERAL_USE = "general_use"
+    SOCIAL_INTERACTION = "social_interaction"
+    FUNCTIONAL_COORDINATION = "functional_coordination"
+    PRIVACY = "privacy"
+    FOCUS_COLLABORATION = "focus_collaboration"
+    FOCUS = "focus"
+    FLEXIBILITY = "flexibility"
+    ORDERED_FLOW = "ordered_flow"
+
+
 class CompareApproach(StrEnum):
     INTEGRATED_FLOW = "integrated_flow"
     PARALLEL_RHYTHMS = "parallel_rhythms"

@@ -11,6 +11,7 @@ from brif_ai.llm.contracts import (
     ArchitecturalIntentResult,
     CompareApproach,
     CompareDecisionPlan,
+    CompareGoalFamily,
     CompareMode,
     CompareOutcome,
     ConversationRequest,
@@ -81,6 +82,10 @@ _CONTENT_STOP_WORDS = frozenset(
         "farklı",
     }
 )
+_GENERIC_GENITIVE_SUFFIX = re.compile(
+    r"(?P<stem>.{3,}?)(?:nın|nin|nun|nün|ın|in|un|ün)$",
+    re.IGNORECASE,
+)
 
 
 class CompareFailureCategory(str, Enum):  # noqa: UP042 - Python 3.10 compatibility
@@ -94,6 +99,7 @@ class CompareFailureCategory(str, Enum):  # noqa: UP042 - Python 3.10 compatibil
     ALTERNATIVES_TOO_SIMILAR = "ALTERNATIVES_TOO_SIMILAR"
     KEY_DIFFERENCE_INVALID = "KEY_DIFFERENCE_INVALID"
     UNSUPPORTED_QUANTITATIVE_CLAIM = "UNSUPPORTED_QUANTITATIVE_CLAIM"
+    CONTEXT_FIDELITY = "CONTEXT_FIDELITY"
 
 
 class ComparePlanValidationError(ValueError):
@@ -110,6 +116,7 @@ class CompareRequestAnalysis:
     subject_labels: tuple[str, ...]
     axes: tuple[str, str] | None
     choice_labels: tuple[str, str] | None
+    goal_family: CompareGoalFamily
     open_approaches: tuple[CompareApproach, CompareApproach] | None
 
     def prompt_payload(self) -> dict[str, object]:
@@ -120,6 +127,7 @@ class CompareRequestAnalysis:
             "axis_2": self.axes[1] if self.axes else None,
             "choice_1": self.choice_labels[0] if self.choice_labels else None,
             "choice_2": self.choice_labels[1] if self.choice_labels else None,
+            "goal_family": self.goal_family.value,
             "outcome_hint_1": (
                 _axis_outcome(self.axes[0]).value if self.axes is not None else None
             ),
@@ -212,19 +220,25 @@ def _generic_pair_subjects(message: str) -> tuple[str, ...]:
         if left_words:
             found.append(" ".join(left_words[-3:]))
         if right_words:
-            boundary_words = {
+            genitive_boundaries = {
                 "arasındaki",
-                "için",
                 "birlikte",
                 "ilişkisi",
                 "ilişkiyi",
                 "kullanım",
             }
+            boundary_words = genitive_boundaries | {"için"}
             selected: list[str] = []
+            boundary: str | None = None
             for word in right_words[:4]:
                 if word.casefold() in boundary_words:
+                    boundary = word.casefold()
                     break
                 selected.append(word)
+            if selected and boundary in genitive_boundaries:
+                suffix_match = _GENERIC_GENITIVE_SUFFIX.fullmatch(selected[-1])
+                if suffix_match is not None:
+                    selected[-1] = suffix_match.group("stem")
             if selected:
                 found.append(" ".join(selected))
     return _unique(found)
@@ -268,6 +282,7 @@ def analyze_compare_request(request: ConversationRequest) -> CompareRequestAnaly
     axes = extract_explicit_axes(request.message)
     has_selection = _SELECTION_EVIDENCE.search(request.message) is not None
     choices = _choice_labels(request, subjects) if has_selection else None
+    goal_family = _infer_goal_family(request.message)
 
     if has_selection:
         mode = CompareMode.ENTITY_CHOICE
@@ -281,8 +296,9 @@ def analyze_compare_request(request: ConversationRequest) -> CompareRequestAnaly
         subject_labels=subjects,
         axes=axes,
         choice_labels=choices,
+        goal_family=goal_family,
         open_approaches=(
-            _recommend_open_approaches(request.message)
+            _recommend_open_approaches(goal_family)
             if mode is CompareMode.OPEN_ALTERNATIVES
             else None
         ),
@@ -349,8 +365,8 @@ def _axis_outcome(axis: str) -> CompareOutcome:
     return CompareOutcome.CONTEXTUAL_PRIORITY
 
 
-def _recommend_open_approaches(message: str) -> tuple[CompareApproach, CompareApproach]:
-    """Route broad requirement semantics, never room names, to safe decision families."""
+def _infer_goal_family(message: str) -> CompareGoalFamily:
+    """Classify explicit behavior goals without inferring a building or room type."""
 
     normalized = _normalize(message)
 
@@ -358,16 +374,53 @@ def _recommend_open_approaches(message: str) -> tuple[CompareApproach, CompareAp
         return any(fragment in normalized for fragment in fragments)
 
     if contains("mahrem", "kişisel alan", "özel kullanım"):
-        return CompareApproach.PRIVACY_BALANCE, CompareApproach.INTEGRATED_FLOW
+        return CompareGoalFamily.PRIVACY
+    has_focus = contains("odak", "sessiz", "bireysel çalışma")
+    has_collaboration = contains(
+        "birlikte çalış",
+        "ortak çalış",
+        "işbirliği",
+        "fikir paylaş",
+    )
+    if has_focus and has_collaboration:
+        return CompareGoalFamily.FOCUS_COLLABORATION
+    if contains("sohbet", "aileyle etkileşim", "birlikte geçirilen zaman"):
+        return CompareGoalFamily.SOCIAL_INTERACTION
+    if contains(
+        "birlikte çalış",
+        "koordin",
+        "işlevsel ilişki",
+        "birlikte işleyiş",
+        "üretim akışı",
+    ):
+        return CompareGoalFamily.FUNCTIONAL_COORDINATION
     if contains("çok amaçlı", "esnek", "değişen", "dönüş"):
+        return CompareGoalFamily.FLEXIBILITY
+    if has_focus:
+        return CompareGoalFamily.FOCUS
+    if contains("sıra", "işleyiş", "rutin", "kontrol", "akış"):
+        return CompareGoalFamily.ORDERED_FLOW
+    return CompareGoalFamily.GENERAL_USE
+
+
+def _recommend_open_approaches(
+    goal_family: CompareGoalFamily,
+) -> tuple[CompareApproach, CompareApproach]:
+    """Map behavior goals, never building types, to safe decision families."""
+
+    if goal_family is CompareGoalFamily.PRIVACY:
+        return CompareApproach.PRIVACY_BALANCE, CompareApproach.INTEGRATED_FLOW
+    if goal_family is CompareGoalFamily.FLEXIBILITY:
         return CompareApproach.ADAPTABLE_USE, CompareApproach.ORDERED_USE
-    has_focus = contains("odak", "sessiz", "bireysel")
-    has_shared = contains("birlikte", "ortak", "sohbet", "etkileşim", "paylaş")
-    if has_focus and has_shared:
+    if goal_family is CompareGoalFamily.FOCUS_COLLABORATION:
         return CompareApproach.INDIVIDUAL_BALANCE, CompareApproach.SHARED_ACTIVITY
-    if has_shared:
+    if goal_family is CompareGoalFamily.SOCIAL_INTERACTION:
         return CompareApproach.SHARED_ACTIVITY, CompareApproach.PARALLEL_RHYTHMS
-    if contains("sıra", "işleyiş", "rutin", "kontrol"):
+    if goal_family is CompareGoalFamily.FUNCTIONAL_COORDINATION:
+        return CompareApproach.INTEGRATED_FLOW, CompareApproach.PARALLEL_RHYTHMS
+    if goal_family is CompareGoalFamily.FOCUS:
+        return CompareApproach.INDIVIDUAL_BALANCE, CompareApproach.ORDERED_USE
+    if goal_family is CompareGoalFamily.ORDERED_FLOW:
         return CompareApproach.INTEGRATED_FLOW, CompareApproach.ORDERED_USE
     return CompareApproach.INTEGRATED_FLOW, CompareApproach.PARALLEL_RHYTHMS
 
@@ -534,10 +587,12 @@ class _ApproachLanguage:
 
 _APPROACH_LANGUAGE = {
     CompareApproach.INTEGRATED_FLOW: _ApproachLanguage(
-        title="Bütünleşik günlük akış",
-        decision="ortak etkinlikleri buluşturan tek bir kullanım akışı içinde değerlendirilir",
-        effect="gündelik geçişler ve kullanıcılar arasındaki etkileşim kesintisiz sürer",
-        difference="kesintisiz gündelik etkileşimi güçlendirir",
+        title="Bütünleşik işleyiş",
+        decision=(
+            "işlevsel ilişkiyi tek bir kullanım akışı içinde destekleyecek biçimde değerlendirilir"
+        ),
+        effect="etkinlikler arasındaki koordinasyon ve kullanım sürekliliği güçlenir",
+        difference="işlevsel koordinasyonu ve kullanım sürekliliğini güçlendirir",
     ),
     CompareApproach.PARALLEL_RHYTHMS: _ApproachLanguage(
         title="Dengeli kullanım ritimleri",
@@ -548,55 +603,119 @@ _APPROACH_LANGUAGE = {
     CompareApproach.ADAPTABLE_USE: _ApproachLanguage(
         title="Dönüşebilir kullanım",
         decision="değişen etkinliklere uyum veren esnek bir düzen içinde değerlendirilir",
-        effect="farklı ihtiyaçlar arasında kullanım değişikliği daha kolay gerçekleşir",
-        difference="değişen ihtiyaçlara uyum yeteneğini artırır",
+        effect="farklı etkinlikler arasında kullanım değişikliği daha kolay gerçekleşir",
+        difference="değişen etkinliklere uyum yeteneğini artırır",
     ),
     CompareApproach.ORDERED_USE: _ApproachLanguage(
-        title="Belirgin kullanım sırası",
-        decision="gündelik adımları belirgin bir sıra içinde destekleyecek biçimde değerlendirilir",
-        effect="kullanım rutini daha öngörülebilir ve kolay izlenebilir ilerler",
-        difference="gündelik işleyişin öngörülebilirliğini artırır",
+        title="Belirgin işleyiş sırası",
+        decision=(
+            "işleyiş adımlarını belirgin bir sıra içinde destekleyecek biçimde değerlendirilir"
+        ),
+        effect="kullanım süreci daha öngörülebilir ve kolay izlenebilir ilerler",
+        difference="işleyiş sürecinin öngörülebilirliğini artırır",
     ),
     CompareApproach.SHARED_ACTIVITY: _ApproachLanguage(
-        title="Ortak etkinlik odağı",
-        decision="ortak etkinlikleri öne alan bir yaşam düzeni içinde değerlendirilir",
-        effect="sohbet ve birlikte geçirilen zaman gündelik yaşamda daha belirgin olur",
-        difference="ortak etkinliklerin görünürlüğünü artırır",
+        title="Koordineli ortak kullanım",
+        decision=(
+            "ortak kullanılan etkinlikleri aynı işleyiş düzeninde destekleyecek biçimde "
+            "değerlendirilir"
+        ),
+        effect="işlevlerin birbirini desteklemesi ve ortak kullanımın yönetilmesi kolaylaşır",
+        difference="ortak kullanım içindeki işlevsel koordinasyonu güçlendirir",
     ),
     CompareApproach.INDIVIDUAL_BALANCE: _ApproachLanguage(
-        title="Bireysel kullanım dengesi",
+        title="Odaklı kullanım dengesi",
         decision="ortak ve bireysel etkinlikleri dengeleyen bir düzen içinde değerlendirilir",
-        effect="kullanıcılar farklı ritimleri karşılıklı kesinti olmadan sürdürebilir",
-        difference="bireysel kullanım ritimlerini daha güçlü korur",
+        effect="odak gerektiren çalışmalar eşzamanlı ortak kullanımdan daha az etkilenir",
+        difference="odak gerektiren kullanımın bağımsızlığını daha güçlü korur",
     ),
     CompareApproach.PRIVACY_BALANCE: _ApproachLanguage(
         title="Mahremiyet dengesi",
         decision="kişisel kullanımı koruyan kontrollü bir düzen içinde değerlendirilir",
-        effect="mahremiyet deneyimi gündelik kullanım boyunca daha güçlü korunur",
+        effect="mahremiyet deneyimi kullanım süreci boyunca daha güçlü korunur",
         difference="mahremiyet deneyimini daha güçlü korur",
     ),
 }
 
+_GOAL_LANGUAGE_OVERRIDES = {
+    (
+        CompareGoalFamily.SOCIAL_INTERACTION,
+        CompareApproach.SHARED_ACTIVITY,
+    ): _ApproachLanguage(
+        title="Ortak kullanım ve sohbet",
+        decision="oturma ve ortak etkinlikleri destekleyen bir kullanım düzeninde değerlendirilir",
+        effect="sohbet ve ortak kullanım arasındaki etkileşim güçlenir",
+        difference="sohbeti ve ortak kullanım etkileşimini güçlendirir",
+    ),
+    (
+        CompareGoalFamily.FOCUS_COLLABORATION,
+        CompareApproach.SHARED_ACTIVITY,
+    ): _ApproachLanguage(
+        title="Birlikte çalışma odağı",
+        decision="ortak çalışmayı destekleyen bir kullanım düzeni içinde değerlendirilir",
+        effect="birlikte çalışma ve bilgi paylaşımı daha belirgin biçimde desteklenir",
+        difference="birlikte çalışma ve bilgi paylaşımını güçlendirir",
+    ),
+    (
+        CompareGoalFamily.PRIVACY,
+        CompareApproach.INTEGRATED_FLOW,
+    ): _ApproachLanguage(
+        title="Akıcı işleyiş",
+        decision=(
+            "kullanım adımlarını kesintisiz bir işleyiş içinde destekleyecek biçimde "
+            "değerlendirilir"
+        ),
+        effect="işlemler arasındaki kullanım akışı daha akıcı ilerler",
+        difference="kullanım adımları arasındaki işleyişi hızlandırır",
+    ),
+}
+
+_UNGROUNDED_SOCIAL_LANGUAGE = (
+    "yaşam düzeni",
+    "gündelik yaşam",
+    "aile birliği",
+    "birlikte geçirilen zaman",
+    "sohbet",
+    "oturma ve ortak etkinlik",
+)
+_GOAL_SIGNAL_GROUPS: dict[
+    CompareGoalFamily,
+    tuple[tuple[str, ...], ...],
+] = {
+    CompareGoalFamily.SOCIAL_INTERACTION: (("sohbet", "etkileşim", "ortak kullanım"),),
+    CompareGoalFamily.FUNCTIONAL_COORDINATION: (
+        ("koordinasyon", "işlevsel", "işleyiş", "birbirini destek"),
+    ),
+    CompareGoalFamily.PRIVACY: (("mahrem",),),
+    CompareGoalFamily.FOCUS_COLLABORATION: (
+        ("odak", "dikkat"),
+        ("birlikte çalışma", "ortak çalışma", "bilgi paylaş", "fikir paylaş"),
+    ),
+    CompareGoalFamily.FOCUS: (("odak", "dikkat"),),
+    CompareGoalFamily.FLEXIBILITY: (("esnek", "değişen", "dönüş"),),
+    CompareGoalFamily.ORDERED_FLOW: (("sıra", "işleyiş", "öngörülebilir", "akış"),),
+}
+
 _OUTCOME_LANGUAGE = {
     CompareOutcome.CONTINUOUS_INTERACTION: (
-        "gündelik geçişler ve kullanıcılar arasındaki etkileşim kesintisiz sürer"
+        "etkinlikler arasındaki koordinasyon ve kullanım sürekliliği güçlenir"
     ),
     CompareOutcome.INDEPENDENT_SIMULTANEOUS_USE: (
         "eşzamanlı etkinlikler birbirini daha az etkileyerek sürdürülebilir"
     ),
     CompareOutcome.ADAPTABLE_DAILY_USE: (
-        "farklı ihtiyaçlar arasında kullanım değişikliği daha kolay gerçekleşir"
+        "farklı etkinlikler arasında kullanım değişikliği daha kolay gerçekleşir"
     ),
     CompareOutcome.PREDICTABLE_ROUTINE: (
-        "kullanım rutini daha öngörülebilir ve kolay izlenebilir ilerler"
+        "kullanım süreci daha öngörülebilir ve kolay izlenebilir ilerler"
     ),
     CompareOutcome.CONTROLLED_PERSONAL_USE: (
         "kişisel etkinlikler daha kontrollü ve kesintisiz sürdürülebilir"
     ),
-    CompareOutcome.EASY_DAILY_USE: "gündelik hazırlık ve kullanım daha akıcı ilerler",
+    CompareOutcome.EASY_DAILY_USE: "hazırlık ve kullanım süreci daha akıcı ilerler",
     CompareOutcome.FOCUSED_ACTIVITY: "dikkat gerektiren etkinlikler daha az bölünerek sürer",
     CompareOutcome.SHARED_INTERACTION: (
-        "birlikte geçirilen zaman ve karşılıklı etkileşim daha güçlü desteklenir"
+        "ortak etkinlikler ve karşılıklı etkileşim daha güçlü desteklenir"
     ),
     CompareOutcome.ORDER_AND_OVERSIGHT: (
         "etkinliklerin düzeni ve izlenebilirliği daha öngörülebilir olur"
@@ -605,13 +724,13 @@ _OUTCOME_LANGUAGE = {
         "değişen etkinliklere kişisel uyum sağlamak kolaylaşır"
     ),
     CompareOutcome.EXPRESSIVE_CHARACTER: "mekânın temsil gücü daha belirgin hale gelir",
-    CompareOutcome.CALM_SIMPLICITY: "gündelik deneyimde görsel yük ve dikkat dağılımı azalır",
+    CompareOutcome.CALM_SIMPLICITY: "kullanım deneyiminde görsel yük ve dikkat dağılımı azalır",
     CompareOutcome.INDIVIDUAL_PRODUCTIVITY: "tek kişinin odaklı çalışma düzeni güçlenir",
     CompareOutcome.COLLABORATIVE_PRODUCTIVITY: (
         "eşzamanlı üretim ve fikir paylaşımı daha güçlü desteklenir"
     ),
     CompareOutcome.INDOOR_CONTINUITY: "iç mekândaki ortak kullanım daha tutarlı sürer",
-    CompareOutcome.OUTDOOR_EXPERIENCE: "açık hava deneyimi gündelik yaşamda ağırlık kazanır",
+    CompareOutcome.OUTDOOR_EXPERIENCE: "açık hava deneyimi kullanım kararında ağırlık kazanır",
     CompareOutcome.OPEN_SHARED_USE: "ortak etkinlikler ve karşılıklı iletişim güçlenir",
     CompareOutcome.SEPARATED_CONTROLLED_USE: (
         "farklı etkinliklerin kontrolü ve bağımsızlığı artar"
@@ -654,8 +773,18 @@ def _trusted_pair_relation(
 def _outcome_text(outcome: CompareOutcome, axis: str | None = None) -> str:
     if outcome is CompareOutcome.CONTEXTUAL_PRIORITY:
         priority = axis or "seçilen öncelik"
-        return f"{priority} gündelik kararlarda daha tutarlı karşılık bulur"
+        return f"{priority} kullanım kararlarında daha tutarlı karşılık bulur"
     return _OUTCOME_LANGUAGE[outcome]
+
+
+def _approach_language(
+    approach: CompareApproach,
+    goal_family: CompareGoalFamily,
+) -> _ApproachLanguage:
+    return _GOAL_LANGUAGE_OVERRIDES.get(
+        (goal_family, approach),
+        _APPROACH_LANGUAGE[approach],
+    )
 
 
 def _as_result(message: str, confidence: float) -> ArchitecturalIntentResult:
@@ -685,8 +814,8 @@ def render_compare_plan(
 
     subjects = _subject_phrase(analysis.subject_labels)
     if analysis.mode is CompareMode.OPEN_ALTERNATIVES:
-        first = _APPROACH_LANGUAGE[plan.approach_1]
-        second = _APPROACH_LANGUAGE[plan.approach_2]
+        first = _approach_language(plan.approach_1, analysis.goal_family)
+        second = _approach_language(plan.approach_2, analysis.goal_family)
         trusted_relation = _trusted_pair_relation(request, analysis.subject_labels)
 
         def summary(language: _ApproachLanguage) -> str:
@@ -746,12 +875,58 @@ def render_compare_plan(
     return _as_result(message, plan.confidence)
 
 
+def validate_context_fidelity(
+    result: ArchitecturalIntentResult,
+    request: ConversationRequest,
+    analysis: CompareRequestAnalysis | None = None,
+) -> None:
+    """Reject open-mode language that is ungrounded or loses the compared subjects."""
+
+    resolved_analysis = analysis or analyze_compare_request(request)
+    if resolved_analysis.mode is not CompareMode.OPEN_ALTERNATIVES:
+        return
+
+    message = result.assistant_message
+    normalized_message = message.casefold()
+    if resolved_analysis.goal_family is not CompareGoalFamily.SOCIAL_INTERACTION:
+        leaked = next(
+            (phrase for phrase in _UNGROUNDED_SOCIAL_LANGUAGE if phrase in normalized_message),
+            None,
+        )
+        if leaked is not None:
+            raise ComparePlanValidationError(
+                CompareFailureCategory.CONTEXT_FIDELITY,
+                f"Açık karşılaştırma talepte bulunmayan sosyal bağlamı içeriyor: {leaked}.",
+            )
+
+    if resolved_analysis.subject_labels:
+        expected_subject = _subject_phrase(resolved_analysis.subject_labels)
+        subject_pattern = re.compile(
+            rf"(?<!\w){re.escape(expected_subject)}(?=\s)",
+            re.IGNORECASE,
+        )
+        if len(subject_pattern.findall(message)) < 2:
+            raise ComparePlanValidationError(
+                CompareFailureCategory.CONTEXT_FIDELITY,
+                "Karşılaştırılan konular iki alternatifte de dilbilgisel olarak korunmuyor.",
+            )
+
+    for signal_group in _GOAL_SIGNAL_GROUPS.get(resolved_analysis.goal_family, ()):
+        if not any(signal in normalized_message for signal in signal_group):
+            raise ComparePlanValidationError(
+                CompareFailureCategory.CONTEXT_FIDELITY,
+                "Açık karşılaştırma talepteki kullanım hedefini sonuç diline yansıtmıyor.",
+            )
+
+
 def validate_rendered_compare(
     result: ArchitecturalIntentResult,
     request: ConversationRequest,
+    analysis: CompareRequestAnalysis | None = None,
 ) -> None:
     """Defense-in-depth checks after deterministic language realization."""
 
+    validate_context_fidelity(result, request, analysis)
     validate_alternative_quality(result, request)
     validate_spatial_direction_claims(result, request)
     validate_relative_spatial_claims(result, request)

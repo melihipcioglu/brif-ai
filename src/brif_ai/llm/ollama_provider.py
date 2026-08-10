@@ -353,7 +353,7 @@ class OllamaProvider:
                     request,
                     compare_analysis,
                 )
-                validate_rendered_compare(parsed_result, request)
+                validate_rendered_compare(parsed_result, request, compare_analysis)
             else:
                 parsed_result = ArchitecturalIntentResult.model_validate_json(content)
 
