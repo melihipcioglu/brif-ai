@@ -24,6 +24,7 @@ from brif_ai.llm.service import LocalLLMConversationService
 from brif_ai.llm.settings import LocalLLMSettings
 
 from .test_contracts import valid_result_data
+from .test_ollama_provider import valid_compare_plan_data
 from .test_policy_validator import conversation_request, public_texts
 from .test_prompts import request_data
 
@@ -329,7 +330,7 @@ def test_recovered_response_still_hides_internal_terms_from_user_text() -> None:
     assert chat_calls == 2
 
 
-def test_semantic_validation_triggers_single_repair_call() -> None:
+def test_compare_free_text_schema_injection_triggers_single_repair_call() -> None:
     chat_calls = 0
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -337,19 +338,10 @@ def test_semantic_validation_triggers_single_repair_call() -> None:
         if request.url.path == "/api/tags":
             return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
         chat_calls += 1
-        data = valid_result_data()
+        data = valid_compare_plan_data()
         if chat_calls == 1:
-            data["assistant_message"] = "Plan için öğe bilgisi incelendi."
-        else:
-            data.update(
-                {
-                    "intent": "compare_alternatives",
-                    "assistant_message": (
-                        "Alternatif 1: Salon terasla birleşir. Alternatif 2: Mutfak terasa açılır."
-                    ),
-                    "needs_follow_up": False,
-                    "follow_up_question": None,
-                }
+            data["summary_1"] = (
+                "Salon ve mutfak birlikte ele alınır; plan için öğe bilgisi kullanıcıya gösterilir."
             )
         return httpx.Response(
             200,
@@ -385,21 +377,9 @@ def test_semantic_validation_failure_triggers_single_repair_and_succeeds_if_repa
         if request.url.path == "/api/tags":
             return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
         chat_calls += 1
-        data = valid_result_data()
+        data = valid_compare_plan_data()
         if chat_calls == 1:
-            data["assistant_message"] = "Plan için inceleme."
-            data["intent"] = "modify_space"
-        else:
-            data.update(
-                {
-                    "intent": "compare_alternatives",
-                    "assistant_message": (
-                        "Alternatif 1: Salon terasla birleşir. Alternatif 2: Mutfak terasa açılır."
-                    ),
-                    "needs_follow_up": False,
-                    "follow_up_question": None,
-                }
-            )
+            data["mode"] = "entity_choice"
         return httpx.Response(
             200,
             json={"message": {"content": json.dumps(data, ensure_ascii=False)}},
@@ -514,4 +494,4 @@ def test_initial_response_with_unsupported_direction_succeeds_via_sanitization()
 
     assert chat_calls == 1
     assert "doğusunda" not in result.assistant_message.casefold()
-    assert "yakınında" in result.assistant_message.casefold()
+    assert "ilişkili" in result.assistant_message.casefold()

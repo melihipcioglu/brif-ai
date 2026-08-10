@@ -2,12 +2,19 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 
 import pytest
 from pydantic import ValidationError
 
 from brif_ai.llm.contracts import ConversationRequest
-from brif_ai.llm.prompts import SCHEMA_REPAIR_PROMPT, SYSTEM_PROMPT, build_user_prompt
+from brif_ai.llm.prompts import (
+    COMPARE_REPAIR_PROMPT,
+    COMPARE_SYSTEM_PROMPT,
+    SCHEMA_REPAIR_PROMPT,
+    SYSTEM_PROMPT,
+    build_user_prompt,
+)
 
 
 def request_data() -> dict[str, object]:
@@ -170,3 +177,45 @@ def test_spatial_assumptions_prevention_guidance_for_conceptual_requests() -> No
     assert "Kesin yön ve konum belirtmeden" in SYSTEM_PROMPT
     payload = json.loads(prompt_str)
     assert payload["message"] == "Salon, mutfak ve teras ilişkisi için iki alternatif öner"
+
+
+def test_compare_prompts_do_not_lexically_prime_forbidden_spatial_claims() -> None:
+    forbidden_terms = (
+        "kuzey",
+        "güney",
+        "doğu",
+        "batı",
+        "sağ",
+        "sol",
+        "ön",
+        "arka",
+        "karşı",
+        "bitişik",
+        "ortak duvar",
+        "ortak kenar",
+        "yakın",
+        "uzak",
+    )
+
+    for prompt in (COMPARE_SYSTEM_PROMPT, COMPARE_REPAIR_PROMPT):
+        for term in forbidden_terms:
+            pattern = rf"(?<!\w){re.escape(term)}(?!\w)"
+            assert re.search(pattern, prompt, re.IGNORECASE) is None, term
+
+
+def test_compare_prompts_do_not_overfit_a_fixed_scenario_or_verb_whitelist() -> None:
+    fixed_content_examples = ("Salon ile mutfak", "Terasın oturma")
+    fixed_verb_whitelist = (
+        "güçlendirilir",
+        "destekler",
+        "uyum sağlar",
+        "korunur",
+        "öncelik verir",
+        "odaklanır",
+    )
+
+    for prompt in (COMPARE_SYSTEM_PROMPT, COMPARE_REPAIR_PROMPT):
+        for example in fixed_content_examples:
+            assert example.casefold() not in prompt.casefold()
+        for verb in fixed_verb_whitelist:
+            assert verb.casefold() not in prompt.casefold()

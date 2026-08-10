@@ -11,17 +11,39 @@ from typing import Any, cast
 import httpx
 from pydantic import ValidationError
 
+from brif_ai.llm.compare_engine import (
+    CompareFailureCategory,
+    ComparePlanValidationError,
+    CompareRequestAnalysis,
+    analyze_compare_request,
+    build_compare_plan_schema,
+    render_compare_plan,
+    sanitize_compare_plan,
+    validate_compare_plan,
+    validate_rendered_compare,
+)
 from brif_ai.llm.contracts import (
     ArchitecturalIntentResult,
+    CompareDecisionPlan,
     ConversationRequest,
     LocalModelInfo,
     ProviderHealth,
 )
 from brif_ai.llm.policy_validator import (
+    AlternativeQualityError,
     ArchitecturalIntentPolicyValidator,
     PolicyValidationError,
+    UnsupportedSpatialClaimError,
+    is_compare_request,
 )
-from brif_ai.llm.prompts import SCHEMA_REPAIR_PROMPT, SYSTEM_PROMPT, build_user_prompt
+from brif_ai.llm.prompts import (
+    COMPARE_SYSTEM_PROMPT,
+    SCHEMA_REPAIR_PROMPT,
+    SYSTEM_PROMPT,
+    build_compare_repair_prompt,
+    build_compare_user_prompt,
+    build_user_prompt,
+)
 from brif_ai.llm.provider import (
     ModelNotAvailableError,
     ModelNotSelectedError,
@@ -78,6 +100,22 @@ class OllamaPerformanceMetrics:
             eval_seconds=eval_duration,
             tokens_per_second=tps,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class OllamaAttemptRecord:
+    """Safe metadata for one initial or repair generation."""
+
+    attempt: str
+    done_reason: str | None
+    metrics: OllamaPerformanceMetrics | None
+    failure_category: str | None
+
+
+class _AttemptFailure(ProviderResponseError):
+    def __init__(self, message: str, category: CompareFailureCategory) -> None:
+        super().__init__(message)
+        self.category = category
 
 
 def _write_schema_diagnostic(
@@ -137,6 +175,8 @@ class OllamaProvider:
         self._client = client
         self.policy_validator = policy_validator or ArchitecturalIntentPolicyValidator()
         self.last_performance_metrics: OllamaPerformanceMetrics | None = None
+        self.last_attempt_records: list[OllamaAttemptRecord] = []
+        self.last_chat_call_count = 0
 
     async def health(self) -> ProviderHealth:
         try:
@@ -178,6 +218,8 @@ class OllamaProvider:
         output_schema: dict[str, object],
     ) -> ArchitecturalIntentResult:
         self.last_performance_metrics = None
+        self.last_attempt_records = []
+        self.last_chat_call_count = 0
         if not self.settings.model:
             raise ModelNotSelectedError(
                 "Yerel model seçilmedi. Önce bilgisayarınızda kurulu bir model seçin."
@@ -187,18 +229,48 @@ class OllamaProvider:
         if self.settings.model not in {model.name for model in installed_models}:
             raise ModelNotAvailableError("Seçilen model bu bilgisayarda kurulu değil.")
 
-        payload = self._build_chat_payload(request, output_schema)
+        is_compact = is_compare_request(request)
+        compare_analysis = analyze_compare_request(request) if is_compact else None
+        active_schema = (
+            build_compare_plan_schema(compare_analysis)
+            if compare_analysis is not None
+            else output_schema
+        )
+
+        payload = self._build_chat_payload(
+            request,
+            active_schema,
+            is_compact=is_compact,
+            compare_analysis=compare_analysis,
+        )
+        self.last_chat_call_count += 1
         response = await self._request("POST", "/api/chat", json=payload)
         try:
-            return self._parse_chat_response(response, request, attempt="initial")
-        except ProviderResponseError:
+            return self._parse_chat_response(
+                response,
+                request,
+                attempt="initial",
+                is_compact=is_compact,
+                compare_analysis=compare_analysis,
+            )
+        except _AttemptFailure as error:
             repair_payload = self._build_chat_payload(
                 request,
-                output_schema,
+                active_schema,
                 repair=True,
+                is_compact=is_compact,
+                compare_analysis=compare_analysis,
+                failure_category=error.category,
             )
+            self.last_chat_call_count += 1
             repair_response = await self._request("POST", "/api/chat", json=repair_payload)
-            return self._parse_chat_response(repair_response, request, attempt="repair")
+            return self._parse_chat_response(
+                repair_response,
+                request,
+                attempt="repair",
+                is_compact=is_compact,
+                compare_analysis=compare_analysis,
+            )
 
     def _build_chat_payload(
         self,
@@ -206,13 +278,30 @@ class OllamaProvider:
         output_schema: dict[str, object],
         *,
         repair: bool = False,
+        is_compact: bool = False,
+        compare_analysis: CompareRequestAnalysis | None = None,
+        failure_category: CompareFailureCategory | None = None,
     ) -> dict[str, object]:
-        system_prompt = SCHEMA_REPAIR_PROMPT if repair else SYSTEM_PROMPT
+        if is_compact:
+            if compare_analysis is None:
+                raise ValueError("compare analysis is required for a compare request")
+            system_prompt = (
+                build_compare_repair_prompt(
+                    failure_category or CompareFailureCategory.SCHEMA_INVALID
+                )
+                if repair
+                else COMPARE_SYSTEM_PROMPT
+            )
+            user_prompt = build_compare_user_prompt(request, compare_analysis)
+        else:
+            system_prompt = SCHEMA_REPAIR_PROMPT if repair else SYSTEM_PROMPT
+            user_prompt = build_user_prompt(request)
+
         return {
             "model": self.settings.model,
             "messages": [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": build_user_prompt(request)},
+                {"role": "user", "content": user_prompt},
             ],
             "stream": False,
             "think": self.settings.think,
@@ -230,34 +319,83 @@ class OllamaProvider:
         request: ConversationRequest,
         *,
         attempt: str,
+        is_compact: bool = False,
+        compare_analysis: CompareRequestAnalysis | None = None,
     ) -> ArchitecturalIntentResult:
         raw_payload: object | None = None
         response_payload: dict[str, Any] = {}
+        metrics: OllamaPerformanceMetrics | None = None
+        done_reason: str | None = None
         try:
             raw_payload = response.json()
             if not isinstance(raw_payload, dict):
                 raise TypeError("response payload must be an object")
             response_payload = cast(dict[str, Any], raw_payload)
-            self.last_performance_metrics = OllamaPerformanceMetrics.from_response(response_payload)
+            metrics = OllamaPerformanceMetrics.from_response(response_payload)
+            self.last_performance_metrics = metrics
+            raw_done_reason = response_payload.get("done_reason")
+            done_reason = raw_done_reason if isinstance(raw_done_reason, str) else None
             message = response_payload["message"]
             if not isinstance(message, dict):
                 raise TypeError("message must be an object")
             content = message["content"]
             if not isinstance(content, str):
                 raise TypeError("message content must be a string")
-            parsed_result = ArchitecturalIntentResult.model_validate_json(content)
-            sanitized = self.policy_validator.sanitize(parsed_result, request)
+
+            if is_compact:
+                if compare_analysis is None:
+                    raise ValueError("compare analysis is required for compare parsing")
+                plan = CompareDecisionPlan.model_validate_json(content)
+                sanitized_plan = sanitize_compare_plan(plan, request)
+                validate_compare_plan(sanitized_plan, request, compare_analysis)
+                parsed_result = render_compare_plan(
+                    sanitized_plan,
+                    request,
+                    compare_analysis,
+                )
+                validate_rendered_compare(parsed_result, request, compare_analysis)
+            else:
+                parsed_result = ArchitecturalIntentResult.model_validate_json(content)
+
+            if is_compact:
+                sanitized = parsed_result
+            else:
+                sanitized = self.policy_validator.sanitize(parsed_result, request)
             self.policy_validator.validate_semantic_integrity(sanitized, request)
+            self.last_attempt_records.append(
+                OllamaAttemptRecord(
+                    attempt=attempt,
+                    done_reason=done_reason,
+                    metrics=metrics,
+                    failure_category=None,
+                )
+            )
             return sanitized
         except (KeyError, TypeError, ValueError, ValidationError, PolicyValidationError) as error:
+            if isinstance(error, ComparePlanValidationError):
+                category = error.category
+            elif isinstance(error, UnsupportedSpatialClaimError):
+                category = CompareFailureCategory.UNSUPPORTED_SPATIAL_CLAIM
+            elif isinstance(error, AlternativeQualityError):
+                category = CompareFailureCategory.LANGUAGE_QUALITY
+            else:
+                category = CompareFailureCategory.SCHEMA_INVALID
+            self.last_attempt_records.append(
+                OllamaAttemptRecord(
+                    attempt=attempt,
+                    done_reason=done_reason,
+                    metrics=metrics,
+                    failure_category=category.value,
+                )
+            )
             _write_schema_diagnostic(
                 error,
                 response_payload,
-                self.last_performance_metrics,
+                metrics,
                 attempt=attempt,
             )
-            raise ProviderResponseError(
-                "Yerel model doğrulanabilir bir mimari niyet yanıtı üretmedi."
+            raise _AttemptFailure(
+                "Yerel model doğrulanabilir bir mimari niyet yanıtı üretmedi.", category
             ) from error
 
     async def _request(

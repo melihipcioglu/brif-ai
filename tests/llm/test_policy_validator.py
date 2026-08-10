@@ -9,9 +9,13 @@ from brif_ai.llm.contracts import (
     VisibleEntity,
 )
 from brif_ai.llm.policy_validator import (
+    AlternativeQualityError,
     ArchitecturalIntentPolicyValidator,
     PolicyValidationError,
     UnsupportedSpatialClaimError,
+    is_compare_request,
+    validate_relative_spatial_claims,
+    validate_spatial_direction_claims,
 )
 
 from .test_contracts import valid_result_data
@@ -52,6 +56,23 @@ def conversation_request(*, entity_id: str | None = "space_study") -> Conversati
             )
         ],
     )
+
+
+def request_with_space_names(message: str, names: list[str]) -> ConversationRequest:
+    request = conversation_request()
+    visible_entities = [
+        VisibleEntity(
+            entity_id=f"space_dynamic_{index}",
+            entity_type="space",
+            name=name,
+            project_id="proj_house_2story",
+            building_id="bldg_main",
+            level_id="lvl_ground",
+            zone_id="zone_living",
+        )
+        for index, name in enumerate(names)
+    ]
+    return request.model_copy(update={"message": message, "visible_entities": visible_entities})
 
 
 def request_with_master_bathroom() -> ConversationRequest:
@@ -415,7 +436,7 @@ def test_machine_target_id_is_preserved_while_public_text_is_sanitized() -> None
     assert_no_internal_ids(safe_result)
 
 
-def test_conceptual_space_alternatives_regression() -> None:
+def test_conceptual_space_alternatives_with_unsupported_neighbor_is_rejected() -> None:
     request_msg = (
         "Terası gün ışığı alan günlük oturma ve sohbet alanı olarak kullanmak istiyorum. "
         "Salon, mutfak, teras ve giriş için iki farklı düzenleme alternatifini "
@@ -428,13 +449,11 @@ def test_conceptual_space_alternatives_regression() -> None:
         {
             "intent": "compare_alternatives",
             "assistant_message": (
-                "Varsayım olarak terasın salon ve mutfakla aynı yaşam cephesinde kurulabileceği "
-                "kabul edilmiştir.\n"
-                "Alternatif 1: Girişten salon doğrudan algılanır; mutfak salonun yanında "
-                "kalır ve salon geniş bir açıklıkla terasa bağlanır, böylece teras günlük "
-                "oturmanın devamı olur.\n"
-                "Alternatif 2: Giriş salonla teras arasındaki ortak hole açılır; mutfak terasa "
-                "daha doğrudan bağlanır, salon ise daha sakin ve kontrollü bir ilişki kurar."
+                "Alternatif 1 — Açık Geçiş Planı: Girişten salon algılanır; mutfak "
+                "salonun yanında kalır ve terasa bağlanarak sohbet alanına katılır.\n\n"
+                "Alternatif 2 — Bağımsız Hol Kurgusu: Giriş sirkülasyon holüne açılır; "
+                "mutfak terasa doğrudan bağlanır, salon sakin kalır.\n\n"
+                "Temel fark: Alternatif 1 açık düzen sunarken Alternatif 2 bağımsız hol sağlar."
             ),
             "user_requirements": [
                 "Terasın gün ışığı alan oturma ve sohbet alanı olarak kullanılması"
@@ -460,21 +479,8 @@ def test_conceptual_space_alternatives_regression() -> None:
     )
 
     validator = ArchitecturalIntentPolicyValidator()
-    validator.validate_semantic_integrity(ArchitecturalIntentResult.model_validate(data), req)
-
-    safe_result = validator.validate(ArchitecturalIntentResult.model_validate(data), req)
-
-    assert safe_result.intent.value == "compare_alternatives"
-    assert safe_result.needs_follow_up is False
-    assert safe_result.follow_up_question is None
-    assert safe_result.proposed_actions == []
-    assert safe_result.target.entity_id is None
-    assert "Alternatif 1" in safe_result.assistant_message
-    assert "Alternatif 2" in safe_result.assistant_message
-    for space in ("salon", "mutfak", "teras", "giriş"):
-        assert space in safe_result.assistant_message.casefold()
-    for forbidden in ("öğe bilgisi", "entity", "ilgili mekân", "visible_entities"):
-        assert forbidden not in safe_result.assistant_message.casefold()
+    with pytest.raises(UnsupportedSpatialClaimError, match="neighbor_relative"):
+        validator.validate_semantic_integrity(ArchitecturalIntentResult.model_validate(data), req)
 
 
 @pytest.mark.parametrize(
@@ -518,7 +524,7 @@ def test_semantic_validation_rejects_single_alternative_on_comparison_request() 
     )
 
     validator = ArchitecturalIntentPolicyValidator()
-    with pytest.raises(PolicyValidationError, match="Alternatif 1"):
+    with pytest.raises(PolicyValidationError, match="Alternatif 1|bölümlerini içermelidir"):
         validator.validate_semantic_integrity(ArchitecturalIntentResult.model_validate(data), req)
 
 
@@ -537,14 +543,11 @@ def test_unsupported_spatial_claim_rejected_when_absent_from_context(unsupported
 
 
 def test_dogrudan_connection_is_not_false_positive_for_dogu() -> None:
-    req = conversation_request().model_copy(
-        update={"message": "Salon ile mutfak arasında doğrudan bağlantı olsun."}
-    )
+    req = conversation_request()
     data = valid_result_data()
-    data["assistant_message"] = "Mutfak ve salon arasında doğrudan geçiş sağlanmıştır."
+    data["assistant_message"] = "Salon ve mutfak arasındaki ilişki doğrudan güçlendirilir."
 
-    validator = ArchitecturalIntentPolicyValidator()
-    validator.validate_semantic_integrity(ArchitecturalIntentResult.model_validate(data), req)
+    validate_spatial_direction_claims(ArchitecturalIntentResult.model_validate(data), req)
 
 
 def test_direction_allowed_when_present_in_user_message() -> None:
@@ -685,7 +688,7 @@ def test_sanitize_neutralizes_unsupported_salonun_dogusunda() -> None:
     sanitized = ArchitecturalIntentPolicyValidator().sanitize(result, req)
     assert "doğusunda" not in sanitized.assistant_message.casefold()
     assert "doğu" not in sanitized.assistant_message.casefold()
-    assert "yakınında" in sanitized.assistant_message.casefold()
+    assert "ilişkili" in sanitized.assistant_message.casefold()
 
 
 def test_sanitize_neutralizes_unsupported_ortak_alanin_guneyinde() -> None:
@@ -697,7 +700,7 @@ def test_sanitize_neutralizes_unsupported_ortak_alanin_guneyinde() -> None:
     sanitized = ArchitecturalIntentPolicyValidator().sanitize(result, req)
     assert "güneyinde" not in sanitized.assistant_message.casefold()
     assert "güney" not in sanitized.assistant_message.casefold()
-    assert "yakınında" in sanitized.assistant_message.casefold()
+    assert "ilişkili" in sanitized.assistant_message.casefold()
 
 
 def test_sanitize_preserves_dogrudan_baglanti() -> None:
@@ -751,3 +754,863 @@ def test_sanitization_preserves_structured_target_fields() -> None:
     assert sanitized.target.entity_id == "space_living"
     assert sanitized.target.project_id == "proj_house_2story"
     assert "target nesnesi" not in sanitized.assistant_message
+
+
+def test_compare_alternatives_quality_accepts_distinct_valid_alternatives() -> None:
+    req = conversation_request().model_copy(
+        update={"message": "Salon ve mutfak için iki farklı düzenleme alternatifi sun."}
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": (
+                "Alternatif 1 — Açık Bölüntü Planı: Salon ve mutfak arasındaki "
+                "seperatör kaldırılarak geniş bir adalı tezgah eklenir.\n\n"
+                "Alternatif 2 — Şeffaf Geçiş Kurgusu: Salon ve mutfak arasına temperli "
+                "cam kayar kapı eklenerek mahremiyet korunur.\n\n"
+                "Temel fark: Alternatif 1 kesintisiz bütünsellik sağlarken "
+                "Alternatif 2 esnek bölüntü olanağı sunar."
+            ),
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(result, req)
+    validator.validate_semantic_integrity(sanitized, req)
+
+
+def test_compare_alternatives_rejects_identical_alternatives() -> None:
+    req = conversation_request().model_copy(
+        update={"message": "Salon ve mutfak için iki farklı düzenleme alternatifi sun."}
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": (
+                "Alternatif 1 — Aynı Düzen: Salon ve mutfak arasında kapı kurgulanır.\n"
+                "Alternatif 2 — Aynı Düzen: Salon ve mutfak arasında kapı kurgulanır.\n"
+                "Temel fark: İki alternatif arasında fark yoktur."
+            ),
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(result, req)
+    with pytest.raises(AlternativeQualityError, match="yeterince farklı değil"):
+        validator.validate_semantic_integrity(sanitized, req)
+
+
+def test_compare_alternatives_rejects_minor_word_swap_repetitions() -> None:
+    req = conversation_request().model_copy(
+        update={"message": "Salon ve mutfak için iki farklı düzenleme alternatifi sun."}
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": (
+                "Alternatif 1 — Bölüntü: Salon ve mutfak arasına şeffaf bölüntü konur.\n"
+                "Alternatif 2 — Bölüntü: Salon ve mutfak arasına şeffaf bölüntü konacaktır.\n"
+                "Temel fark: İki alternatif benzerdir."
+            ),
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(result, req)
+    with pytest.raises(AlternativeQualityError, match="yeterince farklı değil"):
+        validator.validate_semantic_integrity(sanitized, req)
+
+
+def test_compare_alternatives_rejects_missing_key_difference() -> None:
+    req = conversation_request().model_copy(
+        update={"message": "Salon ve mutfak için iki farklı düzenleme alternatifi sun."}
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": (
+                "Alternatif 1 — Açık Plan: Salon ve mutfak birleştirilir.\n"
+                "Alternatif 2 — Kapalı Plan: Salon ve mutfak ayrılır."
+            ),
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(result, req)
+    with pytest.raises(AlternativeQualityError, match="Temel fark"):
+        validator.validate_semantic_integrity(sanitized, req)
+
+
+def test_compare_alternatives_rejects_empty_alternative_content() -> None:
+    req = conversation_request().model_copy(
+        update={"message": "Salon ve mutfak için iki farklı düzenleme alternatifi sun."}
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": (
+                "Alternatif 1 — Açık Plan: \n"
+                "Alternatif 2 — Kapalı Plan: Mutfak ile salon arasında kapı yerleştirilir.\n"
+                "Temel fark: Açık ve kapalı mekân farkıdır."
+            ),
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(result, req)
+    with pytest.raises(AlternativeQualityError, match="boş kalmamalıdır|çok kısa"):
+        validator.validate_semantic_integrity(sanitized, req)
+
+
+def test_compare_alternatives_rejects_too_short_alternative() -> None:
+    req = conversation_request().model_copy(
+        update={"message": "Salon ve mutfak için iki farklı düzenleme alternatifi sun."}
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": (
+                "Alternatif 1 — Kısa: Kapı eklenir.\n"
+                "Alternatif 2 — Kapalı Plan: Mutfak ile salon arasında cam kapı kurgulanır.\n"
+                "Temel fark: Geçiş türüdür."
+            ),
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(result, req)
+    with pytest.raises(AlternativeQualityError, match="çok kısa"):
+        validator.validate_semantic_integrity(sanitized, req)
+
+
+def test_compare_alternatives_rejects_too_long_alternative() -> None:
+    req = conversation_request().model_copy(
+        update={"message": "Salon ve mutfak için iki farklı düzenleme alternatifi sun."}
+    )
+    long_text = " ".join(["detay"] * 75)
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": (
+                f"Alternatif 1 — Uzun: {long_text}\n"
+                "Alternatif 2 — Normal Plan: Mutfak ile salon arasında cam kapı kurgulanır.\n"
+                "Temel fark: Detay seviyesidir."
+            ),
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(result, req)
+    with pytest.raises(AlternativeQualityError, match="çok uzun"):
+        validator.validate_semantic_integrity(sanitized, req)
+
+
+def test_compare_alternatives_rejects_repeated_filler_phrase() -> None:
+    req = conversation_request().model_copy(
+        update={"message": "Salon ve mutfak için iki farklı düzenleme alternatifi sun."}
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": (
+                "Alternatif 1 — Açık Plan: Mutfak ile salon geniş kapıyla yakın "
+                "bir konumda kurgulanır. Sosyal etkileşim artar.\n"
+                "Alternatif 2 — Kapalı Plan: Teras ile oturma bölümü cam panelle "
+                "yakın bir konumda kurgulanır. Ses yalıtımı sağlanır.\n"
+                "Temel fark: Bölücü unsur türü ve mekan ayrımıdır."
+            ),
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    with pytest.raises(AlternativeQualityError, match="Yapay dolgu ifadesi"):
+        validator.validate_semantic_integrity(result, req)
+
+
+def test_compare_alternatives_does_not_false_positive_on_shared_prompt_words() -> None:
+    req = conversation_request().model_copy(
+        update={
+            "message": "Salon ile mutfak arasındaki ilişkiyi güçlendirmek için alternatif öner."
+        }
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": (
+                "Alternatif 1 — Ada Tezgah: Salon ve mutfağa ada kurgulanır.\n"
+                "Alternatif 2 — Sürgü Cam: Akustik cam panel eklenir.\n"
+                "Temel fark: Alternatif 1 açık alan sunarken Alternatif 2 yalıtım sağlar."
+            ),
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(result, req)
+    validator.validate_semantic_integrity(sanitized, req)
+
+
+def test_other_intents_are_not_affected_by_alternative_quality_checks() -> None:
+    req = conversation_request().model_copy(
+        update={"message": "Salon ile mutfak arasına kapı ekle."}
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "modify_relationship",
+            "assistant_message": "Salon ile mutfak arasında geçiş kapısı planlandı.",
+        }
+    )
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(result, req)
+    validator.validate_semantic_integrity(sanitized, req)
+
+
+def test_compare_alternatives_accepts_open_integration_vs_controlled_separation() -> None:
+    req = conversation_request().model_copy(
+        update={
+            "message": (
+                "Salon ile mutfak arasındaki ilişkiyi güçlendirmek istiyorum. "
+                "Teras da günlük oturma ve sohbet alanına yakın olsun. "
+                "Bana iki farklı düzenleme alternatifi öner."
+            )
+        }
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": (
+                "Alternatif 1 — Açık bütünleşme: Salon ve mutfak günlük kullanımda daha güçlü "
+                "görsel ilişki kurar. Teras ortak yaşamın devamı olarak ele alınır.\n\n"
+                "Alternatif 2 — Kontrollü ayrışma: Salon ve mutfak ilişkisi korunur ancak "
+                "ayrışabilecek kurgu düşünülür. Teras ortak buluşma alanı olur.\n\n"
+                "Temel fark: Birinci yaklaşım sürekliliği, ikinci yaklaşım esnekliği öne çıkarır."
+            ),
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+    result = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(result, req)
+    validator.validate_semantic_integrity(sanitized, req)
+
+
+def test_unsupported_relative_spatial_claims_are_rejected_or_sanitized() -> None:
+    req = conversation_request()
+    validator = ArchitecturalIntentPolicyValidator()
+
+    unsupported_examples = [
+        "Salon girişten sonra sağ tarafta yer alır.",
+        "Mutfak salonun solundadır.",
+        "Teras salonun karşısında yer alır.",
+        "Salon ile teras ortak kenar paylaşır.",
+        "Mutfak salonla ortak duvar paylaşır.",
+        "Teras salona bitişiktir.",
+        "Mutfak girişin hemen yanında yer alır.",
+        "Salon ve mutfak ortak bir duvarla birleşir.",
+        "Salon ile mutfak ortak bir duvar paylaşır.",
+        "Salon ile mutfak aynı duvarı paylaşır.",
+        "Salon ile mutfak bir duvarı paylaşır.",
+    ]
+
+    for text in unsupported_examples:
+        data = valid_result_data()
+        data["assistant_message"] = text
+        res = ArchitecturalIntentResult.model_validate(data)
+        sanitized = validator.sanitize(res, req)
+        for claim in [
+            "sağ tarafta",
+            "solundadır",
+            "karşısında yer alır",
+            "ortak kenar",
+            "ortak duvar",
+            "ortak bir duvar",
+            "aynı duvarı",
+            "bir duvarı",
+            "bitişiktir",
+            "hemen yanında",
+        ]:
+            assert claim not in sanitized.assistant_message
+
+
+def test_shared_wall_false_positives_not_flagged() -> None:
+    req = conversation_request()
+    validator = ArchitecturalIntentPolicyValidator()
+
+    false_positive_examples = [
+        "Duvar kalınlığı daha sonra belirlenecek.",
+        "Duvar yüzeyi için malzeme seçilebilir.",
+        "Duvar rengi henüz belirlenmedi.",
+    ]
+
+    for text in false_positive_examples:
+        data = valid_result_data()
+        data["assistant_message"] = text
+        res = ArchitecturalIntentResult.model_validate(data)
+        sanitized = validator.sanitize(res, req)
+        validator.validate_semantic_integrity(sanitized, req)
+        assert sanitized.assistant_message == text
+
+
+def test_trusted_relative_spatial_claims_are_accepted() -> None:
+    req = conversation_request().model_copy(
+        update={"message": "Mutfak salonun solunda yer alsın ve terasla ortak kenar paylaşsın."}
+    )
+    data = valid_result_data()
+    data["assistant_message"] = (
+        "Mutfak salonun solunda yer alabilir ve terasla ortak kenar kurgulanabilir."
+    )
+    res = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(res, req)
+    validator.validate_semantic_integrity(sanitized, req)
+    assert "solunda" in sanitized.assistant_message.casefold()
+
+
+def test_trusted_shared_wall_claim_accepted() -> None:
+    req = conversation_request().model_copy(
+        update={"message": "Salon ile mutfak aynı duvarı paylaşıyor."}
+    )
+    data = valid_result_data()
+    data["assistant_message"] = "Salon ile mutfak aynı duvarı paylaşacak biçimde ele alınabilir."
+    res = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(res, req)
+    validator.validate_semantic_integrity(sanitized, req)
+    assert "aynı duvarı" in sanitized.assistant_message.casefold()
+
+
+def test_conceptual_relative_suggestions_are_accepted() -> None:
+    req = conversation_request()
+    data = valid_result_data()
+    data["assistant_message"] = "Salon ve mutfak arasındaki geçiş daha açık kurulabilir."
+    res = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(res, req)
+    validator.validate_semantic_integrity(sanitized, req)
+
+
+def test_regression_failed_real_model_output_relative_spatial_claim() -> None:
+    req = conversation_request().model_copy(
+        update={
+            "message": (
+                "Salon ile mutfak arasındaki ilişkiyi güçlendirmek istiyorum. "
+                "Teras da günlük oturma ve sohbet alanına yakın olsun. "
+                "Bana iki farklı düzenleme alternatifi öner."
+            )
+        }
+    )
+    failed_output_msg = (
+        "Alternatif 1 - Salon: Mutfak ile doğrudan bağlantılı olup, "
+        "girişten sonra hemen sağ tarafta yer alır. "
+        "Mutfak ve salonun birbirine yakın olması, günlük etkileşimleri artırır.\n"
+        "Alternatif 2 - Salon: Terasın yakınındaki alanda yer alır ve teras ile "
+        "doğrudan bir kenar ortaklığı oluşturur. Bu yapı, dış ortamla iç alan arasındaki "
+        "geçişleri daha doğal hale getirir.\n"
+        "Temel fark: Birinci alternatif, iç alanların birbirine yakın olmasıyla "
+        "etkileşimi artırırken, ikinci alternatif dış alanla iç alanın "
+        "fiziksel bağlantısını vurgular."
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": failed_output_msg,
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+    res = ArchitecturalIntentResult.model_validate(data)
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize_compare(res, req)
+    with pytest.raises(PolicyValidationError):
+        validator.validate_semantic_integrity(sanitized, req)
+
+
+def test_regression_real_model_output_shared_wall_claim() -> None:
+    req = conversation_request().model_copy(
+        update={
+            "message": (
+                "Salon ile mutfak arasındaki ilişkiyi güçlendirmek istiyorum. "
+                "Teras da günlük oturma ve sohbet alanına yakın olsun. "
+                "Bana iki farklı düzenleme alternatifi öner."
+            )
+        }
+    )
+    real_output_msg = (
+        "Alternatif 1 - Salon ile mutfak arasındaki ilişkiyi güçlendirmek için birbirine yakın "
+        "yerleştirilme: Salon, mutfakın yakınında bir konumda yer alır ve ortak bir duvarla "
+        "birleşir; bu, günlük etkileşimleri doğrudan destekler.\n"
+        "Alternatif 2 - Mutfak ve teras arasında bir akış ilkesi: Mutfak, terasın ilişkili alanda "
+        "kurgulanır, bir dizi oturma alanına doğrudan bağlanır.\n"
+        "Temel fark: Birinci alternatif fiziksel yakınlığı, "
+        "ikinci alternatif dolaşım akışını öne çıkarır."
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": real_output_msg,
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+    res = ArchitecturalIntentResult.model_validate(data)
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize_compare(res, req)
+    with pytest.raises(PolicyValidationError):
+        validator.validate_semantic_integrity(sanitized, req)
+
+
+def test_full_real_browser_regression_fixture() -> None:
+    req = conversation_request().model_copy(
+        update={
+            "message": (
+                "Salon ile mutfak arasındaki ilişkiyi güçlendirmek istiyorum. "
+                "Teras da günlük oturma ve sohbet alanına yakın olsun. "
+                "Bana iki farklı düzenleme alternatifi öner."
+            )
+        }
+    )
+    browser_output_msg = (
+        "Alternatif 1 - Salon & Yaşam Alanı ile Mutfak: ortak bir duvarla birleştirilmiş, "
+        "doğrudan birbirine yakın bir konumda yer alır. Bu yapı, günlük etkileşimleri "
+        "kolaylaştırır.\n"
+        "Alternatif 2 - Salon & Yaşam Alanı ile Mutfak: Ayrık alanlar olup, birbirinden uzak, "
+        "ancak teras ile bağlantılı bir yapıda yer alır. Bu yaklaşım, daha kontrollü bir "
+        "ortam sağlar.\n"
+        "Temel fark: İlk alternatif, salon ve mutfak arasında fiziksel ve fonksiyonel bir "
+        "bütünlük sağlar; ikinci alternatif ise bu alanları ayrı tutar, ancak teras ile "
+        "daha güçlü bir ilişki kurar."
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": browser_output_msg,
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+    res = ArchitecturalIntentResult.model_validate(data)
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize_compare(res, req)
+    with pytest.raises(PolicyValidationError):
+        validator.validate_semantic_integrity(sanitized, req)
+
+
+def test_entity_pair_proximity_trust_isolation() -> None:
+    req = conversation_request().model_copy(
+        update={
+            "message": (
+                "Salon ile mutfak arasındaki ilişkiyi güçlendirmek istiyorum. "
+                "Teras da günlük oturma ve sohbet alanına yakın olsun."
+            )
+        }
+    )
+    validator = ArchitecturalIntentPolicyValidator()
+
+    # Supported pair: teras & oturma / sohbet / salon
+    data_trusted = valid_result_data()
+    data_trusted["assistant_message"] = "Teras, günlük oturma alanının yakınında kurgulanır."
+    res_trusted = ArchitecturalIntentResult.model_validate(data_trusted)
+    sanitized_trusted = validator.sanitize(res_trusted, req)
+    validator.validate_semantic_integrity(sanitized_trusted, req)
+
+    # Unsupported pair: mutfak & salon distance claim
+    data_unsupported = valid_result_data()
+    data_unsupported["assistant_message"] = "Mutfak salona yakındır."
+    res_unsupported = ArchitecturalIntentResult.model_validate(data_unsupported)
+    try:
+        validator.validate_semantic_integrity(res_unsupported, req)
+        unsupported_raised = False
+    except UnsupportedSpatialClaimError:
+        unsupported_raised = True
+    assert unsupported_raised
+
+
+def test_unsupported_distance_claim_rejection() -> None:
+    req = conversation_request().model_copy(
+        update={"message": "Salon ile mutfak arasındaki ilişkiyi güçlendirmek istiyorum."}
+    )
+    data = valid_result_data()
+    data["assistant_message"] = "Mutfak salondan uzaktır."
+    res = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    try:
+        validator.validate_semantic_integrity(res, req)
+        raised = False
+    except UnsupportedSpatialClaimError:
+        raised = True
+    assert raised
+
+
+def test_distance_change_claim_rejected_without_request_evidence() -> None:
+    req = request_with_space_names(
+        "Ebeveyn yatak odası ile giyinme alanı için iki alternatif öner.",
+        ["Ebeveyn Yatak Odası", "Giyinme Alanı"],
+    )
+    data = valid_result_data()
+    data["assistant_message"] = "İki alan arasındaki fiziksel mesafe artırılır."
+
+    with pytest.raises(UnsupportedSpatialClaimError, match="proximity_distance"):
+        validate_relative_spatial_claims(ArchitecturalIntentResult.model_validate(data), req)
+
+
+@pytest.mark.parametrize(
+    "claim",
+    [
+        "İki alan arasındaki mesafe artırılarak mahremiyet desteklenir.",
+        "İki alan arasındaki mesafe azaltılır.",
+        "İki alan arasındaki mesafe azaltılarak kullanım kolaylaştırılır.",
+        "Aradaki mesafe açılır.",
+        "Aradaki mesafe daraltılır.",
+        "Aradaki mesafe kısaltılır.",
+    ],
+)
+def test_distance_change_variants_are_rejected(claim: str) -> None:
+    req = request_with_space_names(
+        "Atölye ile meditasyon odası için iki alternatif öner.",
+        ["Atölye", "Meditasyon Odası"],
+    )
+    data = valid_result_data()
+    data["assistant_message"] = claim
+
+    with pytest.raises(UnsupportedSpatialClaimError, match="proximity_distance"):
+        validate_relative_spatial_claims(ArchitecturalIntentResult.model_validate(data), req)
+
+
+def test_immediate_neighbor_claim_rejected_without_request_evidence() -> None:
+    req = request_with_space_names(
+        "Ebeveyn yatak odası ile giyinme alanı için iki alternatif öner.",
+        ["Ebeveyn Yatak Odası", "Giyinme Alanı"],
+    )
+    data = valid_result_data()
+    data["assistant_message"] = "Giyinme alanı yatak odasının hemen yanında değerlendirilir."
+
+    with pytest.raises(UnsupportedSpatialClaimError, match="immediate_neighbor"):
+        validate_relative_spatial_claims(ArchitecturalIntentResult.model_validate(data), req)
+
+
+def test_immediate_neighbor_claim_passes_for_trusted_dynamic_pair() -> None:
+    req = request_with_space_names(
+        "Giyinme alanı yatak odasının hemen yanında olsun. İki alternatif öner.",
+        ["Ebeveyn Yatak Odası", "Giyinme Alanı"],
+    )
+    data = valid_result_data()
+    data["assistant_message"] = "Giyinme alanının yatak odasıyla hemen yanındaki ilişkisi korunur."
+
+    validate_relative_spatial_claims(ArchitecturalIntentResult.model_validate(data), req)
+
+
+def test_dynamic_visible_entity_pair_supports_unknown_space_names() -> None:
+    req = request_with_space_names(
+        "Atölye meditasyon odasının hemen yanında olsun. İki alternatif öner.",
+        ["Atölye", "Meditasyon Odası"],
+    )
+    data = valid_result_data()
+    data["assistant_message"] = "Atölyenin meditasyon odasıyla hemen yanındaki ilişkisi korunur."
+
+    validate_relative_spatial_claims(ArchitecturalIntentResult.model_validate(data), req)
+
+
+@pytest.mark.parametrize("space_name", ["Atölye", "Meditasyon Odası", "Giyinme Alanı"])
+def test_unknown_space_name_does_not_bypass_immediate_neighbor_guard(
+    space_name: str,
+) -> None:
+    req = request_with_space_names(
+        f"{space_name} için iki alternatif öner.",
+        [space_name],
+    )
+    data = valid_result_data()
+    data["assistant_message"] = f"{space_name} hemen yanında değerlendirilir."
+
+    with pytest.raises(UnsupportedSpatialClaimError, match="immediate_neighbor"):
+        validate_relative_spatial_claims(ArchitecturalIntentResult.model_validate(data), req)
+
+
+def test_trusted_distance_change_passes_for_dynamic_visible_entity_pair() -> None:
+    req = request_with_space_names(
+        "Atölye ile meditasyon odası arasındaki fiziksel mesafe azaltılsın. İki alternatif öner.",
+        ["Atölye", "Meditasyon Odası"],
+    )
+    data = valid_result_data()
+    data["assistant_message"] = "Atölye ile meditasyon odası arasındaki mesafe azaltılır."
+
+    validate_relative_spatial_claims(ArchitecturalIntentResult.model_validate(data), req)
+
+
+@pytest.mark.parametrize(
+    "claim",
+    [
+        "Mahremiyet artırılır.",
+        "Esneklik artırılır.",
+        "Etkileşim artırılır.",
+    ],
+)
+def test_abstract_priority_increase_is_not_a_distance_false_positive(claim: str) -> None:
+    req = conversation_request().model_copy(
+        update={"message": "Mahremiyeti artıran iki alternatif öner."}
+    )
+    data = valid_result_data()
+    data["assistant_message"] = claim
+
+    validate_relative_spatial_claims(ArchitecturalIntentResult.model_validate(data), req)
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Çalışma alanı için iki yaklaşım öner.",
+        "Çalışma alanı için iki ayrı yaklaşım öner.",
+        "Çalışma alanı için 2 yaklaşım öner.",
+        "Oyun alanı için iki kullanım yaklaşımı öner.",
+        "Fuaye için iki düzenleme yaklaşımı öner.",
+    ],
+)
+def test_generic_two_approach_request_uses_compare_path(message: str) -> None:
+    assert is_compare_request(message)
+
+
+@pytest.mark.parametrize(
+    ("claim", "category"),
+    [
+        ("Mahremiyet fiziksel uzaklıkla sağlanır.", "proximity_distance"),
+        ("Kullanım kolaylığı fiziksel yakınlıkla sağlanır.", "proximity_distance"),
+        (
+            "Giyinme alanı yatak odasıyla doğrudan komşulukta değerlendirilir.",
+            "adjacent",
+        ),
+        (
+            "Çalışma alanı aile yaşam alanıyla fiziksel olarak birleşik bir yapıdadır.",
+            "physical_topology",
+        ),
+        (
+            "Ebeveyn yatak odasının içine giyinme alanı yerleştirilir.",
+            "containment",
+        ),
+        (
+            "Giyinme alanı yatak odasının yan tarafına yerleştirilir.",
+            "side_relative",
+        ),
+        ("Mahremiyet için fiziksel bir sınır oluşturulur.", "physical_topology"),
+        (
+            "Teras salonun yanında değerlendirilir.",
+            "neighbor_relative",
+        ),
+        (
+            "Giyinme alanı yatak odasına yakın konumlandırılarak kullanılır.",
+            "proximity_distance",
+        ),
+        (
+            "Yatak odasında giyinme alanı ayrı olarak yerleştirilir.",
+            "containment",
+        ),
+    ],
+)
+def test_real_model_spatial_variants_are_rejected(
+    claim: str,
+    category: str,
+) -> None:
+    req = request_with_space_names(
+        "İki ayrı kullanım yaklaşımı öner.",
+        ["Ebeveyn Yatak Odası", "Giyinme Alanı", "Çalışma Alanı", "Aile Yaşam Alanı"],
+    )
+    data = valid_result_data()
+    data["assistant_message"] = claim
+
+    with pytest.raises(UnsupportedSpatialClaimError, match=category):
+        validate_relative_spatial_claims(ArchitecturalIntentResult.model_validate(data), req)
+
+
+def test_language_artifact_rejection() -> None:
+    req = conversation_request().model_copy(
+        update={"message": "İki farklı düzenleme alternatifi öner."}
+    )
+    validator = ArchitecturalIntentPolicyValidator()
+
+    for artifact_text in [
+        "Salon ele alınır ile mutfak birleşir.",
+        "Mutfak kurgulanır ile düzenlenir.",
+        "Teras yer alır ile bağlanır.",
+        "Kontrollü ayrıma ile sınırlar vurgulanır.",
+        "Kişisel alanın korunur.",
+        "Giyinme alanı ilişkili bir kurgu yer alır.",
+        "Mahremiyeti öncelik verir.",
+        "Kullanım kolaylığını öncelik verir.",
+    ]:
+        data = valid_result_data()
+        data.update(
+            {
+                "intent": "compare_alternatives",
+                "assistant_message": (
+                    f"Alternatif 1 - {artifact_text}\n"
+                    "Alternatif 2 - İkinci yaklaşım esneklik sunar.\n"
+                    "Temel fark: Yaklaşımlar farklıdır."
+                ),
+            }
+        )
+        res = ArchitecturalIntentResult.model_validate(data)
+        try:
+            validator.validate_semantic_integrity(res, req)
+            raised = False
+        except AlternativeQualityError:
+            raised = True
+        assert raised, f"Expected AlternativeQualityError for artifact: {artifact_text}"
+
+
+def test_failed_bedroom_dressing_browser_response_is_quality_error() -> None:
+    req = request_with_space_names(
+        (
+            "Ebeveyn yatak odası ile giyinme alanı için iki farklı düzenleme yaklaşımı "
+            "öner. Birinde mahremiyet, diğerinde kullanım kolaylığı daha baskın olsun."
+        ),
+        ["Ebeveyn Yatak Odası", "Giyinme Alanı"],
+    )
+    browser_output_msg = (
+        "Alternatif 1 - Mahremiyet odaklı: Ebeveyn yatak odası ile giyinme alanı "
+        "arasındaki fiziksel mesafe artırılarak, kişisel alanın korunur. Giyinme alanı, "
+        "yatak odasına göre sınırlı ve özel bir kullanım alanı olarak tanımlanır. "
+        "Alternatif 2 - Kullanım kolaylığı odaklı: Giyinme alanı, yatak odasına ilişkili "
+        "bir kurgu yer alır ve günlük hareketlerin öncelik verilmesiyle desteklenir. Bu "
+        "yapı, ebeveynlerin hemen yanında giyinme yapmasını kolaylaştırır. Temel fark: "
+        "Birinci yaklaşım mahremiyeti, ikinci yaklaşım kullanım kolaylığını öncelik verir."
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": browser_output_msg,
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+
+    validator = ArchitecturalIntentPolicyValidator()
+    with pytest.raises(AlternativeQualityError):
+        validator.validate_semantic_integrity(ArchitecturalIntentResult.model_validate(data), req)
+
+
+def test_browser_regression_v2_kurgudaligi_kurgu_siralanma() -> None:
+    req = conversation_request().model_copy(
+        update={
+            "message": (
+                "Salon ile mutfak arasındaki ilişkiyi güçlendirmek istiyorum. "
+                "Teras da günlük oturma ve sohbet alanına yakın olsun. "
+                "Bana iki farklı düzenleme alternatifi öner."
+            )
+        }
+    )
+    browser_output_msg = (
+        "Alternatif 1 - Salon ile mutfak arasındaki ilişkiyi doğrudan güçlendirmek "
+        "için iki alanın ilişkili bir kurgu sıralanma ile birleştirilmesi önerilir. "
+        "Bu yapı, günlük etkileşimleri kolaylaştırır ve yaşam alanlarının birbirine ait "
+        "olduğunu vurgular.\n"
+        "Alternatif 2 - Salon ve mutfak, birbirinden ayrılmış ama bütünleşik bir kurguyla "
+        "bağlanan bir yapıda yer alır. Bu yaklaşım, her bir alanın kendi içsel bütünlüğünü "
+        "korurken aynı zamanda ilişkili kurguda olma hissini yaratır.\n"
+        "Temel fark: İlk alternatif, alanların fiziksel ilişkili kurgudalığını doğrudan "
+        "ortaya koyar; ikincisi ise birbirine ait olma hissini koruyarak, her bir alanın "
+        "özgün karakterini korur."
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": browser_output_msg,
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+    res = ArchitecturalIntentResult.model_validate(data)
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize_compare(res, req)
+    with pytest.raises(AlternativeQualityError):
+        validator.validate_semantic_integrity(sanitized, req)
+
+
+def test_excessive_mechanical_phrase_repetition_rejected() -> None:
+    req = conversation_request().model_copy(
+        update={"message": "İki farklı düzenleme alternatifi öner."}
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": (
+                "Alternatif 1 - İlişkili kurgu yaklaşımı: Salon ve mutfak ilişkili bir kurguda "
+                "ele alınır. Teras da ilişkili kurguyla bağlanır.\n"
+                "Alternatif 2 - Esnek kurgu: Alanlar ilişkili kurguda değerlendirilir.\n"
+                "Temel fark: Birinci ilişkili kurguyu, ikinci esnekliği öne çıkarır."
+            ),
+        }
+    )
+    res = ArchitecturalIntentResult.model_validate(data)
+    validator = ArchitecturalIntentPolicyValidator()
+    with pytest.raises(AlternativeQualityError, match="mekanik kalıp"):
+        validator.validate_semantic_integrity(res, req)
+
+
+def test_sanitize_compare_preserves_clean_text() -> None:
+    req = conversation_request()
+    clean_message = (
+        "Alternatif 1 - Açık bütünleşme: Salon ve mutfak arasındaki görsel ve "
+        "işlevsel ilişki güçlendirilir. Teras, ortak yaşamla ilişkilendirilir.\n"
+        "Alternatif 2 - Kontrollü ayrışma: Her alanın kendi bütünlüğü korunur.\n"
+        "Temel fark: Birinci süreklilik, ikinci esneklik sağlar."
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": clean_message,
+        }
+    )
+    res = ArchitecturalIntentResult.model_validate(data)
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize_compare(res, req)
+    assert sanitized.assistant_message == clean_message
