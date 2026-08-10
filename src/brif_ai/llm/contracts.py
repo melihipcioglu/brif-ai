@@ -37,6 +37,48 @@ class IntentType(StrEnum):
     UNKNOWN = "unknown"
 
 
+class CompareMode(StrEnum):
+    OPEN_ALTERNATIVES = "open_alternatives"
+    EXPLICIT_AXES = "explicit_axes"
+    ENTITY_CHOICE = "entity_choice"
+
+
+class CompareApproach(StrEnum):
+    INTEGRATED_FLOW = "integrated_flow"
+    PARALLEL_RHYTHMS = "parallel_rhythms"
+    ADAPTABLE_USE = "adaptable_use"
+    ORDERED_USE = "ordered_use"
+    SHARED_ACTIVITY = "shared_activity"
+    INDIVIDUAL_BALANCE = "individual_balance"
+    PRIVACY_BALANCE = "privacy_balance"
+    AXIS_1 = "axis_1"
+    AXIS_2 = "axis_2"
+    CHOICE_1 = "choice_1"
+    CHOICE_2 = "choice_2"
+
+
+class CompareOutcome(StrEnum):
+    CONTINUOUS_INTERACTION = "continuous_interaction"
+    INDEPENDENT_SIMULTANEOUS_USE = "independent_simultaneous_use"
+    ADAPTABLE_DAILY_USE = "adaptable_daily_use"
+    PREDICTABLE_ROUTINE = "predictable_routine"
+    CONTROLLED_PERSONAL_USE = "controlled_personal_use"
+    EASY_DAILY_USE = "easy_daily_use"
+    FOCUSED_ACTIVITY = "focused_activity"
+    SHARED_INTERACTION = "shared_interaction"
+    ORDER_AND_OVERSIGHT = "order_and_oversight"
+    FLEXIBLE_SELF_DIRECTED_USE = "flexible_self_directed_use"
+    EXPRESSIVE_CHARACTER = "expressive_character"
+    CALM_SIMPLICITY = "calm_simplicity"
+    INDIVIDUAL_PRODUCTIVITY = "individual_productivity"
+    COLLABORATIVE_PRODUCTIVITY = "collaborative_productivity"
+    INDOOR_CONTINUITY = "indoor_continuity"
+    OUTDOOR_EXPERIENCE = "outdoor_experience"
+    OPEN_SHARED_USE = "open_shared_use"
+    SEPARATED_CONTROLLED_USE = "separated_controlled_use"
+    CONTEXTUAL_PRIORITY = "contextual_priority"
+
+
 class ActionType(StrEnum):
     HIGHLIGHT_ENTITY = "highlight_entity"
     FOCUS_ENTITY = "focus_entity"
@@ -175,29 +217,13 @@ class ArchitecturalIntentResult(StrictContract):
         return self
 
 
-class CompactCompareResult(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    assistant_message: NonEmptyString
-    intent: Literal[IntentType.COMPARE_ALTERNATIVES] = IntentType.COMPARE_ALTERNATIVES
-    confidence: float = Field(default=0.95, ge=0, le=1)
-
-    def to_full_result(self) -> ArchitecturalIntentResult:
-        return ArchitecturalIntentResult(
-            assistant_message=self.assistant_message,
-            intent=IntentType.COMPARE_ALTERNATIVES,
-            target=EntityTarget(),
-            user_requirements=[],
-            interpreted_priorities=[],
-            constraints_to_check=[],
-            missing_information=[],
-            proposed_actions=[],
-            needs_follow_up=False,
-            follow_up_question=None,
-            needs_user_confirmation=False,
-            confidence=self.confidence,
-            warnings=[],
-        )
+class CompareDecisionPlan(StrictContract):
+    mode: CompareMode
+    approach_1: CompareApproach
+    outcome_1: CompareOutcome
+    approach_2: CompareApproach
+    outcome_2: CompareOutcome
+    confidence: float = Field(ge=0, le=1)
 
 
 class ProviderHealth(StrictContract):

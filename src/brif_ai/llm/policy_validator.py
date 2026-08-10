@@ -296,6 +296,8 @@ def is_compare_request(request_or_msg: ConversationRequest | str) -> bool:
             "iki farklı",
             "iki yaklaşım",
             "iki ayrı yaklaşım",
+            "iki kullanım yaklaşımı",
+            "iki düzenleme yaklaşımı",
             "2 alternatif",
             "2 yaklaşım",
             "düzenleme alternatifi",
@@ -546,7 +548,7 @@ RELATIVE_SPATIAL_PATTERNS: dict[str, re.Pattern[str]] = {
     "opposite": re.compile(
         _TURKISH_WORD_BOUND_PRE
         + r"karşı(?:sında|sından|sına|sını|sının|daki|sındaki|tarafında|tarafına|tarafından|"
-        + r"tarafta)?"
+        + r"tarafta)"
         + _COPULA
         + _TURKISH_WORD_BOUND_POST,
         re.IGNORECASE,
@@ -649,6 +651,12 @@ _PAIR_SPATIAL_EVIDENCE_PATTERN = re.compile(
 _PAIR_SPECIFIC_CATEGORIES = frozenset(
     {"proximity_distance", "immediate_neighbor", "neighbor_relative"}
 )
+_NON_SPATIAL_PROXIMITY_PATTERN = re.compile(
+    r"(?:aile\s+üyeleri|kullanıcılar|insanlar|kişiler|çocuklar|öğrenciler)"
+    r"[^.!?;\n]{0,50}\bbirbirine\s+(?:daha\s+)?yakın\b"
+    r"|\bdiğerlerinden\s+uzak\s+kal",
+    re.IGNORECASE,
+)
 _ENTITY_WORD_PATTERN = re.compile(r"[A-Za-zÇĞİÖŞÜçğıöşü]+")
 _GENERIC_SPACE_HEADS = frozenset({"alan", "oda", "mekân", "mekan", "bölüm"})
 _ENTITY_ALIAS_STOP_WORDS = frozenset(
@@ -680,7 +688,7 @@ _OUTER_CASE_SUFFIXES = (
 )
 _ENTITY_ALIAS_SUFFIX = (
     r"(?:larından|lerinden|larının|lerinin|sından|sinden|sundan|sünden|sının|sinin|"
-    r"sunun|sünün|ndan|nden|nın|nin|nun|nün|yla|yle|na|ne|nda|nde|dan|den|ta|te|"
+    r"sunun|sünün|ndan|nden|nın|nin|nun|nün|ın|in|un|ün|yla|yle|na|ne|nda|nde|dan|den|ta|te|"
     r"ya|ye|ı|i|u|ü|a|e)?"
 )
 
@@ -890,6 +898,10 @@ def validate_relative_spatial_claims(
         if category in _PAIR_SPECIFIC_CATEGORIES:
             for clause in re.split(r"[.!?;\n]", combined):
                 if pattern.search(clause):
+                    if category == "proximity_distance" and _NON_SPATIAL_PROXIMITY_PATTERN.search(
+                        clause
+                    ):
+                        continue
                     if not trusted_prox_pairs:
                         model_claims.add(category)
                         break
@@ -1455,7 +1467,11 @@ class ArchitecturalIntentPolicyValidator:
         request: ConversationRequest,
     ) -> ArchitecturalIntentResult:
         result = self._normalize_intent(result, request)
-        result = self.sanitize(result, request)
+        result = (
+            self.sanitize_compare(result, request)
+            if is_compare_request(request)
+            else self.sanitize(result, request)
+        )
         self.validate_semantic_integrity(result, request)
         active = request.active_context
         target = result.target

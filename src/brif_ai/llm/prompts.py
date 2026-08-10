@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from brif_ai.llm.compare_engine import CompareFailureCategory, CompareRequestAnalysis
 from brif_ai.llm.contracts import ActiveContextSnapshot, ConversationRequest, VisibleEntity
 
 SYSTEM_PROMPT = (
@@ -68,40 +69,75 @@ Aşağıdaki kurallara KESİNLİKLE UY:
 Yanıtı kısa tut, ancak şemanın zorunlu alanlarının tamamını üret.
 """
 
-COMPARE_SYSTEM_PROMPT = (
-    "Sen BRIF.AI mimari niyet yorumlayıcısısın.\n"
-    "Görev, kullanıcının istediği iki tercih yaklaşımını karar ilkesi ve kullanıcı deneyimi "
-    "düzeyinde karşılaştırmaktır.\n"
-    "Yanıt yalnız JSON Schema ile tam uyumlu tek bir JSON nesnesi olsun.\n"
-    'intent her zaman "compare_alternatives" olsun.\n'
-    "assistant_message toplam üç kısa cümleden oluşsun. Aşağıdaki cümle yapısını aynen koru; "
-    "yalnız açılı parantezleri doldur:\n"
-    "Alternatif 1 - <ilk tercih>: Bu seçenekte <ilk tercih> öne çıkar; kullanıcı için "
-    "<soyut fayda> amaçlanır.\n"
-    "Alternatif 2 - <ikinci tercih>: Bu seçenekte <ikinci tercih> öne çıkar; kullanıcı için "
-    "<soyut fayda> amaçlanır.\n"
-    "Temel fark: İlk seçenek <ilk tercih> odaklıdır; ikinci seçenek <ikinci tercih> odaklıdır.\n"
-    "Tercih adlarını ve soyut faydaları kullanıcının sözlerinden türet.\n"
-    "Cümle yapısını değiştirme ve başka bilgi ekleme.\n"
-    "Kısa, doğal, dilbilgisel olarak doğru ve profesyonel Türkçe kullan.\n"
-    "confidence 0 ile 1 arasında bir sayı olsun.\n"
-)
+COMPARE_SYSTEM_PROMPT = """Sen BRIF.AI için yalnız enum değerlerinden oluşan küçük bir
+mimari karar planı seçersin. Son kullanıcı metni yazma. Yanıt yalnız çağrının JSON Schema
+alanıyla tam uyumlu tek bir JSON nesnesi olsun. mode compare_context içindeki mode ile aynı olsun.
 
-COMPARE_REPAIR_PROMPT = (
-    "Sen BRIF.AI mimari niyet yorumlayıcısısın.\n"
-    "İlk yanıt doğrulanamadı. Yalnız JSON Schema ile uyumlu tek bir JSON nesnesi üret.\n"
-    'intent her zaman "compare_alternatives" olsun.\n'
-    "assistant_message toplam üç kısa cümleden ve şu üç bölümden oluşsun:\n"
-    "Aşağıdaki cümle yapısını aynen koru; yalnız açılı parantezleri doldur:\n"
-    "Alternatif 1 - <ilk tercih>: Bu seçenekte <ilk tercih> öne çıkar; kullanıcı için "
-    "<soyut fayda> amaçlanır.\n"
-    "Alternatif 2 - <ikinci tercih>: Bu seçenekte <ikinci tercih> öne çıkar; kullanıcı için "
-    "<soyut fayda> amaçlanır.\n"
-    "Temel fark: İlk seçenek <ilk tercih> odaklıdır; ikinci seçenek <ikinci tercih> odaklıdır.\n"
-    "Tercih adlarını ve soyut faydaları kullanıcının sözlerinden türet.\n"
-    "Cümle yapısını değiştirme ve başka bilgi ekleme.\n"
-    "Kısa, doğal, dilbilgisel olarak doğru ve profesyonel Türkçe kullan.\n"
-)
+open_alternatives için yalnız şu yaklaşım-sonuç eşleşmelerini kullan:
+- integrated_flow -> continuous_interaction
+- parallel_rhythms -> independent_simultaneous_use
+- adaptable_use -> adaptable_daily_use
+- ordered_use -> predictable_routine
+- shared_activity -> shared_interaction
+- individual_balance -> controlled_personal_use
+- privacy_balance -> controlled_personal_use
+İki yaklaşım farklı olsun ve her outcome kendi approach değeriyle yukarıdaki gibi eşleşsin.
+approach_1 ve approach_2 değerlerini compare_context içindeki recommended_approach_1 ve
+recommended_approach_2 değerleriyle aynen eşleştir.
+
+explicit_axes için approach_1=axis_1 ve approach_2=axis_2 kullan.
+outcome_1 ve outcome_2 değerlerini compare_context içindeki outcome_hint_1 ve outcome_hint_2
+değerleriyle aynen eşleştir.
+
+entity_choice için approach_1=choice_1 ve approach_2=choice_2 kullan. İki outcome farklı olsun.
+Seçeneklerin kullanım karakterine en uygun iki sonucu seç; fiziksel yerleşim çıkarımı yapma.
+indoor_continuity iç kullanım sürekliliğini, outdoor_experience açık hava deneyimini,
+open_shared_use açık ve ortak kullanımı, separated_controlled_use ayrışmış kontrollü kullanımı,
+focused_activity odaklanmayı, shared_interaction sosyal etkileşimi anlatır.
+
+confidence 0 ile 1 arasında bir sayı olsun. Şema dışı alan, açıklama, Markdown veya serbest metin
+ekleme. subject_labels, axis ve choice değerlerini çıktı alanlarına kopyalama.
+"""
+
+COMPARE_REPAIR_PROMPT = f"""{COMPARE_SYSTEM_PROMPT}
+İlk plan şema veya semantik doğrulamadan geçmedi.
+Ham ilk yanıtı görmeden, aynı compare_context için yeni ve bağımsız bir plan üret.
+Yalnız bildirilen hata sınıfını düzelt; güvenlik kurallarını gevşetme.
+"""
+
+
+def build_compare_repair_prompt(category: CompareFailureCategory) -> str:
+    """Add only a safe failure category, never raw model or user text."""
+
+    guidance = {
+        CompareFailureCategory.SCHEMA_INVALID: "Zorunlu alanların tamamını doğru türlerle üret.",
+        CompareFailureCategory.MODE_MISMATCH: "mode değerini compare_context ile aynı yap.",
+        CompareFailureCategory.SEMANTIC_SUBJECT_SPLIT: (
+            "Subject adlarını çıktı alanına yazma; yalnız izin verilen enum değerlerini kullan."
+        ),
+        CompareFailureCategory.AXIS_MISMATCH: (
+            "approach değerlerini axis_1 ve axis_2, outcome değerlerini iki outcome_hint yap."
+        ),
+        CompareFailureCategory.ENTITY_CHOICE_MISMATCH: (
+            "approach_1=choice_1 ve approach_2=choice_2 yap; iki outcome farklı olsun."
+        ),
+        CompareFailureCategory.UNSUPPORTED_SPATIAL_CLAIM: (
+            "Kullanıcının vermediği hiçbir fiziksel olguyu plan alanlarına ekleme."
+        ),
+        CompareFailureCategory.LANGUAGE_QUALITY: (
+            "Serbest metin üretme; yalnız şemadaki enum ve confidence değerlerini yaz."
+        ),
+        CompareFailureCategory.ALTERNATIVES_TOO_SIMILAR: (
+            "İki yaklaşımın karar ilkesi ve kullanıcı sonucu belirgin biçimde ayrı olsun."
+        ),
+        CompareFailureCategory.KEY_DIFFERENCE_INVALID: (
+            "open modunda her outcome değerini seçilen approach ile verilen eşleme listesine uydur."
+        ),
+        CompareFailureCategory.UNSUPPORTED_QUANTITATIVE_CLAIM: (
+            "Metin alanlarına sayı, yüzde, skor veya güven değeri ekleme."
+        ),
+    }[category]
+    return f"{COMPARE_REPAIR_PROMPT}\nHata sınıfı: {category.value}\nDüzeltme: {guidance}\n"
 
 
 def _is_in_active_scope(request: ConversationRequest, entity: VisibleEntity) -> bool:
@@ -151,5 +187,30 @@ def build_user_prompt(request: ConversationRequest) -> str:
             }
             for proposal in request.pending_proposals
         ],
+    }
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+
+
+def build_compare_user_prompt(
+    request: ConversationRequest,
+    analysis: CompareRequestAnalysis,
+) -> str:
+    """Serialize only trusted compare context; mutation scope identifiers are unnecessary."""
+
+    active = request.active_context
+    payload = {
+        "message": request.message,
+        "visible_entity_names": [
+            entity.name
+            for entity in request.visible_entities
+            if _is_in_active_scope(request, entity)
+        ],
+        "conversation_summary": request.conversation_summary,
+        "current_decisions": request.current_decisions,
+        "pending_decision_descriptions": [
+            proposal.action.description for proposal in request.pending_proposals
+        ],
+        "compare_context": analysis.prompt_payload(),
+        "context_generation": active.generation_id,
     }
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))

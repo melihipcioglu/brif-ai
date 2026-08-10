@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from typing import Any
 
 import httpx
 import pytest
@@ -347,30 +348,21 @@ def compare_request() -> ConversationRequest:
     return ConversationRequest.model_validate(data)
 
 
+def valid_compare_plan_data() -> dict[str, Any]:
+    return {
+        "mode": "open_alternatives",
+        "approach_1": "integrated_flow",
+        "outcome_1": "continuous_interaction",
+        "approach_2": "parallel_rhythms",
+        "outcome_2": "independent_simultaneous_use",
+        "confidence": 0.95,
+    }
+
+
 def test_quality_initial_response_uses_exactly_one_ollama_call() -> None:
     chat_calls = 0
 
-    valid_response = {
-        "intent": "compare_alternatives",
-        "assistant_message": (
-            "Alternatif 1 — Açık bütünleşme: Salon ve mutfak günlük kullanımda daha güçlü "
-            "ilişki kurar. Teras ortak yaşamın devamı gibi ele alınır.\n\n"
-            "Alternatif 2 — Kontrollü ayrışma: Salon ve mutfak ilişkisi korunur ancak gerektiğinde "
-            "ayrışabilecek bir kurgu düşünülür. Teras iki kullanımın ortak alanı olur.\n\n"
-            "Temel fark: Birinci yaklaşım sürekliliği, ikinci yaklaşım esnekliği öne çıkarır."
-        ),
-        "confidence": 0.95,
-        "constraints_to_check": [],
-        "follow_up_question": None,
-        "interpreted_priorities": [],
-        "missing_information": [],
-        "needs_follow_up": False,
-        "needs_user_confirmation": False,
-        "proposed_actions": [],
-        "target": {"entity_id": None, "zone_id": "zone_private"},
-        "user_requirements": [],
-        "warnings": [],
-    }
+    valid_response = valid_compare_plan_data()
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal chat_calls
@@ -390,6 +382,9 @@ def test_quality_initial_response_uses_exactly_one_ollama_call() -> None:
             assert res.proposed_actions == []
             assert res.needs_user_confirmation is False
             assert res.needs_follow_up is False
+            assert provider.last_chat_call_count == 1
+            assert len(provider.last_attempt_records) == 1
+            assert provider.last_attempt_records[0].failure_category is None
 
     asyncio.run(run())
     assert chat_calls == 1
@@ -398,29 +393,10 @@ def test_quality_initial_response_uses_exactly_one_ollama_call() -> None:
 def test_low_quality_initial_triggers_exactly_one_repair_and_succeeds() -> None:
     chat_calls = 0
 
-    bad_initial = valid_result_data()
-    bad_initial.update(
-        {
-            "intent": "compare_alternatives",
-            "assistant_message": "Alternatif 1: Tekdüze. Alternatif 2: Tekdüze.",
-            "proposed_actions": [],
-        }
-    )
-    good_repair = valid_result_data()
-    good_repair.update(
-        {
-            "intent": "compare_alternatives",
-            "assistant_message": (
-                "Alternatif 1 — Açık Bütünsellik: Salon ve mutfak akıcı birleştirilir.\n\n"
-                "Alternatif 2 — Bölüntülü Düzen: Salon ve mutfağa esnek bölüntü konur.\n\n"
-                "Temel fark: Birinci seçenek sürekliliği, ikinci seçenek ayrışmayı hedefler."
-            ),
-            "proposed_actions": [],
-            "needs_user_confirmation": False,
-            "needs_follow_up": False,
-            "target": {"entity_id": None, "zone_id": "zone_private"},
-        }
-    )
+    bad_initial = valid_compare_plan_data()
+    bad_initial["approach_2"] = bad_initial["approach_1"]
+    bad_initial["outcome_2"] = bad_initial["outcome_1"]
+    good_repair = valid_compare_plan_data()
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal chat_calls
@@ -440,6 +416,11 @@ def test_low_quality_initial_triggers_exactly_one_repair_and_succeeds() -> None:
             assert res.intent.value == "compare_alternatives"
             assert res.proposed_actions == []
             assert res.needs_user_confirmation is False
+            assert provider.last_chat_call_count == 2
+            assert [record.failure_category for record in provider.last_attempt_records] == [
+                "ALTERNATIVES_TOO_SIMILAR",
+                None,
+            ]
 
     asyncio.run(run())
     assert chat_calls == 2
@@ -448,14 +429,9 @@ def test_low_quality_initial_triggers_exactly_one_repair_and_succeeds() -> None:
 def test_low_quality_initial_and_low_quality_repair_raises_provider_response_error() -> None:
     chat_calls = 0
 
-    bad_response = valid_result_data()
-    bad_response.update(
-        {
-            "intent": "compare_alternatives",
-            "assistant_message": "Aynı olan iki alternatif.",
-            "proposed_actions": [],
-        }
-    )
+    bad_response = valid_compare_plan_data()
+    bad_response["approach_2"] = bad_response["approach_1"]
+    bad_response["outcome_2"] = bad_response["outcome_1"]
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal chat_calls
@@ -472,6 +448,8 @@ def test_low_quality_initial_and_low_quality_repair_raises_provider_response_err
             schema = ArchitecturalIntentResult.model_json_schema()
             with pytest.raises(ProviderResponseError, match="doğrulanabilir bir mimari niyet"):
                 await provider.interpret(compare_request(), schema)
+            assert provider.last_chat_call_count == 2
+            assert len(provider.last_attempt_records) == 2
 
     asyncio.run(run())
     assert chat_calls == 2
@@ -480,15 +458,7 @@ def test_low_quality_initial_and_low_quality_repair_raises_provider_response_err
 def test_sanitize_and_quality_validator_preserve_structured_target_and_action_fields() -> None:
     chat_calls = 0
 
-    response_data = {
-        "intent": "compare_alternatives",
-        "assistant_message": (
-            "Alternatif 1 — Şeffaf Seperatör: Salon ile mutfak arasına cam panel konur.\n\n"
-            "Alternatif 2 — Geniş Geçiş: İki alan geniş açıklıkla birbirine bağlanır.\n\n"
-            "Temel fark: Alternatif 1 esnek bölüntü, Alternatif 2 kesintisiz alan sunar."
-        ),
-        "confidence": 0.9,
-    }
+    response_data = valid_compare_plan_data()
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal chat_calls
@@ -496,9 +466,11 @@ def test_sanitize_and_quality_validator_preserve_structured_target_and_action_fi
             return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
         chat_calls += 1
         payload = json.loads(request.content.decode("utf-8"))
-        # Verify compact schema format is sent for compare requests
+        # Verify structured decision-plan schema is sent for compare requests.
         assert "format" in payload
-        assert "assistant_message" in payload["format"]["properties"]
+        assert "assistant_message" not in payload["format"]["properties"]
+        assert "approach_1" in payload["format"]["properties"]
+        assert "outcome_2" in payload["format"]["properties"]
         return httpx.Response(200, json={"message": {"content": json.dumps(response_data)}})
 
     async def run() -> None:
@@ -555,31 +527,15 @@ def test_other_intents_use_full_schema() -> None:
     assert chat_calls == 1
 
 
-def test_compare_unsupported_compass_triggers_repair_not_sanitize() -> None:
-    """Compare response with unsupported compass direction should trigger repair, not sanitize."""
+def test_compare_free_text_compass_injection_triggers_repair_not_sanitize() -> None:
+    """The enum-only schema rejects injected public text before rendering."""
     chat_calls = 0
 
-    bad_initial = {
-        "intent": "compare_alternatives",
-        "assistant_message": (
-            "Alternatif 1 - Doğu Yönelimli: Mutfak salonun doğusundadır. "
-            "Bu yerleşim gün ışığını artırır.\n"
-            "Alternatif 2 - Merkez Odaklı: Salon merkeze alınır.\n"
-            "Temel fark: Birinci yönelimi, ikinci merkeziliği öne çıkarır."
-        ),
-        "confidence": 0.8,
-    }
-    good_repair = {
-        "intent": "compare_alternatives",
-        "assistant_message": (
-            "Alternatif 1 - Açık bütünleşme: Salon ve mutfak günlük kullanımda daha güçlü "
-            "ilişki kurar. Teras ortak yaşamın devamı gibi ele alınır.\n"
-            "Alternatif 2 - Kontrollü ayrışma: Salon ve mutfak ilişkisi korunur ancak gerektiğinde "
-            "ayrışabilecek bir kurgu düşünülür.\n"
-            "Temel fark: Birinci yaklaşım sürekliliği, ikinci yaklaşım esnekliği öne çıkarır."
-        ),
-        "confidence": 0.9,
-    }
+    bad_initial = valid_compare_plan_data()
+    bad_initial["summary_1"] = (
+        "Mutfak salonun doğusunda kullanılarak gündelik yaşam akışı belirgin biçimde desteklenir."
+    )
+    good_repair = valid_compare_plan_data()
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal chat_calls
@@ -603,30 +559,15 @@ def test_compare_unsupported_compass_triggers_repair_not_sanitize() -> None:
     assert chat_calls == 2  # initial rejected, repair succeeded
 
 
-def test_compare_unsupported_shared_wall_triggers_repair() -> None:
-    """Compare response with shared wall claim should trigger repair, not rewrite."""
+def test_compare_free_text_shared_wall_injection_triggers_repair() -> None:
+    """The enum-only schema cannot carry a shared-wall hallucination."""
     chat_calls = 0
 
-    bad_initial = {
-        "intent": "compare_alternatives",
-        "assistant_message": (
-            "Alternatif 1 - Birleşik Duvar: Salon ile mutfak ortak bir duvar paylaşır. "
-            "Bu yapı geçirgenliği artırır.\n"
-            "Alternatif 2 - Bağımsız Alanlar: Her alan kendi sınırına sahiptir.\n"
-            "Temel fark: Birinci fiziksel birliği, ikinci bağımsızlığı öne çıkarır."
-        ),
-        "confidence": 0.8,
-    }
-    good_repair = {
-        "intent": "compare_alternatives",
-        "assistant_message": (
-            "Alternatif 1 - Açık bütünleşme: Salon ve mutfak günlük kullanımda daha güçlü "
-            "ilişki kurar.\n"
-            "Alternatif 2 - Kontrollü ayrışma: Her alan kendi bütünlüğünü korur.\n"
-            "Temel fark: Birinci yaklaşım sürekliliği, ikinci esnekliği öne çıkarır."
-        ),
-        "confidence": 0.9,
-    }
+    bad_initial = valid_compare_plan_data()
+    bad_initial["summary_1"] = (
+        "Salon ile mutfak ortak bir duvar paylaşarak gündelik işleyişi birlikte destekler."
+    )
+    good_repair = valid_compare_plan_data()
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal chat_calls
@@ -653,31 +594,16 @@ def test_compare_unsupported_shared_wall_triggers_repair() -> None:
     assert chat_calls == 2
 
 
-def test_compare_unsupported_proximity_triggers_repair() -> None:
-    """Model claiming untrusted proximity pair should trigger repair."""
+def test_compare_free_text_proximity_injection_triggers_repair() -> None:
+    """The enum-only schema rejects an untrusted proximity sentence."""
     chat_calls = 0
 
     # User says 'Teras salona yakın olsun', model says 'Mutfak salona yakındır' (untrusted pair)
-    bad_initial = {
-        "intent": "compare_alternatives",
-        "assistant_message": (
-            "Alternatif 1 - Mutfak ile salon: Mutfak salona yakındır ve günlük akışı "
-            "destekler.\n"
-            "Alternatif 2 - Ayrık düzen: Her alan kendi bağlamında değerlendirilir.\n"
-            "Temel fark: Birinci fiziksel yakınlığı, ikinci bağımsızlığı tercih eder."
-        ),
-        "confidence": 0.8,
-    }
-    good_repair = {
-        "intent": "compare_alternatives",
-        "assistant_message": (
-            "Alternatif 1 - Açık bütünleşme: Salon ve mutfak arasındaki ilişki güçlendirilir. "
-            "Teras ortak yaşamla bütünleşir.\n"
-            "Alternatif 2 - Kontrollü ayrışma: Her alanın özgün karakteri korunur.\n"
-            "Temel fark: Birinci yaklaşım birliği, ikinci özerkliği vurgular."
-        ),
-        "confidence": 0.9,
-    }
+    bad_initial = valid_compare_plan_data()
+    bad_initial["summary_1"] = (
+        "Mutfak salona yakındır ve gündelik yaşam akışı belirgin biçimde desteklenir."
+    )
+    good_repair = valid_compare_plan_data()
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal chat_calls
@@ -709,20 +635,10 @@ def test_compare_unsupported_proximity_triggers_repair() -> None:
 
 
 def test_compare_trusted_proximity_accepted() -> None:
-    """Compare response with trusted proximity pair should be accepted without repair."""
+    """The renderer preserves a trusted pair while the model returns only enums."""
     chat_calls = 0
 
-    response = {
-        "intent": "compare_alternatives",
-        "assistant_message": (
-            "Alternatif 1 - Bütünleşik yaklaşım: Teras salonun yakınında "
-            "konumlandırılarak ortak yaşam alanı desteklenir.\n"
-            "Alternatif 2 - Özerk yaklaşım: Teras kendi başına bağımsız bir kullanım "
-            "alanı olarak kurgulanır.\n"
-            "Temel fark: Birinci yaklaşım sürekliliği, ikinci bağımsızlığı öne çıkarır."
-        ),
-        "confidence": 0.9,
-    }
+    response = valid_compare_plan_data()
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal chat_calls
@@ -737,16 +653,24 @@ def test_compare_trusted_proximity_accepted() -> None:
         ) as client:
             provider = OllamaProvider(settings(), client)
             schema = ArchitecturalIntentResult.model_json_schema()
-            req = compare_request().model_copy(
+            base_request = compare_request()
+            active = base_request.active_context
+            salon = base_request.visible_entities[0].model_copy(
+                update={"level_id": active.level_id, "zone_id": active.zone_id}
+            )
+            teras = salon.model_copy(update={"entity_id": "space_teras", "name": "Teras"})
+            req = base_request.model_copy(
                 update={
                     "message": (
                         "Teras salona yakın olsun. Bana iki farklı düzenleme alternatifi öner."
-                    )
+                    ),
+                    "visible_entities": [teras, salon],
                 }
             )
             res = await provider.interpret(req, schema)
             assert res.intent.value == "compare_alternatives"
             assert res.proposed_actions == []
+            assert res.assistant_message.count("yakın") == 2
 
     asyncio.run(run())
     assert chat_calls == 1  # No repair needed

@@ -1408,6 +1408,8 @@ def test_abstract_priority_increase_is_not_a_distance_false_positive(claim: str)
         "Çalışma alanı için iki yaklaşım öner.",
         "Çalışma alanı için iki ayrı yaklaşım öner.",
         "Çalışma alanı için 2 yaklaşım öner.",
+        "Oyun alanı için iki kullanım yaklaşımı öner.",
+        "Fuaye için iki düzenleme yaklaşımı öner.",
     ],
 )
 def test_generic_two_approach_request_uses_compare_path(message: str) -> None:
