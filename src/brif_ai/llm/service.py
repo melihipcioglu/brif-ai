@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from brif_ai.brief.models.snapshot import BriefSnapshot
+from brif_ai.brief.mutation import ProposedBriefMutation, apply_approved_brief_mutation
 from brif_ai.llm.contracts import (
     ArchitecturalIntentResult,
+    BriefMutationApprovalRecord,
     ConversationInterpretationResponse,
     ConversationRequest,
     HealthResponse,
@@ -176,3 +179,42 @@ class LocalLLMConversationService:
             context_fingerprint=current_fingerprint,
             proposed_action=proposed_action,
         )
+
+    @staticmethod
+    def record_brief_mutation_approval(
+        proposed_mutation: ProposedBriefMutation,
+        proposal_fingerprint: str,
+        current_fingerprint: str,
+        proposal_generation_id: int,
+        current_generation_id: int,
+        user_message: str,
+        snapshot: BriefSnapshot,
+        *,
+        approved_at: datetime | None = None,
+    ) -> tuple[BriefSnapshot, BriefMutationApprovalRecord]:
+        LocalLLMConversationService.ensure_current_context(
+            proposal_fingerprint,
+            current_fingerprint,
+        )
+        if proposal_generation_id != current_generation_id:
+            raise StaleContextError("Eski jenerasyona ait öneri onaylanamaz.")
+
+        ts = approved_at or datetime.now(timezone.utc)  # noqa: UP017
+        new_snapshot = apply_approved_brief_mutation(
+            snapshot,
+            proposed_mutation,
+            user_message,
+            source_reference=current_fingerprint,
+            approved_at=ts,
+        )
+
+        record = BriefMutationApprovalRecord(
+            proposal_status="user_approved",
+            approved_at=ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc),  # noqa: UP017
+            context_fingerprint=current_fingerprint,
+            generation_id=current_generation_id,
+            mutation_id=proposed_mutation.mutation_id,
+            proposed_brief_mutation=proposed_mutation,
+            resulting_brief_version=new_snapshot.brief_version,
+        )
+        return new_snapshot, record

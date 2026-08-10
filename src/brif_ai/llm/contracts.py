@@ -9,6 +9,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
+from brif_ai.brief.mutation import ProposedBriefMutation
+
 if sys.version_info >= (3, 11):  # noqa: UP036
     from enum import StrEnum
 else:  # pragma: no cover - compatibility for local Python 3.10 tooling
@@ -159,11 +161,12 @@ class ConversationRequest(StrictContract):
                 raise ValueError("pending proposal context fingerprint must match active context")
             if proposal.generation_id != self.active_context.generation_id:
                 raise ValueError("pending proposal generation must match active context")
-            if not proposal.action.requires_user_confirmation:
-                raise ValueError("pending proposal must require user confirmation")
-            target_id = proposal.action.target_entity_id
-            if target_id is not None and target_id not in visible_ids:
-                raise ValueError("pending proposal target must be visible in active context")
+            if proposal.action is not None:
+                if not proposal.action.requires_user_confirmation:
+                    raise ValueError("pending proposal must require user confirmation")
+                target_id = proposal.action.target_entity_id
+                if target_id is not None and target_id not in visible_ids:
+                    raise ValueError("pending proposal target must be visible in active context")
         return self
 
 
@@ -186,7 +189,19 @@ class PendingProposalContext(StrictContract):
     status: Literal["pending_user_confirmation"] = "pending_user_confirmation"
     context_fingerprint: NonEmptyString
     generation_id: int = Field(ge=0)
-    action: ProposedAction
+    action: ProposedAction | None = None
+    brief_mutation: ProposedBriefMutation | None = None
+
+    @model_validator(mode="after")
+    def validate_proposal_content_xor(self) -> PendingProposalContext:
+        if (self.action is None and self.brief_mutation is None) or (
+            self.action is not None and self.brief_mutation is not None
+        ):
+            raise ValueError(
+                "Exactly one of action or brief_mutation must be populated "
+                "in PendingProposalContext"
+            )
+        return self
 
 
 class ArchitecturalIntentResult(StrictContract):
@@ -198,6 +213,7 @@ class ArchitecturalIntentResult(StrictContract):
     constraints_to_check: list[str]
     missing_information: list[str]
     proposed_actions: list[ProposedAction]
+    proposed_brief_mutations: list[ProposedBriefMutation] = Field(default_factory=list)
     needs_follow_up: bool
     follow_up_question: NonEmptyString | None
     needs_user_confirmation: bool
@@ -211,6 +227,12 @@ class ArchitecturalIntentResult(StrictContract):
 
         if self.proposed_actions and not self.needs_user_confirmation:
             raise ValueError("proposed actions require user confirmation")
+
+        if self.proposed_brief_mutations and not self.needs_user_confirmation:
+            raise ValueError("proposed brief mutations require user confirmation")
+
+        if self.intent is IntentType.COMPARE_ALTERNATIVES and self.proposed_brief_mutations:
+            raise ValueError("compare_alternatives cannot produce brief mutations")
 
         for action in self.proposed_actions:
             if action.action_type in PLAN_CHANGE_ACTIONS:
@@ -276,3 +298,13 @@ class ProposalApprovalRecord(StrictContract):
     approved_at: datetime
     context_fingerprint: NonEmptyString
     proposed_action: ProposedAction
+
+
+class BriefMutationApprovalRecord(StrictContract):
+    proposal_status: Literal["user_approved"] = "user_approved"
+    approved_at: datetime
+    context_fingerprint: NonEmptyString
+    generation_id: int = Field(ge=0)
+    mutation_id: NonEmptyString
+    proposed_brief_mutation: ProposedBriefMutation
+    resulting_brief_version: int = Field(ge=1)
