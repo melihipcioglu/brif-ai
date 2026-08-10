@@ -261,6 +261,26 @@ def compute_alternative_similarity(
     return max(jaccard_1gram, overlap_2gram, overlap_3gram)
 
 
+def is_compare_request(request_or_msg: ConversationRequest | str) -> bool:
+    msg = (
+        request_or_msg.message
+        if isinstance(request_or_msg, ConversationRequest)
+        else request_or_msg
+    )
+    msg_lower = msg.casefold()
+    return any(
+        kw in msg_lower
+        for kw in (
+            "alternatif",
+            "karşılaştır",
+            "seçenek",
+            "iki farklı",
+            "2 alternatif",
+            "düzenleme alternatifi",
+        )
+    )
+
+
 def validate_alternative_quality(
     result: ArchitecturalIntentResult,
     request: ConversationRequest,
@@ -669,20 +689,7 @@ class ArchitecturalIntentPolicyValidator:
 
         validate_spatial_direction_claims(result, request)
 
-        msg_lower = request.message.casefold()
-        is_compare = any(
-            kw in msg_lower
-            for kw in (
-                "alternatif",
-                "karşılaştır",
-                "seçenek",
-                "iki farklı",
-                "2 alternatif",
-                "düzenleme alternatifi",
-            )
-        )
-
-        if is_compare:
+        if is_compare_request(request):
             if result.intent != IntentType.COMPARE_ALTERNATIVES:
                 raise PolicyValidationError(
                     "Alternatif talebi için intent 'compare_alternatives' olmalıdır."

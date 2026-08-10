@@ -480,27 +480,25 @@ def test_low_quality_initial_and_low_quality_repair_raises_provider_response_err
 def test_sanitize_and_quality_validator_preserve_structured_target_and_action_fields() -> None:
     chat_calls = 0
 
-    response_data = valid_result_data()
-    response_data.update(
-        {
-            "intent": "compare_alternatives",
-            "assistant_message": (
-                "Alternatif 1 — Şeffaf Seperatör: Salon ile mutfak arasına cam panel konur.\n\n"
-                "Alternatif 2 — Geniş Geçiş: İki alan geniş açıklıkla birbirine bağlanır.\n\n"
-                "Temel fark: Alternatif 1 esnek bölüntü, Alternatif 2 kesintisiz alan sunar."
-            ),
-            "proposed_actions": [],
-            "needs_user_confirmation": False,
-            "needs_follow_up": False,
-            "target": {"entity_id": None, "zone_id": "zone_private"},
-        }
-    )
+    response_data = {
+        "intent": "compare_alternatives",
+        "assistant_message": (
+            "Alternatif 1 — Şeffaf Seperatör: Salon ile mutfak arasına cam panel konur.\n\n"
+            "Alternatif 2 — Geniş Geçiş: İki alan geniş açıklıkla birbirine bağlanır.\n\n"
+            "Temel fark: Alternatif 1 esnek bölüntü, Alternatif 2 kesintisiz alan sunar."
+        ),
+        "confidence": 0.9,
+    }
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal chat_calls
         if request.url.path == "/api/tags":
             return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
         chat_calls += 1
+        payload = json.loads(request.content.decode("utf-8"))
+        # Verify compact schema format is sent for compare requests
+        assert "format" in payload
+        assert "assistant_message" in payload["format"]["properties"]
         return httpx.Response(200, json={"message": {"content": json.dumps(response_data)}})
 
     async def run() -> None:
@@ -511,11 +509,47 @@ def test_sanitize_and_quality_validator_preserve_structured_target_and_action_fi
             schema = ArchitecturalIntentResult.model_json_schema()
             result = await provider.interpret(compare_request(), schema)
             assert result.intent.value == "compare_alternatives"
-            assert result.target.zone_id == "zone_private"
+            assert result.target.project_id is None
+            assert result.target.building_id is None
+            assert result.target.level_id is None
+            assert result.target.zone_id is None
             assert result.target.entity_id is None
+            assert result.user_requirements == []
+            assert result.interpreted_priorities == []
+            assert result.constraints_to_check == []
+            assert result.missing_information == []
             assert result.proposed_actions == []
+            assert result.warnings == []
             assert result.needs_user_confirmation is False
             assert result.needs_follow_up is False
+            assert result.follow_up_question is None
+
+    asyncio.run(run())
+    assert chat_calls == 1
+
+
+def test_other_intents_use_full_schema() -> None:
+    chat_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal chat_calls
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "local-model:latest"}]})
+        chat_calls += 1
+        payload = json.loads(request.content.decode("utf-8"))
+        # Verify full schema format is sent for non-compare requests
+        assert "format" in payload
+        assert "user_requirements" in payload["format"]["properties"]
+        return httpx.Response(200, json={"message": {"content": json.dumps(valid_result_data())}})
+
+    async def run() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:11434"
+        ) as client:
+            provider = OllamaProvider(settings(), client)
+            schema = ArchitecturalIntentResult.model_json_schema()
+            result = await provider.interpret(conversation_request(), schema)
+            assert result.intent.value == "modify_space"
 
     asyncio.run(run())
     assert chat_calls == 1

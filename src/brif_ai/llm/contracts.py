@@ -175,6 +175,31 @@ class ArchitecturalIntentResult(StrictContract):
         return self
 
 
+class CompactCompareResult(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    assistant_message: NonEmptyString
+    intent: Literal[IntentType.COMPARE_ALTERNATIVES] = IntentType.COMPARE_ALTERNATIVES
+    confidence: float = Field(default=0.95, ge=0, le=1)
+
+    def to_full_result(self) -> ArchitecturalIntentResult:
+        return ArchitecturalIntentResult(
+            assistant_message=self.assistant_message,
+            intent=IntentType.COMPARE_ALTERNATIVES,
+            target=EntityTarget(),
+            user_requirements=[],
+            interpreted_priorities=[],
+            constraints_to_check=[],
+            missing_information=[],
+            proposed_actions=[],
+            needs_follow_up=False,
+            follow_up_question=None,
+            needs_user_confirmation=False,
+            confidence=self.confidence,
+            warnings=[],
+        )
+
+
 class ProviderHealth(StrictContract):
     provider: NonEmptyString
     reachable: bool

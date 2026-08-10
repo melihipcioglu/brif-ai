@@ -13,6 +13,7 @@ from pydantic import ValidationError
 
 from brif_ai.llm.contracts import (
     ArchitecturalIntentResult,
+    CompactCompareResult,
     ConversationRequest,
     LocalModelInfo,
     ProviderHealth,
@@ -20,8 +21,15 @@ from brif_ai.llm.contracts import (
 from brif_ai.llm.policy_validator import (
     ArchitecturalIntentPolicyValidator,
     PolicyValidationError,
+    is_compare_request,
 )
-from brif_ai.llm.prompts import SCHEMA_REPAIR_PROMPT, SYSTEM_PROMPT, build_user_prompt
+from brif_ai.llm.prompts import (
+    COMPARE_REPAIR_PROMPT,
+    COMPARE_SYSTEM_PROMPT,
+    SCHEMA_REPAIR_PROMPT,
+    SYSTEM_PROMPT,
+    build_user_prompt,
+)
 from brif_ai.llm.provider import (
     ModelNotAvailableError,
     ModelNotSelectedError,
@@ -187,18 +195,26 @@ class OllamaProvider:
         if self.settings.model not in {model.name for model in installed_models}:
             raise ModelNotAvailableError("Seçilen model bu bilgisayarda kurulu değil.")
 
-        payload = self._build_chat_payload(request, output_schema)
+        is_compact = is_compare_request(request)
+        active_schema = CompactCompareResult.model_json_schema() if is_compact else output_schema
+
+        payload = self._build_chat_payload(request, active_schema, is_compact=is_compact)
         response = await self._request("POST", "/api/chat", json=payload)
         try:
-            return self._parse_chat_response(response, request, attempt="initial")
+            return self._parse_chat_response(
+                response, request, attempt="initial", is_compact=is_compact
+            )
         except ProviderResponseError:
             repair_payload = self._build_chat_payload(
                 request,
-                output_schema,
+                active_schema,
                 repair=True,
+                is_compact=is_compact,
             )
             repair_response = await self._request("POST", "/api/chat", json=repair_payload)
-            return self._parse_chat_response(repair_response, request, attempt="repair")
+            return self._parse_chat_response(
+                repair_response, request, attempt="repair", is_compact=is_compact
+            )
 
     def _build_chat_payload(
         self,
@@ -206,8 +222,13 @@ class OllamaProvider:
         output_schema: dict[str, object],
         *,
         repair: bool = False,
+        is_compact: bool = False,
     ) -> dict[str, object]:
-        system_prompt = SCHEMA_REPAIR_PROMPT if repair else SYSTEM_PROMPT
+        if is_compact:
+            system_prompt = COMPARE_REPAIR_PROMPT if repair else COMPARE_SYSTEM_PROMPT
+        else:
+            system_prompt = SCHEMA_REPAIR_PROMPT if repair else SYSTEM_PROMPT
+
         return {
             "model": self.settings.model,
             "messages": [
@@ -230,6 +251,7 @@ class OllamaProvider:
         request: ConversationRequest,
         *,
         attempt: str,
+        is_compact: bool = False,
     ) -> ArchitecturalIntentResult:
         raw_payload: object | None = None
         response_payload: dict[str, Any] = {}
@@ -245,7 +267,13 @@ class OllamaProvider:
             content = message["content"]
             if not isinstance(content, str):
                 raise TypeError("message content must be a string")
-            parsed_result = ArchitecturalIntentResult.model_validate_json(content)
+
+            if is_compact:
+                compact_result = CompactCompareResult.model_validate_json(content)
+                parsed_result = compact_result.to_full_result()
+            else:
+                parsed_result = ArchitecturalIntentResult.model_validate_json(content)
+
             sanitized = self.policy_validator.sanitize(parsed_result, request)
             self.policy_validator.validate_semantic_integrity(sanitized, request)
             return sanitized
