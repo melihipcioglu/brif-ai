@@ -70,40 +70,52 @@ Yanıtı kısa tut, ancak şemanın zorunlu alanlarının tamamını üret.
 
 COMPARE_SYSTEM_PROMPT = (
     "Sen BRIF.AI mimari niyet yorumlayıcısısın.\n"
-    "Kullanıcı iki farklı düzenleme alternatifi karşılaştırması istedi.\n"
+    "Kullanıcı iki ayrı düzenleme alternatifi istedi.\n"
     "Yanıt yalnız JSON Schema ile tam uyumlu tek bir JSON nesnesi olsun.\n"
     'intent her zaman "compare_alternatives" olsun.\n'
     "assistant_message içinde şu 3 bölümü üret:\n"
     "Alternatif 1 - <Türkçe başlık>: <tek veya iki kısa cümle>\n"
     "Alternatif 2 - <Türkçe başlık>: <tek veya iki kısa cümle>\n"
     "Temel fark: <tek kısa cümle>\n"
-    "İki alternatif fiziksel plan tarifi değil, iki farklı ORGANİZASYON İLKESİ sunmalıdır "
-    "(örneğin süreklilik/bütünleşme veya esneklik/ayrışma).\n"
-    "Kesin yerleşim tarif etme. Fiziksel mesafe, duvar, kenar, bitişiklik uydurma.\n"
-    "Kullanıcı vermediyse şunları KESİNLİKLE KULLANMA:\n"
-    "- yakın/uzak mesafe ilişkisi\n"
-    "- kuzey/güney/doğu/batı yönü\n"
-    "- sağ/sol, ön/arka, karşı\n"
-    "- bitişik, ortak kenar, ortak duvar\n"
-    "'ilişkili kurgu', 'ilişkili bir yapıda ele alınır' gibi soyut kalıpları "
-    "tekrar tekrar KULLANMA. Her cümlede farklı ve doğal ifade seç.\n"
-    "'dizayn' yerine doğal mimari Türkçe kullan.\n"
-    "Kısa, profesyonel, okunabilir cümleler kur.\n"
-    "İngilizce terim kullanma; tüm anlatım öz Türkçe ve doğal olsun.\n"
+    "Yalnız kullanıcının verdiği bilgileri temel al.\n"
+    "Fiziksel yerleşim hakkında yeni gerçekler ekleme.\n"
+    "Kesin konum, yön, mesafe veya topolojik ilişki tanımlama.\n"
+    "İki alternatifi fiziksel koordinatlarla değil, ayrı organizasyon ilkeleriyle açıkla.\n"
+    "Birinci alternatif ortak kullanımdaki süreklilik ve etkileşim gibi bir ilkeye; "
+    "ikinci alternatif esneklik ve ayrışabilir kullanım gibi ayrı bir ilkeye dayanabilir.\n"
+    "Kullanıcı tarafından belirtilen ilişkiyi yeniden yorumlayabilirsin; "
+    "fakat yeni mekânsal gerçek üretme.\n"
+    "Her cümleyi kullanım amacı, günlük deneyim, sosyal etkileşim, esneklik "
+    "veya ayrışabilir kullanım üzerinden kur.\n"
+    "Mekân adlarını fiziksel plan konumu belirten yüklemlerle kullanma.\n"
+    "Cümle yüklemlerini şu amaç dilinden seç: güçlendirilir, destekler, uyum sağlar, "
+    "korunur, öncelik verir, odaklanır.\n"
+    "Her alternatifte tam iki kısa cümle, temel ayrımda tek kısa cümle kullan.\n"
+    "assistant_message için şu örneğin kavramsal dilini temel al:\n"
+    "Alternatif 1 - Etkileşim sürekliliği: Salon ile mutfak arasındaki günlük kullanım "
+    "ilişkisi güçlendirilir. Terasın oturma ve sohbet işlevi sosyal deneyimi destekler.\n"
+    "Alternatif 2 - Esnek kullanım: Salon ile mutfak değişen kullanım senaryolarına uyum "
+    "sağlayacak biçimde ele alınır. Terasın günlük sosyal kullanım rolü korunur.\n"
+    "Temel fark: Birinci yaklaşım etkileşim sürekliliğine, ikinci yaklaşım kullanım "
+    "esnekliğine odaklanır.\n"
+    "Her alternatif için doğal ve özgün bir anlatım kullan.\n"
+    "Kısa, doğal ve profesyonel Türkçe kullan.\n"
     "confidence 0 ile 1 arasında bir sayı olsun.\n"
 )
 
 COMPARE_REPAIR_PROMPT = f"""{COMPARE_SYSTEM_PROMPT}
-Önceki yanıt geçersizdi. Aşağıdaki kurallara KESİNLİKLE UY:
-- Yalnız JSON nesnesi üret.
-- intent: "compare_alternatives"
-- Fiziksel yerleşim, mesafe, yön, sağ/sol, ön/arka, karşı, bitişik,
-  ortak kenar/duvar KESİNLİKLE UYDURMA.
-- Aynı soyut kalıbı ('ilişkili kurgu' vb.) tekrarlama.
-- 'yakınında bir konumda', 'yakın bir konumda' gibi yapay ifadeler KULLANMA.
-- Her alternatif farklı bir organizasyon ilkesi (süreklilik, esneklik, bağımsızlık vb.) sunmalı.
-- Kısa, doğal, profesyonel Türkçe cümleler kur.
-- İngilizce terim ve 'dizayn' kelimesi KULLANMA.
+İlk yanıt doğrulanamadı.
+Yalnız kullanıcının açıkça verdiği mekânsal bilgileri kullan.
+Fiziksel yerleşim hakkında yeni gerçek üretme.
+İki ayrı organizasyon yaklaşımı sun.
+Yanıt şu üç bölümden oluşsun:
+Alternatif 1 - <Türkçe başlık>: <tek veya iki kısa cümle>
+Alternatif 2 - <Türkçe başlık>: <tek veya iki kısa cümle>
+Temel fark: <tek kısa cümle>
+Kısa, doğal ve profesyonel Türkçe kullan.
+Cümle yüklemlerini şu amaç dilinden seç: güçlendirilir, destekler, uyum sağlar,
+korunur, öncelik verir, odaklanır.
+Tek bir JSON nesnesi üret.
 """
 
 

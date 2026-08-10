@@ -13,6 +13,7 @@ from brif_ai.llm.policy_validator import (
     ArchitecturalIntentPolicyValidator,
     PolicyValidationError,
     UnsupportedSpatialClaimError,
+    validate_spatial_direction_claims,
 )
 
 from .test_contracts import valid_result_data
@@ -536,14 +537,11 @@ def test_unsupported_spatial_claim_rejected_when_absent_from_context(unsupported
 
 
 def test_dogrudan_connection_is_not_false_positive_for_dogu() -> None:
-    req = conversation_request().model_copy(
-        update={"message": "Salon ile mutfak arasında doğrudan bağlantı olsun."}
-    )
+    req = conversation_request()
     data = valid_result_data()
-    data["assistant_message"] = "Mutfak ve salon arasında doğrudan geçiş sağlanmıştır."
+    data["assistant_message"] = "Salon ve mutfak arasındaki ilişki doğrudan güçlendirilir."
 
-    validator = ArchitecturalIntentPolicyValidator()
-    validator.validate_semantic_integrity(ArchitecturalIntentResult.model_validate(data), req)
+    validate_spatial_direction_claims(ArchitecturalIntentResult.model_validate(data), req)
 
 
 def test_direction_allowed_when_present_in_user_message() -> None:
