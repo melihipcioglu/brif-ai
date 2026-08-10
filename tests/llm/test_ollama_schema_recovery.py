@@ -518,4 +518,4 @@ def test_initial_response_with_unsupported_direction_succeeds_via_sanitization()
 
     assert chat_calls == 1
     assert "doğusunda" not in result.assistant_message.casefold()
-    assert "yakınında" in result.assistant_message.casefold()
+    assert "ilişkili" in result.assistant_message.casefold()

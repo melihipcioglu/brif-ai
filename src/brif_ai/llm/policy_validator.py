@@ -196,6 +196,19 @@ FORBIDDEN_FILLER_PHRASES: tuple[str, ...] = (
     "uygun konumlu",
     "uygun konum doğrultusunda",
 )
+FORBIDDEN_LANGUAGE_ARTIFACTS: tuple[str, ...] = (
+    "ele alınır ile",
+    "kurgulanır ile",
+    "yer alır ile",
+    "ayrıma ile",
+    "kontrollü ayrıma ile",
+    "ele alınırla",
+    "kurgulanırla",
+    "yer alırla",
+    "kurgulanır bir",
+    "ele alınır bir",
+    "yer alır bir",
+)
 MAX_FILLER_PHRASE_REPEATS: int = 1
 MIN_ALTERNATIVE_WORD_COUNT: int = 6
 MAX_ALTERNATIVE_WORD_COUNT: int = 70
@@ -297,6 +310,13 @@ def validate_alternative_quality(
             "Yapay dolgu ifadesi ('yakınında bir konumda' vb.) yanıtta tekrarlandı. "
             "Daha doğal Türkçe anlatım kullanılmalıdır."
         )
+
+    # 1b. Language artifact / broken Turkish phrasing check
+    for artifact in FORBIDDEN_LANGUAGE_ARTIFACTS:
+        if artifact in text_lower:
+            raise AlternativeQualityError(
+                f"Yanıtta bozuk Türkçe veya dilbilgisel yapay kalıp ('{artifact}') saptandı."
+            )
 
     # 2. Extract sections: Alternatif 1, Alternatif 2, Temel fark
     section1_match = re.search(
@@ -541,7 +561,100 @@ RELATIVE_SPATIAL_PATTERNS: dict[str, re.Pattern[str]] = {
         + _TURKISH_WORD_BOUND_POST,
         re.IGNORECASE,
     ),
+    "proximity_distance": re.compile(
+        _TURKISH_WORD_BOUND_PRE
+        + r"(?:birbirine\s+(?:çok\s+)?yakın|birbirinden\s+uzak"
+        + r"|(?:[A-Za-z0-9ıişğüçÖÇŞİĞÜ]+(?:dan|den|tan|ten|a|e|ya|ye)\s+)"
+        + r"(?:uzaktır|yakındır|uzak|yakın)"
+        + r"|(?:yakın|uzak)\s+konumda|(?:yakın|uzak)\s+bir\s+konumda"
+        + r"|yakınında\s+bir\s+konumda|daha\s+uzakta"
+        + r"|yakın\s+yerleştirilir|uzak\s+yerleştirilir"
+        + r"|(?:yakın|uzak)\s+konumdadır|uzakta\s+yer\s+alır"
+        + r"|yakın\s+kurgulanır|uzak\s+kurgulanır"
+        + r"|birbirine\s+yakındır|birbirinden\s+uzaktır)"
+        + _COPULA
+        + _TURKISH_WORD_BOUND_POST,
+        re.IGNORECASE,
+    ),
 }
+
+_PROXIMITY_KEYWORD_PATTERN = re.compile(
+    r"\b(?:yakın|uzak|yakınlık|uzaklık)\b",
+    re.IGNORECASE,
+)
+
+_SPACE_ENTITY_ROOTS: tuple[str, ...] = (
+    "salon",
+    "mutfak",
+    "teras",
+    "giriş",
+    "banyo",
+    "yatak",
+    "oda",
+    "oturma",
+    "sohbet",
+    "yaşam",
+    "antre",
+    "hol",
+    "balkon",
+    "koridor",
+    "çalışma",
+    "yemek",
+)
+
+_SPACE_ENTITY_PATTERN = re.compile(
+    r"\b(?:salon|mutfak|teras|giriş|banyo|yatak|oda|oturma|sohbet|yaşam|antre|hol|balkon|koridor|çalışma|yemek)"
+    r"(?:a|e|ya|ye|da|de|ta|te|dan|den|tan|ten|ın|in|un|ün|nın|nin|nun|nün|ı|i|u|ü)?\b",
+    re.IGNORECASE,
+)
+
+
+def _normalize_space_entity_name(word: str) -> str:
+    word_lower = word.casefold()
+    for root in _SPACE_ENTITY_ROOTS:
+        if word_lower.startswith(root):
+            return root
+    return word_lower
+
+
+def extract_trusted_proximity_pairs(request: ConversationRequest) -> set[frozenset[str]]:
+    """Extract trusted space entity pairs for proximity/distance claims from request context."""
+    texts: list[str] = [request.message]
+
+    if request.conversation_summary:
+        texts.append(request.conversation_summary)
+
+    for decision in request.current_decisions:
+        if isinstance(decision, str):
+            texts.append(decision)
+        elif hasattr(decision, "description") and decision.description:
+            texts.append(str(decision.description))
+        elif isinstance(decision, dict) and decision.get("description"):
+            texts.append(str(decision["description"]))
+
+    for proposal in request.pending_proposals:
+        if hasattr(proposal, "action") and hasattr(proposal.action, "description"):
+            if proposal.action.description:
+                texts.append(proposal.action.description)
+        elif isinstance(proposal, dict):
+            action = proposal.get("action", {})
+            if isinstance(action, dict) and action.get("description"):
+                texts.append(str(action["description"]))
+
+    combined = " ".join(texts)
+    clauses = re.split(r"[.!?;\n]", combined)
+    trusted_pairs: set[frozenset[str]] = set()
+
+    for clause in clauses:
+        if _PROXIMITY_KEYWORD_PATTERN.search(clause):
+            matches = list(_SPACE_ENTITY_PATTERN.finditer(clause))
+            entities = {_normalize_space_entity_name(match.group(0)) for match in matches}
+            entity_list = list(entities)
+            for i in range(len(entity_list)):
+                for j in range(i + 1, len(entity_list)):
+                    trusted_pairs.add(frozenset([entity_list[i], entity_list[j]]))
+
+    return trusted_pairs
 
 
 def extract_trusted_relative_spatial_evidence(request: ConversationRequest) -> set[str]:
@@ -575,6 +688,8 @@ def extract_trusted_relative_spatial_evidence(request: ConversationRequest) -> s
     evidence: set[str] = set()
     combined = " ".join(texts)
     for category, pattern in RELATIVE_SPATIAL_PATTERNS.items():
+        if category == "proximity_distance":
+            continue
         if pattern.search(combined):
             evidence.add(category)
 
@@ -587,6 +702,7 @@ def validate_relative_spatial_claims(
 ) -> None:
     """Ensure no ungrounded relative spatial claims exist in public model output fields."""
     trusted_evidence = extract_trusted_relative_spatial_evidence(request)
+    trusted_prox_pairs = extract_trusted_proximity_pairs(request)
 
     public_texts = [
         result.assistant_message,
@@ -601,9 +717,26 @@ def validate_relative_spatial_claims(
 
     combined = " ".join(public_texts)
     model_claims: set[str] = set()
+
     for category, pattern in RELATIVE_SPATIAL_PATTERNS.items():
-        if pattern.search(combined):
-            model_claims.add(category)
+        if category == "proximity_distance":
+            for clause in re.split(r"[.!?;\n]", combined):
+                if pattern.search(clause):
+                    matches = list(_SPACE_ENTITY_PATTERN.finditer(clause))
+                    entities = {_normalize_space_entity_name(match.group(0)) for match in matches}
+                    entity_list = list(entities)
+                    if len(entity_list) >= 2:
+                        pair_supported = any(
+                            frozenset([entity_list[i], entity_list[j]]) in trusted_prox_pairs
+                            for i in range(len(entity_list))
+                            for j in range(i + 1, len(entity_list))
+                        )
+                        if not pair_supported:
+                            model_claims.add("proximity_distance")
+                            break
+        else:
+            if pattern.search(combined):
+                model_claims.add(category)
 
     unsupported = model_claims - trusted_evidence
     if unsupported:
@@ -652,28 +785,81 @@ _RELATIVE_NEUTRALIZATION_RULES: list[tuple[re.Pattern[str], str]] = [
     ),
     (
         re.compile(
-            r"ortak(?:\s+bir)?\s+duvarla\s+birleşir" + _COPULA,
+            r"(?:bağlantılı|ilişkili)\s+bir\s+yapıda\s+ele\s+alınır\s+ile\s+(?:birleştirilmiş|bağlanmış)",
             re.IGNORECASE,
         ),
-        "mekânsal ilişkisi güçlendirilecek biçimde ele alınır",
+        "bütünleşik bir kurguda ele alınır",
+    ),
+    (
+        re.compile(
+            r"ortak(?:\s+bir)?\s+duvarla(?:\s+birleştirilmiş|\s+birleşir|\s+bağlanmış|\s+oluşturulmuş)?",
+            re.IGNORECASE,
+        ),
+        "bütünleşik bir kurguyla",
     ),
     (
         re.compile(
             r"(?:bir|aynı)\s+duvarı\s+paylaşır" + _COPULA,
             re.IGNORECASE,
         ),
-        "birbiriyle daha güçlü ilişki kuracak biçimde ele alınır",
+        "birbiriyle daha güçlü ilişki kurar",
     ),
     (
         re.compile(
-            r"ortak(?:\s+bir)?\s+duvar(?:\s+paylaşır|\s+bulunur|\s+oluşturur|\s+la)?" + _COPULA,
+            r"ortak(?:\s+bir)?\s+duvar(?:\s+ile)?(?:\s+paylaşır|\s+bulunur|\s+oluşturur)?",
             re.IGNORECASE,
         ),
-        "ilişkili bir yapıda ele alınır",
+        "bütünleşik bir kurgu ile",
     ),
     (
         re.compile(r"duvar\s+paylaşımı", re.IGNORECASE),
         "mekânsal ilişki",
+    ),
+    (
+        re.compile(
+            r"(?:doğrudan\s+)?(?:birbirine\s+(?:çok\s+)?)?yakın\s+bir(?:\s+konumda|\s+dizayn|\s+kurgu)?",
+            re.IGNORECASE,
+        ),
+        "ilişkili bir kurgu",
+    ),
+    (
+        re.compile(
+            r"(?:doğrudan\s+)?(?:birbirine\s+(?:çok\s+)?)?yakın(?:\s+konumda)?(?:\s+yer\s+alır|\s+bulunur|\s+kurgulanır)?",
+            re.IGNORECASE,
+        ),
+        "ilişkili kurguda",
+    ),
+    (
+        re.compile(
+            r"(?:birbirinden\s+)?uzak(?:\s+konumda)?(?:\s+olup|\s+yer\s+alır|\s+bulunur|\s+kurgulanır)?"
+            + _COPULA,
+            re.IGNORECASE,
+        ),
+        "kontrollü ayrışma kurgusunda ele alınır",
+    ),
+    (
+        re.compile(
+            r"yakınında(?:\s+bir\s+konumda)?(?:\s+yer\s+alır|\s+bulunur|\s+kurgulanır)?" + _COPULA,
+            re.IGNORECASE,
+        ),
+        "ilişkili bir alanda kurgulanır",
+    ),
+    (
+        re.compile(
+            r"(?:[A-Za-z0-9ıişğüçÖÇŞİĞÜ]+(?:ın|in|un|ün|nın|nin|nun|nün)?\s+)?"
+            r"(?:önün|arkasın)(?:de|da|e|a|den|dan)"
+            r"(?:\s+yer\s+alır|\s+bulunur|\s+kurgulanır)?" + _COPULA,
+            re.IGNORECASE,
+        ),
+        "ilişkili alanda kurgulanır",
+    ),
+    (
+        re.compile(
+            r"(?:ön|arka)\s+(?:tarafta|tarafında|kısımda|kısmında|cephede|cephesinde)"
+            r"(?:\s+yer\s+alır|\s+bulunur|\s+kurgulanır)?" + _COPULA,
+            re.IGNORECASE,
+        ),
+        "ilişkili alanda kurgulanır",
     ),
     (
         re.compile(
@@ -822,7 +1008,7 @@ def neutralize_unsupported_spatial_directions(
                     + _TURKISH_WORD_BOUND_POST,
                     re.IGNORECASE,
                 ),
-                "yakınındaki alanda",
+                "ilişkili alanda",
             ),
             (
                 re.compile(
@@ -833,7 +1019,7 @@ def neutralize_unsupported_spatial_directions(
                     + _TURKISH_WORD_BOUND_POST,
                     re.IGNORECASE,
                 ),
-                "uygun konum doğrultusunda",
+                "ilişkili kurgu doğrultusunda",
             ),
             (
                 re.compile(
@@ -843,7 +1029,7 @@ def neutralize_unsupported_spatial_directions(
                     + _TURKISH_WORD_BOUND_POST,
                     re.IGNORECASE,
                 ),
-                r"\g<noun> yakınında bir konumda",
+                r"\g<noun> ilişkili bir konumunda",
             ),
             (
                 re.compile(
@@ -854,7 +1040,7 @@ def neutralize_unsupported_spatial_directions(
                     + _TURKISH_WORD_BOUND_POST,
                     re.IGNORECASE,
                 ),
-                "yakın bir konumda",
+                "ilişkili bir konumda",
             ),
             (
                 re.compile(
@@ -865,7 +1051,7 @@ def neutralize_unsupported_spatial_directions(
                     + _TURKISH_WORD_BOUND_POST,
                     re.IGNORECASE,
                 ),
-                "uygun bir konuma",
+                "ilişkili bir konuma",
             ),
             (
                 re.compile(
@@ -876,7 +1062,7 @@ def neutralize_unsupported_spatial_directions(
                     + _TURKISH_WORD_BOUND_POST,
                     re.IGNORECASE,
                 ),
-                "yakın konumundan",
+                "ilişkili bir konumdan",
             ),
             (
                 re.compile(
@@ -887,7 +1073,7 @@ def neutralize_unsupported_spatial_directions(
                     + _TURKISH_WORD_BOUND_POST,
                     re.IGNORECASE,
                 ),
-                "uygun bir konumda",
+                "ilişkili bir konumda",
             ),
             (
                 re.compile(
@@ -898,7 +1084,7 @@ def neutralize_unsupported_spatial_directions(
                     + _TURKISH_WORD_BOUND_POST,
                     re.IGNORECASE,
                 ),
-                "uygun konumlu",
+                "ilişkili yapıda",
             ),
         )
         for pattern, replacement in rules:
@@ -984,6 +1170,17 @@ class ArchitecturalIntentPolicyValidator:
         request: ConversationRequest,
     ) -> None:
         """Validate post-schema semantic rules and forbid internal system jargon."""
+
+        if is_compare_request(request):
+            if result.intent != IntentType.COMPARE_ALTERNATIVES:
+                raise PolicyValidationError(
+                    "Kullanıcı alternatif karşılaştırması istediğinde "
+                    "sonuç intent'i COMPARE_ALTERNATIVES olmalıdır."
+                )
+            validate_alternative_quality(result, request)
+
+        validate_spatial_direction_claims(result, request)
+        validate_relative_spatial_claims(result, request)
 
         public_texts = [
             result.assistant_message,

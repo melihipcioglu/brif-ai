@@ -78,26 +78,27 @@ COMPARE_SYSTEM_PROMPT = (
     "Alternatif 2 - <Türkçe başlık>: <tek veya iki kısa cümle>\n"
     "Temel fark: <tek kısa cümle>\n"
     "İki alternatif iki farklı mimari organizasyon yaklaşımını "
-    "(örneğin açık bütünleşme ile kontrollü ayrışma) anlatmalıdır.\n"
-    "Kuzey, güney, doğu, batı, sağ, sol, ön, arka, karşı, bitişik, ortak kenar, "
-    "ortak duvar KESİNLİKLE UYDURMA.\n"
-    "'yakınında bir konumda', 'yakın bir konumda', 'uygun bir konumda' gibi dolguları KULLANMA.\n"
+    "(örneğin açık bütünleşme veya kontrollü ayrışma) anlatmalıdır.\n"
+    "Kullanıcı vermediyse yakın/uzak mesafe ilişkisi, kuzey/güney/doğu/batı yönü, "
+    "sağ/sol, ön/arka, karşı, bitişik, ortak kenar veya ortak duvar KESİNLİKLE UYDURMA.\n"
+    "Tam ve doğal Türkçe cümleler kur. 'ilişkili bir yapıda ele alınır' gibi mekanik kalıpları "
+    "UYGULAMA.\n"
     "İngilizce terim kullanma; tüm anlatım öz Türkçe ve doğal olsun.\n"
     "confidence 0 ile 1 arasında bir sayı olsun.\n"
 )
 
 COMPARE_REPAIR_PROMPT = f"""{COMPARE_SYSTEM_PROMPT}
-Önceki yanıt geçersizdi (yön/konum uyduruldu veya dolgu tekrarlandı).
+Önceki yanıt geçersizdi (yön/konum/mesafe uyduruldu veya dolgu/dil hatası tekrarlandı).
 Yalnızca çağrının format alanındaki JSON Schema ile tam uyumlu tek bir JSON nesnesi üret.
 Aşağıdaki kurallara KESİNLİKLE UY:
 - Yalnız JSON nesnesi üret.
 - intent: "compare_alternatives"
-- assistant_message içinde yön/konum uydurmadan şu 3 bölümü eksiksiz üret:
+- assistant_message içinde yön/konum/mesafe uydurmadan şu 3 bölümü eksiksiz üret:
   Alternatif 1 - <Türkçe başlık>: <tek veya iki kısa cümle>
   Alternatif 2 - <Türkçe başlık>: <tek veya iki kısa cümle>
   Temel fark: <tek kısa cümle>
-- Verilmeyen yön (kuzey/güney/doğu/batı), sağ/sol, ön/arka, karşı, bitişik,
-  ortak kenar, ortak duvar UYDURMA.
+- Verilmeyen yakın/uzak mesafe, yön, sağ/sol, ön/arka, karşı, bitişik, "
+  "ortak kenar/duvar UYDURMA.
 - 'yakınında bir konumda', 'yakın bir konumda' gibi yapay ifadeleri tekrarlama.
 - İki alternatifi farklı mekânsal organizasyon ilkeleri olarak anlat.
 """
