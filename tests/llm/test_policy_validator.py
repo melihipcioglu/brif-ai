@@ -13,6 +13,8 @@ from brif_ai.llm.policy_validator import (
     ArchitecturalIntentPolicyValidator,
     PolicyValidationError,
     UnsupportedSpatialClaimError,
+    is_compare_request,
+    validate_relative_spatial_claims,
     validate_spatial_direction_claims,
 )
 
@@ -54,6 +56,23 @@ def conversation_request(*, entity_id: str | None = "space_study") -> Conversati
             )
         ],
     )
+
+
+def request_with_space_names(message: str, names: list[str]) -> ConversationRequest:
+    request = conversation_request()
+    visible_entities = [
+        VisibleEntity(
+            entity_id=f"space_dynamic_{index}",
+            entity_type="space",
+            name=name,
+            project_id="proj_house_2story",
+            building_id="bldg_main",
+            level_id="lvl_ground",
+            zone_id="zone_living",
+        )
+        for index, name in enumerate(names)
+    ]
+    return request.model_copy(update={"message": message, "visible_entities": visible_entities})
 
 
 def request_with_master_bathroom() -> ConversationRequest:
@@ -417,7 +436,7 @@ def test_machine_target_id_is_preserved_while_public_text_is_sanitized() -> None
     assert_no_internal_ids(safe_result)
 
 
-def test_conceptual_space_alternatives_regression() -> None:
+def test_conceptual_space_alternatives_with_unsupported_neighbor_is_rejected() -> None:
     request_msg = (
         "Terası gün ışığı alan günlük oturma ve sohbet alanı olarak kullanmak istiyorum. "
         "Salon, mutfak, teras ve giriş için iki farklı düzenleme alternatifini "
@@ -460,21 +479,8 @@ def test_conceptual_space_alternatives_regression() -> None:
     )
 
     validator = ArchitecturalIntentPolicyValidator()
-    validator.validate_semantic_integrity(ArchitecturalIntentResult.model_validate(data), req)
-
-    safe_result = validator.validate(ArchitecturalIntentResult.model_validate(data), req)
-
-    assert safe_result.intent.value == "compare_alternatives"
-    assert safe_result.needs_follow_up is False
-    assert safe_result.follow_up_question is None
-    assert safe_result.proposed_actions == []
-    assert safe_result.target.entity_id is None
-    assert "Alternatif 1" in safe_result.assistant_message
-    assert "Alternatif 2" in safe_result.assistant_message
-    for space in ("salon", "mutfak", "teras", "giriş"):
-        assert space in safe_result.assistant_message.casefold()
-    for forbidden in ("öğe bilgisi", "entity", "ilgili mekân", "visible_entities"):
-        assert forbidden not in safe_result.assistant_message.casefold()
+    with pytest.raises(UnsupportedSpatialClaimError, match="neighbor_relative"):
+        validator.validate_semantic_integrity(ArchitecturalIntentResult.model_validate(data), req)
 
 
 @pytest.mark.parametrize(
@@ -1283,6 +1289,182 @@ def test_unsupported_distance_claim_rejection() -> None:
     assert raised
 
 
+def test_distance_change_claim_rejected_without_request_evidence() -> None:
+    req = request_with_space_names(
+        "Ebeveyn yatak odası ile giyinme alanı için iki alternatif öner.",
+        ["Ebeveyn Yatak Odası", "Giyinme Alanı"],
+    )
+    data = valid_result_data()
+    data["assistant_message"] = "İki alan arasındaki fiziksel mesafe artırılır."
+
+    with pytest.raises(UnsupportedSpatialClaimError, match="proximity_distance"):
+        validate_relative_spatial_claims(ArchitecturalIntentResult.model_validate(data), req)
+
+
+@pytest.mark.parametrize(
+    "claim",
+    [
+        "İki alan arasındaki mesafe artırılarak mahremiyet desteklenir.",
+        "İki alan arasındaki mesafe azaltılır.",
+        "İki alan arasındaki mesafe azaltılarak kullanım kolaylaştırılır.",
+        "Aradaki mesafe açılır.",
+        "Aradaki mesafe daraltılır.",
+        "Aradaki mesafe kısaltılır.",
+    ],
+)
+def test_distance_change_variants_are_rejected(claim: str) -> None:
+    req = request_with_space_names(
+        "Atölye ile meditasyon odası için iki alternatif öner.",
+        ["Atölye", "Meditasyon Odası"],
+    )
+    data = valid_result_data()
+    data["assistant_message"] = claim
+
+    with pytest.raises(UnsupportedSpatialClaimError, match="proximity_distance"):
+        validate_relative_spatial_claims(ArchitecturalIntentResult.model_validate(data), req)
+
+
+def test_immediate_neighbor_claim_rejected_without_request_evidence() -> None:
+    req = request_with_space_names(
+        "Ebeveyn yatak odası ile giyinme alanı için iki alternatif öner.",
+        ["Ebeveyn Yatak Odası", "Giyinme Alanı"],
+    )
+    data = valid_result_data()
+    data["assistant_message"] = "Giyinme alanı yatak odasının hemen yanında değerlendirilir."
+
+    with pytest.raises(UnsupportedSpatialClaimError, match="immediate_neighbor"):
+        validate_relative_spatial_claims(ArchitecturalIntentResult.model_validate(data), req)
+
+
+def test_immediate_neighbor_claim_passes_for_trusted_dynamic_pair() -> None:
+    req = request_with_space_names(
+        "Giyinme alanı yatak odasının hemen yanında olsun. İki alternatif öner.",
+        ["Ebeveyn Yatak Odası", "Giyinme Alanı"],
+    )
+    data = valid_result_data()
+    data["assistant_message"] = "Giyinme alanının yatak odasıyla hemen yanındaki ilişkisi korunur."
+
+    validate_relative_spatial_claims(ArchitecturalIntentResult.model_validate(data), req)
+
+
+def test_dynamic_visible_entity_pair_supports_unknown_space_names() -> None:
+    req = request_with_space_names(
+        "Atölye meditasyon odasının hemen yanında olsun. İki alternatif öner.",
+        ["Atölye", "Meditasyon Odası"],
+    )
+    data = valid_result_data()
+    data["assistant_message"] = "Atölyenin meditasyon odasıyla hemen yanındaki ilişkisi korunur."
+
+    validate_relative_spatial_claims(ArchitecturalIntentResult.model_validate(data), req)
+
+
+@pytest.mark.parametrize("space_name", ["Atölye", "Meditasyon Odası", "Giyinme Alanı"])
+def test_unknown_space_name_does_not_bypass_immediate_neighbor_guard(
+    space_name: str,
+) -> None:
+    req = request_with_space_names(
+        f"{space_name} için iki alternatif öner.",
+        [space_name],
+    )
+    data = valid_result_data()
+    data["assistant_message"] = f"{space_name} hemen yanında değerlendirilir."
+
+    with pytest.raises(UnsupportedSpatialClaimError, match="immediate_neighbor"):
+        validate_relative_spatial_claims(ArchitecturalIntentResult.model_validate(data), req)
+
+
+def test_trusted_distance_change_passes_for_dynamic_visible_entity_pair() -> None:
+    req = request_with_space_names(
+        "Atölye ile meditasyon odası arasındaki fiziksel mesafe azaltılsın. İki alternatif öner.",
+        ["Atölye", "Meditasyon Odası"],
+    )
+    data = valid_result_data()
+    data["assistant_message"] = "Atölye ile meditasyon odası arasındaki mesafe azaltılır."
+
+    validate_relative_spatial_claims(ArchitecturalIntentResult.model_validate(data), req)
+
+
+@pytest.mark.parametrize(
+    "claim",
+    [
+        "Mahremiyet artırılır.",
+        "Esneklik artırılır.",
+        "Etkileşim artırılır.",
+    ],
+)
+def test_abstract_priority_increase_is_not_a_distance_false_positive(claim: str) -> None:
+    req = conversation_request().model_copy(
+        update={"message": "Mahremiyeti artıran iki alternatif öner."}
+    )
+    data = valid_result_data()
+    data["assistant_message"] = claim
+
+    validate_relative_spatial_claims(ArchitecturalIntentResult.model_validate(data), req)
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Çalışma alanı için iki yaklaşım öner.",
+        "Çalışma alanı için iki ayrı yaklaşım öner.",
+        "Çalışma alanı için 2 yaklaşım öner.",
+    ],
+)
+def test_generic_two_approach_request_uses_compare_path(message: str) -> None:
+    assert is_compare_request(message)
+
+
+@pytest.mark.parametrize(
+    ("claim", "category"),
+    [
+        ("Mahremiyet fiziksel uzaklıkla sağlanır.", "proximity_distance"),
+        ("Kullanım kolaylığı fiziksel yakınlıkla sağlanır.", "proximity_distance"),
+        (
+            "Giyinme alanı yatak odasıyla doğrudan komşulukta değerlendirilir.",
+            "adjacent",
+        ),
+        (
+            "Çalışma alanı aile yaşam alanıyla fiziksel olarak birleşik bir yapıdadır.",
+            "physical_topology",
+        ),
+        (
+            "Ebeveyn yatak odasının içine giyinme alanı yerleştirilir.",
+            "containment",
+        ),
+        (
+            "Giyinme alanı yatak odasının yan tarafına yerleştirilir.",
+            "side_relative",
+        ),
+        ("Mahremiyet için fiziksel bir sınır oluşturulur.", "physical_topology"),
+        (
+            "Teras salonun yanında değerlendirilir.",
+            "neighbor_relative",
+        ),
+        (
+            "Giyinme alanı yatak odasına yakın konumlandırılarak kullanılır.",
+            "proximity_distance",
+        ),
+        (
+            "Yatak odasında giyinme alanı ayrı olarak yerleştirilir.",
+            "containment",
+        ),
+    ],
+)
+def test_real_model_spatial_variants_are_rejected(
+    claim: str,
+    category: str,
+) -> None:
+    req = request_with_space_names(
+        "İki ayrı kullanım yaklaşımı öner.",
+        ["Ebeveyn Yatak Odası", "Giyinme Alanı", "Çalışma Alanı", "Aile Yaşam Alanı"],
+    )
+    data = valid_result_data()
+    data["assistant_message"] = claim
+
+    with pytest.raises(UnsupportedSpatialClaimError, match=category):
+        validate_relative_spatial_claims(ArchitecturalIntentResult.model_validate(data), req)
+
+
 def test_language_artifact_rejection() -> None:
     req = conversation_request().model_copy(
         update={"message": "İki farklı düzenleme alternatifi öner."}
@@ -1294,6 +1476,10 @@ def test_language_artifact_rejection() -> None:
         "Mutfak kurgulanır ile düzenlenir.",
         "Teras yer alır ile bağlanır.",
         "Kontrollü ayrıma ile sınırlar vurgulanır.",
+        "Kişisel alanın korunur.",
+        "Giyinme alanı ilişkili bir kurgu yer alır.",
+        "Mahremiyeti öncelik verir.",
+        "Kullanım kolaylığını öncelik verir.",
     ]:
         data = valid_result_data()
         data.update(
@@ -1313,6 +1499,38 @@ def test_language_artifact_rejection() -> None:
         except AlternativeQualityError:
             raised = True
         assert raised, f"Expected AlternativeQualityError for artifact: {artifact_text}"
+
+
+def test_failed_bedroom_dressing_browser_response_is_quality_error() -> None:
+    req = request_with_space_names(
+        (
+            "Ebeveyn yatak odası ile giyinme alanı için iki farklı düzenleme yaklaşımı "
+            "öner. Birinde mahremiyet, diğerinde kullanım kolaylığı daha baskın olsun."
+        ),
+        ["Ebeveyn Yatak Odası", "Giyinme Alanı"],
+    )
+    browser_output_msg = (
+        "Alternatif 1 - Mahremiyet odaklı: Ebeveyn yatak odası ile giyinme alanı "
+        "arasındaki fiziksel mesafe artırılarak, kişisel alanın korunur. Giyinme alanı, "
+        "yatak odasına göre sınırlı ve özel bir kullanım alanı olarak tanımlanır. "
+        "Alternatif 2 - Kullanım kolaylığı odaklı: Giyinme alanı, yatak odasına ilişkili "
+        "bir kurgu yer alır ve günlük hareketlerin öncelik verilmesiyle desteklenir. Bu "
+        "yapı, ebeveynlerin hemen yanında giyinme yapmasını kolaylaştırır. Temel fark: "
+        "Birinci yaklaşım mahremiyeti, ikinci yaklaşım kullanım kolaylığını öncelik verir."
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": browser_output_msg,
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+
+    validator = ArchitecturalIntentPolicyValidator()
+    with pytest.raises(AlternativeQualityError):
+        validator.validate_semantic_integrity(ArchitecturalIntentResult.model_validate(data), req)
 
 
 def test_browser_regression_v2_kurgudaligi_kurgu_siralanma() -> None:

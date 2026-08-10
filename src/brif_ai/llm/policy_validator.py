@@ -210,6 +210,10 @@ FORBIDDEN_LANGUAGE_ARTIFACTS: tuple[str, ...] = (
     "yer alır bir",
     "kurgudalığını",
     "kurgu sıralanma",
+    "kişisel alanın korunur",
+    "ilişkili bir kurgu yer alır",
+    "mahremiyeti öncelik verir",
+    "kullanım kolaylığını öncelik verir",
 )
 MAX_FILLER_PHRASE_REPEATS: int = 1
 MIN_ALTERNATIVE_WORD_COUNT: int = 6
@@ -290,7 +294,10 @@ def is_compare_request(request_or_msg: ConversationRequest | str) -> bool:
             "karşılaştır",
             "seçenek",
             "iki farklı",
+            "iki yaklaşım",
+            "iki ayrı yaklaşım",
             "2 alternatif",
+            "2 yaklaşım",
             "düzenleme alternatifi",
         )
     )
@@ -345,7 +352,7 @@ def validate_alternative_quality(
         re.IGNORECASE,
     )
     key_diff_match = re.search(
-        r"(?:Temel\s+fark|Fark)[^\n:\-–—]*[:\-–—]?\s*",
+        r"(?:Temel\s+fark|Fark)\b[^\n:\-–—]*[:\-–—]?\s*",
         text,
         re.IGNORECASE,
     )
@@ -554,7 +561,8 @@ RELATIVE_SPATIAL_PATTERNS: dict[str, re.Pattern[str]] = {
     ),
     "adjacent": re.compile(
         _TURKISH_WORD_BOUND_PRE
-        + r"(?:bitişik|yan\s+yana|doğrudan\s+komşu|fiziksel\s+olarak\s+bitişik)"
+        + r"(?:bitişik|yan\s+yana|doğrudan\s+komşu(?:luk(?:ta|tan|a|u)?)?"
+        + r"|fiziksel\s+olarak\s+bitişik)"
         + _COPULA
         + _TURKISH_WORD_BOUND_POST,
         re.IGNORECASE,
@@ -584,56 +592,195 @@ RELATIVE_SPATIAL_PATTERNS: dict[str, re.Pattern[str]] = {
         + r"|(?:yakın|uzak)\s+konumda|(?:yakın|uzak)\s+bir\s+konumda"
         + r"|yakınında\s+bir\s+konumda|daha\s+uzakta"
         + r"|yakın\s+yerleştirilir|uzak\s+yerleştirilir"
+        + r"|(?:yakın|uzak)\s+konumlandır(?:ılır|ılarak|ılacak)"
         + r"|(?:yakın|uzak)\s+konumdadır|uzakta\s+yer\s+alır"
         + r"|yakın\s+kurgulanır|uzak\s+kurgulanır"
-        + r"|birbirine\s+yakındır|birbirinden\s+uzaktır)"
+        + r"|birbirine\s+yakındır|birbirinden\s+uzaktır"
+        + r"|(?:(?:aradaki|fiziksel)\s+)?mesafe(?:nin|yi|si)?\s+"
+        + r"(?:artırılır|artırılarak|azaltılır|azaltılarak|açılır|daraltılır|kısaltılır)"
+        + r"|(?:fiziksel\s+)?(?:yakınlık|uzaklık)(?:la|le|tan|ten|a|e|ı|i)?)"
+        + _COPULA
+        + _TURKISH_WORD_BOUND_POST,
+        re.IGNORECASE,
+    ),
+    "immediate_neighbor": re.compile(
+        _TURKISH_WORD_BOUND_PRE
+        + r"hemen\s+yan(?:ında|ına|ı\s+başında|ındaki)"
+        + _COPULA
+        + _TURKISH_WORD_BOUND_POST,
+        re.IGNORECASE,
+    ),
+    "neighbor_relative": re.compile(
+        _NOUN_GENITIVE
+        + r"(?:hemen\s+)?yan(?:ında|ına|ı\s+başında|ındaki)"
+        + _COPULA
+        + _TURKISH_WORD_BOUND_POST,
+        re.IGNORECASE,
+    ),
+    "side_relative": re.compile(
+        _TURKISH_WORD_BOUND_PRE
+        + r"yan\s+taraf(?:ında|ına|ından|ındaki)"
+        + _COPULA
+        + _TURKISH_WORD_BOUND_POST,
+        re.IGNORECASE,
+    ),
+    "containment": re.compile(
+        _TURKISH_WORD_BOUND_PRE
+        + r"(?:(?:içine|içinde|dışına|dışında)"
+        + r"|(?:oda|alan|mekân|mekan)(?:sında|sinde|sunda|sünde))[^.!?;\n]{0,60}"
+        + r"(?:yerleştir(?:ilir|ilerek|mek|me)?|yer\s+al(?:ır|acak)?|bulun(?:ur|acak)?)"
+        + _TURKISH_WORD_BOUND_POST,
+        re.IGNORECASE,
+    ),
+    "physical_topology": re.compile(
+        _TURKISH_WORD_BOUND_PRE
+        + r"(?:fiziksel\s+olarak\s+(?:ayrı|ayrık|birleşik|birleştirilmiş|bağlı)"
+        + r"|fiziksel(?:\s+bir)?\s+(?:ayrılık|birleşme|bütünlük|bağlantı|sınır))"
         + _COPULA
         + _TURKISH_WORD_BOUND_POST,
         re.IGNORECASE,
     ),
 }
 
-_PROXIMITY_KEYWORD_PATTERN = re.compile(
-    r"\b(?:yakın|uzak|yakınlık|uzaklık)\b",
+_PAIR_SPATIAL_EVIDENCE_PATTERN = re.compile(
+    r"\b(?:yakın|uzak|yakınlık|uzaklık|mesafe)\b|hemen\s+yan(?:ında|ına|ı\s+başında|ındaki)",
     re.IGNORECASE,
 )
-
-_SPACE_ENTITY_ROOTS: tuple[str, ...] = (
-    "salon",
-    "mutfak",
-    "teras",
-    "giriş",
-    "banyo",
-    "yatak",
-    "oda",
-    "oturma",
-    "sohbet",
-    "yaşam",
-    "antre",
-    "hol",
-    "balkon",
-    "koridor",
-    "çalışma",
-    "yemek",
+_PAIR_SPECIFIC_CATEGORIES = frozenset(
+    {"proximity_distance", "immediate_neighbor", "neighbor_relative"}
+)
+_ENTITY_WORD_PATTERN = re.compile(r"[A-Za-zÇĞİÖŞÜçğıöşü]+")
+_GENERIC_SPACE_HEADS = frozenset({"alan", "oda", "mekân", "mekan", "bölüm"})
+_ENTITY_ALIAS_STOP_WORDS = frozenset(
+    {"ile", "ve", "da", "de", "bir", "iki", "için", "olan", "arasındaki"}
+)
+_OUTER_CASE_SUFFIXES = (
+    "larından",
+    "lerinden",
+    "larının",
+    "lerinin",
+    "sından",
+    "sinden",
+    "sundan",
+    "sünden",
+    "sının",
+    "sinin",
+    "sunun",
+    "sünün",
+    "ndan",
+    "nden",
+    "nın",
+    "nin",
+    "nun",
+    "nün",
+    "yla",
+    "yle",
+    "na",
+    "ne",
+)
+_ENTITY_ALIAS_SUFFIX = (
+    r"(?:larından|lerinden|larının|lerinin|sından|sinden|sundan|sünden|sının|sinin|"
+    r"sunun|sünün|ndan|nden|nın|nin|nun|nün|yla|yle|na|ne|nda|nde|dan|den|ta|te|"
+    r"ya|ye|ı|i|u|ü|a|e)?"
 )
 
-_SPACE_ENTITY_PATTERN = re.compile(
-    r"\b(?:salon|mutfak|teras|giriş|banyo|yatak|oda|oturma|sohbet|yaşam|antre|hol|balkon|koridor|çalışma|yemek)"
-    r"(?:a|e|ya|ye|da|de|ta|te|dan|den|tan|ten|ın|in|un|ün|nın|nin|nun|nün|ı|i|u|ü)?\b",
-    re.IGNORECASE,
-)
+
+def _normalize_entity_alias(value: str) -> str:
+    return " ".join(_ENTITY_WORD_PATTERN.findall(value.casefold()))
 
 
-def _normalize_space_entity_name(word: str) -> str:
-    word_lower = word.casefold()
-    for root in _SPACE_ENTITY_ROOTS:
-        if word_lower.startswith(root):
-            return root
-    return word_lower
+def _strip_outer_case_suffix(word: str) -> str:
+    lowered = word.casefold()
+    for suffix in _OUTER_CASE_SUFFIXES:
+        if lowered.endswith(suffix) and len(lowered) > len(suffix) + 2:
+            return lowered[: -len(suffix)]
+    return lowered
 
 
-def extract_trusted_proximity_pairs(request: ConversationRequest) -> set[frozenset[str]]:
-    """Extract trusted space entity pairs for proximity/distance claims from request context."""
+def _is_generic_space_head(word: str) -> bool:
+    base = _strip_outer_case_suffix(word)
+    if base in _GENERIC_SPACE_HEADS:
+        return True
+    for suffix in ("sı", "si", "su", "sü", "ı", "i", "u", "ü"):
+        if base.endswith(suffix) and base[: -len(suffix)] in _GENERIC_SPACE_HEADS:
+            return True
+    return False
+
+
+def _message_space_aliases(clause: str) -> set[str]:
+    raw_words = _ENTITY_WORD_PATTERN.findall(clause)
+    words = [word.casefold() for word in raw_words]
+    aliases: set[str] = set()
+
+    for index, word in enumerate(words):
+        if not _is_generic_space_head(word):
+            continue
+        head = _strip_outer_case_suffix(word)
+        start = index
+        while start > 0 and index - start < 2 and words[start - 1] not in _ENTITY_ALIAS_STOP_WORDS:
+            start -= 1
+        phrase_words = [*words[start:index], head]
+        aliases.add(" ".join(phrase_words))
+        if len(phrase_words) > 2:
+            aliases.add(" ".join(phrase_words[-2:]))
+
+        if index >= 3 and words[index - 2] == "ve":
+            aliases.add(f"{words[index - 3]} {head}")
+
+    for index, word in enumerate(words):
+        if word != "ile":
+            continue
+        if index > 0:
+            aliases.add(words[index - 1])
+        if index + 1 < len(words):
+            aliases.add(words[index + 1])
+
+    if raw_words and raw_words[0][:1].isupper():
+        aliases.add(words[0])
+
+    return {alias for alias in aliases if len(alias) > 2}
+
+
+def _entity_aliases(request: ConversationRequest) -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    for entity in request.visible_entities:
+        normalized = _normalize_entity_alias(entity.name)
+        if not normalized:
+            continue
+        aliases[normalized] = entity.entity_id.casefold()
+        words = normalized.split()
+        if len(words) > 2:
+            aliases[" ".join(words[-2:])] = entity.entity_id.casefold()
+
+    trusted_texts = _trusted_spatial_texts(request)
+    for text in trusted_texts:
+        for clause in re.split(r"[.!?;\n]", text):
+            if not _PAIR_SPATIAL_EVIDENCE_PATTERN.search(clause):
+                continue
+            for alias in _message_space_aliases(clause):
+                aliases.setdefault(alias, f"message:{alias}")
+
+    return aliases
+
+
+def _extract_entity_keys(text: str, aliases: dict[str, str]) -> set[str]:
+    entity_keys: set[str] = set()
+    for alias, entity_key in sorted(aliases.items(), key=lambda item: len(item[0]), reverse=True):
+        words = alias.split()
+        alias_pattern = r"\s+".join(re.escape(word) for word in words)
+        pattern = re.compile(
+            _TURKISH_WORD_BOUND_PRE
+            + alias_pattern
+            + _ENTITY_ALIAS_SUFFIX
+            + _TURKISH_WORD_BOUND_POST,
+            re.IGNORECASE,
+        )
+        if pattern.search(text):
+            entity_keys.add(entity_key)
+    return entity_keys
+
+
+def _trusted_spatial_texts(request: ConversationRequest) -> list[str]:
     texts: list[str] = [request.message]
 
     if request.conversation_summary:
@@ -656,14 +803,19 @@ def extract_trusted_proximity_pairs(request: ConversationRequest) -> set[frozens
             if isinstance(action, dict) and action.get("description"):
                 texts.append(str(action["description"]))
 
-    combined = " ".join(texts)
+    return texts
+
+
+def extract_trusted_proximity_pairs(request: ConversationRequest) -> set[frozenset[str]]:
+    """Extract trusted space entity pairs for proximity/distance claims from request context."""
+    combined = " ".join(_trusted_spatial_texts(request))
     clauses = re.split(r"[.!?;\n]", combined)
     trusted_pairs: set[frozenset[str]] = set()
+    aliases = _entity_aliases(request)
 
     for clause in clauses:
-        if _PROXIMITY_KEYWORD_PATTERN.search(clause):
-            matches = list(_SPACE_ENTITY_PATTERN.finditer(clause))
-            entities = {_normalize_space_entity_name(match.group(0)) for match in matches}
+        if _PAIR_SPATIAL_EVIDENCE_PATTERN.search(clause):
+            entities = _extract_entity_keys(clause, aliases)
             entity_list = list(entities)
             for i in range(len(entity_list)):
                 for j in range(i + 1, len(entity_list)):
@@ -703,7 +855,7 @@ def extract_trusted_relative_spatial_evidence(request: ConversationRequest) -> s
     evidence: set[str] = set()
     combined = " ".join(texts)
     for category, pattern in RELATIVE_SPATIAL_PATTERNS.items():
-        if category == "proximity_distance":
+        if category in _PAIR_SPECIFIC_CATEGORIES:
             continue
         if pattern.search(combined):
             evidence.add(category)
@@ -718,6 +870,7 @@ def validate_relative_spatial_claims(
     """Ensure no ungrounded relative spatial claims exist in public model output fields."""
     trusted_evidence = extract_trusted_relative_spatial_evidence(request)
     trusted_prox_pairs = extract_trusted_proximity_pairs(request)
+    entity_aliases = _entity_aliases(request)
 
     public_texts = [
         result.assistant_message,
@@ -734,21 +887,25 @@ def validate_relative_spatial_claims(
     model_claims: set[str] = set()
 
     for category, pattern in RELATIVE_SPATIAL_PATTERNS.items():
-        if category == "proximity_distance":
+        if category in _PAIR_SPECIFIC_CATEGORIES:
             for clause in re.split(r"[.!?;\n]", combined):
                 if pattern.search(clause):
-                    matches = list(_SPACE_ENTITY_PATTERN.finditer(clause))
-                    entities = {_normalize_space_entity_name(match.group(0)) for match in matches}
+                    if not trusted_prox_pairs:
+                        model_claims.add(category)
+                        break
+                    entities = _extract_entity_keys(clause, entity_aliases)
                     entity_list = list(entities)
-                    if len(entity_list) >= 2:
-                        pair_supported = any(
-                            frozenset([entity_list[i], entity_list[j]]) in trusted_prox_pairs
-                            for i in range(len(entity_list))
-                            for j in range(i + 1, len(entity_list))
-                        )
-                        if not pair_supported:
-                            model_claims.add("proximity_distance")
-                            break
+                    if len(entity_list) < 2:
+                        model_claims.add(category)
+                        break
+                    pair_supported = any(
+                        frozenset([entity_list[i], entity_list[j]]) in trusted_prox_pairs
+                        for i in range(len(entity_list))
+                        for j in range(i + 1, len(entity_list))
+                    )
+                    if not pair_supported:
+                        model_claims.add(category)
+                        break
         else:
             if pattern.search(combined):
                 model_claims.add(category)

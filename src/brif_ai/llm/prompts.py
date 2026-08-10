@@ -70,53 +70,38 @@ Yanıtı kısa tut, ancak şemanın zorunlu alanlarının tamamını üret.
 
 COMPARE_SYSTEM_PROMPT = (
     "Sen BRIF.AI mimari niyet yorumlayıcısısın.\n"
-    "Kullanıcı iki ayrı düzenleme alternatifi istedi.\n"
+    "Görev, kullanıcının istediği iki tercih yaklaşımını karar ilkesi ve kullanıcı deneyimi "
+    "düzeyinde karşılaştırmaktır.\n"
     "Yanıt yalnız JSON Schema ile tam uyumlu tek bir JSON nesnesi olsun.\n"
     'intent her zaman "compare_alternatives" olsun.\n'
-    "assistant_message içinde şu 3 bölümü üret:\n"
-    "Alternatif 1 - <Türkçe başlık>: <tek veya iki kısa cümle>\n"
-    "Alternatif 2 - <Türkçe başlık>: <tek veya iki kısa cümle>\n"
-    "Temel fark: <tek kısa cümle>\n"
-    "Yalnız kullanıcının verdiği bilgileri temel al.\n"
-    "Fiziksel yerleşim hakkında yeni gerçekler ekleme.\n"
-    "Kesin konum, yön, mesafe veya topolojik ilişki tanımlama.\n"
-    "İki alternatifi fiziksel koordinatlarla değil, ayrı organizasyon ilkeleriyle açıkla.\n"
-    "Birinci alternatif ortak kullanımdaki süreklilik ve etkileşim gibi bir ilkeye; "
-    "ikinci alternatif esneklik ve ayrışabilir kullanım gibi ayrı bir ilkeye dayanabilir.\n"
-    "Kullanıcı tarafından belirtilen ilişkiyi yeniden yorumlayabilirsin; "
-    "fakat yeni mekânsal gerçek üretme.\n"
-    "Her cümleyi kullanım amacı, günlük deneyim, sosyal etkileşim, esneklik "
-    "veya ayrışabilir kullanım üzerinden kur.\n"
-    "Mekân adlarını fiziksel plan konumu belirten yüklemlerle kullanma.\n"
-    "Cümle yüklemlerini şu amaç dilinden seç: güçlendirilir, destekler, uyum sağlar, "
-    "korunur, öncelik verir, odaklanır.\n"
-    "Her alternatifte tam iki kısa cümle, temel ayrımda tek kısa cümle kullan.\n"
-    "assistant_message için şu örneğin kavramsal dilini temel al:\n"
-    "Alternatif 1 - Etkileşim sürekliliği: Salon ile mutfak arasındaki günlük kullanım "
-    "ilişkisi güçlendirilir. Terasın oturma ve sohbet işlevi sosyal deneyimi destekler.\n"
-    "Alternatif 2 - Esnek kullanım: Salon ile mutfak değişen kullanım senaryolarına uyum "
-    "sağlayacak biçimde ele alınır. Terasın günlük sosyal kullanım rolü korunur.\n"
-    "Temel fark: Birinci yaklaşım etkileşim sürekliliğine, ikinci yaklaşım kullanım "
-    "esnekliğine odaklanır.\n"
-    "Her alternatif için doğal ve özgün bir anlatım kullan.\n"
-    "Kısa, doğal ve profesyonel Türkçe kullan.\n"
+    "assistant_message toplam üç kısa cümleden oluşsun. Aşağıdaki cümle yapısını aynen koru; "
+    "yalnız açılı parantezleri doldur:\n"
+    "Alternatif 1 - <ilk tercih>: Bu seçenekte <ilk tercih> öne çıkar; kullanıcı için "
+    "<soyut fayda> amaçlanır.\n"
+    "Alternatif 2 - <ikinci tercih>: Bu seçenekte <ikinci tercih> öne çıkar; kullanıcı için "
+    "<soyut fayda> amaçlanır.\n"
+    "Temel fark: İlk seçenek <ilk tercih> odaklıdır; ikinci seçenek <ikinci tercih> odaklıdır.\n"
+    "Tercih adlarını ve soyut faydaları kullanıcının sözlerinden türet.\n"
+    "Cümle yapısını değiştirme ve başka bilgi ekleme.\n"
+    "Kısa, doğal, dilbilgisel olarak doğru ve profesyonel Türkçe kullan.\n"
     "confidence 0 ile 1 arasında bir sayı olsun.\n"
 )
 
-COMPARE_REPAIR_PROMPT = f"""{COMPARE_SYSTEM_PROMPT}
-İlk yanıt doğrulanamadı.
-Yalnız kullanıcının açıkça verdiği mekânsal bilgileri kullan.
-Fiziksel yerleşim hakkında yeni gerçek üretme.
-İki ayrı organizasyon yaklaşımı sun.
-Yanıt şu üç bölümden oluşsun:
-Alternatif 1 - <Türkçe başlık>: <tek veya iki kısa cümle>
-Alternatif 2 - <Türkçe başlık>: <tek veya iki kısa cümle>
-Temel fark: <tek kısa cümle>
-Kısa, doğal ve profesyonel Türkçe kullan.
-Cümle yüklemlerini şu amaç dilinden seç: güçlendirilir, destekler, uyum sağlar,
-korunur, öncelik verir, odaklanır.
-Tek bir JSON nesnesi üret.
-"""
+COMPARE_REPAIR_PROMPT = (
+    "Sen BRIF.AI mimari niyet yorumlayıcısısın.\n"
+    "İlk yanıt doğrulanamadı. Yalnız JSON Schema ile uyumlu tek bir JSON nesnesi üret.\n"
+    'intent her zaman "compare_alternatives" olsun.\n'
+    "assistant_message toplam üç kısa cümleden ve şu üç bölümden oluşsun:\n"
+    "Aşağıdaki cümle yapısını aynen koru; yalnız açılı parantezleri doldur:\n"
+    "Alternatif 1 - <ilk tercih>: Bu seçenekte <ilk tercih> öne çıkar; kullanıcı için "
+    "<soyut fayda> amaçlanır.\n"
+    "Alternatif 2 - <ikinci tercih>: Bu seçenekte <ikinci tercih> öne çıkar; kullanıcı için "
+    "<soyut fayda> amaçlanır.\n"
+    "Temel fark: İlk seçenek <ilk tercih> odaklıdır; ikinci seçenek <ikinci tercih> odaklıdır.\n"
+    "Tercih adlarını ve soyut faydaları kullanıcının sözlerinden türet.\n"
+    "Cümle yapısını değiştirme ve başka bilgi ekleme.\n"
+    "Kısa, doğal, dilbilgisel olarak doğru ve profesyonel Türkçe kullan.\n"
+)
 
 
 def _is_in_active_scope(request: ConversationRequest, entity: VisibleEntity) -> bool:
