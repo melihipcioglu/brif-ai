@@ -1028,3 +1028,100 @@ def test_compare_alternatives_accepts_open_integration_vs_controlled_separation(
     validator = ArchitecturalIntentPolicyValidator()
     sanitized = validator.sanitize(result, req)
     validator.validate_semantic_integrity(sanitized, req)
+
+
+def test_unsupported_relative_spatial_claims_are_rejected_or_sanitized() -> None:
+    req = conversation_request()
+    validator = ArchitecturalIntentPolicyValidator()
+
+    unsupported_examples = [
+        "Salon girişten sonra sağ tarafta yer alır.",
+        "Mutfak salonun solundadır.",
+        "Teras salonun karşısında yer alır.",
+        "Salon ile teras ortak kenar paylaşır.",
+        "Mutfak salonla ortak duvar paylaşır.",
+        "Teras salona bitişiktir.",
+        "Mutfak girişin hemen yanında yer alır.",
+    ]
+
+    for text in unsupported_examples:
+        data = valid_result_data()
+        data["assistant_message"] = text
+        res = ArchitecturalIntentResult.model_validate(data)
+        sanitized = validator.sanitize(res, req)
+        for claim in [
+            "sağ tarafta",
+            "solundadır",
+            "karşısında yer alır",
+            "ortak kenar",
+            "ortak duvar",
+            "bitişiktir",
+            "hemen yanında",
+        ]:
+            assert claim not in sanitized.assistant_message
+
+
+def test_trusted_relative_spatial_claims_are_accepted() -> None:
+    req = conversation_request().model_copy(
+        update={"message": "Mutfak salonun solunda yer alsın ve terasla ortak kenar paylaşsın."}
+    )
+    data = valid_result_data()
+    data["assistant_message"] = (
+        "Mutfak salonun solunda yer alabilir ve terasla ortak kenar kurgulanabilir."
+    )
+    res = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(res, req)
+    validator.validate_semantic_integrity(sanitized, req)
+    assert "solunda" in sanitized.assistant_message.casefold()
+
+
+def test_conceptual_relative_suggestions_are_accepted() -> None:
+    req = conversation_request()
+    data = valid_result_data()
+    data["assistant_message"] = "Salon ve mutfak arasındaki geçiş daha açık kurulabilir."
+    res = ArchitecturalIntentResult.model_validate(data)
+
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(res, req)
+    validator.validate_semantic_integrity(sanitized, req)
+
+
+def test_regression_failed_real_model_output_relative_spatial_claim() -> None:
+    req = conversation_request().model_copy(
+        update={
+            "message": (
+                "Salon ile mutfak arasındaki ilişkiyi güçlendirmek istiyorum. "
+                "Teras da günlük oturma ve sohbet alanına yakın olsun. "
+                "Bana iki farklı düzenleme alternatifi öner."
+            )
+        }
+    )
+    failed_output_msg = (
+        "Alternatif 1 - Salon: Mutfak ile doğrudan bağlantılı olup, "
+        "girişten sonra hemen sağ tarafta yer alır. "
+        "Mutfak ve salonun birbirine yakın olması, günlük etkileşimleri artırır.\n"
+        "Alternatif 2 - Salon: Terasın yakınındaki alanda yer alır ve teras ile "
+        "doğrudan bir kenar ortaklığı oluşturur. Bu yapı, dış ortamla iç alan arasındaki "
+        "geçişleri daha doğal hale getirir.\n"
+        "Temel fark: Birinci alternatif, iç alanların birbirine yakın olmasıyla "
+        "etkileşimi artırırken, ikinci alternatif dış alanla iç alanın "
+        "fiziksel bağlantısını vurgular."
+    )
+    data = valid_result_data()
+    data.update(
+        {
+            "intent": "compare_alternatives",
+            "assistant_message": failed_output_msg,
+            "needs_follow_up": False,
+            "follow_up_question": None,
+        }
+    )
+    res = ArchitecturalIntentResult.model_validate(data)
+    validator = ArchitecturalIntentPolicyValidator()
+    sanitized = validator.sanitize(res, req)
+    validator.validate_semantic_integrity(sanitized, req)
+
+    assert "sağ tarafta" not in sanitized.assistant_message.casefold()
+    assert "kenar ortaklığı" not in sanitized.assistant_message.casefold()

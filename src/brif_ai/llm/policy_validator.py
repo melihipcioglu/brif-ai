@@ -376,6 +376,10 @@ def validate_alternative_quality(
 
 _TURKISH_WORD_BOUND_PRE = r"(?<![\wıişğüçÖÇŞİĞÜ])"
 _TURKISH_WORD_BOUND_POST = r"(?=[^\wıişğüçÖÇŞİĞÜ]|$)"
+_NOUN_GENITIVE = (
+    r"(?<![\wıişğüçÖÇŞİĞÜ])(?P<noun>[A-Za-z0-9ıişğüçÖÇŞİĞÜ]+(?:ın|in|un|ün|nın|nin|nun|nün))\s+"
+)
+_COPULA = r"(?:dır|dir|dur|dür|tır|tir|tur|tür)?"
 
 DIRECTION_PATTERNS: dict[str, re.Pattern[str]] = {
     "kuzey": re.compile(
@@ -479,10 +483,295 @@ def validate_spatial_direction_claims(
         )
 
 
-_NOUN_GENITIVE = (
-    r"(?<![\wıişğüçÖÇŞİĞÜ])(?P<noun>[A-Za-z0-9ıişğüçÖÇŞİĞÜ]+(?:ın|in|un|ün|nın|nin|nun|nün))\s+"
-)
-_COPULA = r"(?:dır|dir|dur|dür|tır|tir|tur|tür)?"
+RELATIVE_SPATIAL_PATTERNS: dict[str, re.Pattern[str]] = {
+    "right_left": re.compile(
+        _TURKISH_WORD_BOUND_PRE
+        + r"(?:sağ|sol)(?:ında|inde|unda|ünde|ından|inden|undan|ünden|ına|ine|una|üne|"
+        + r"ını|ini|unu|ünü|ının|inin|unun|ünün|da|de|ya|ye|tarafında|tarafına|tarafından|"
+        + r"tarafta|taraftaki)?"
+        + _COPULA
+        + _TURKISH_WORD_BOUND_POST,
+        re.IGNORECASE,
+    ),
+    "front_back": re.compile(
+        _TURKISH_WORD_BOUND_PRE
+        + r"(?:ön|arka)(?:ünde|ında|ünden|ından|üne|ına|ünü|ını|tarafında|tarafına|tarafından|"
+        + r"tarafta|taraftaki|cephede|cephesinde)?"
+        + _COPULA
+        + _TURKISH_WORD_BOUND_POST,
+        re.IGNORECASE,
+    ),
+    "opposite": re.compile(
+        _TURKISH_WORD_BOUND_PRE
+        + r"karşı(?:sında|sından|sına|sını|sının|daki|sındaki|tarafında|tarafına|tarafından|"
+        + r"tarafta)?"
+        + _COPULA
+        + _TURKISH_WORD_BOUND_POST,
+        re.IGNORECASE,
+    ),
+    "entry_relative": re.compile(
+        _TURKISH_WORD_BOUND_PRE
+        + r"giriş(?:ten\s+(?:sonra|önce)|in\s+(?:sağında|solunda|yanında|karşısında|"
+        + r"hemen\s+yanında|hemen\s+sağında|hemen\s+solunda))"
+        + _COPULA
+        + _TURKISH_WORD_BOUND_POST,
+        re.IGNORECASE,
+    ),
+    "adjacent": re.compile(
+        _TURKISH_WORD_BOUND_PRE
+        + r"(?:bitişik|yan\s+yana|doğrudan\s+komşu|fiziksel\s+olarak\s+bitişik)"
+        + _COPULA
+        + _TURKISH_WORD_BOUND_POST,
+        re.IGNORECASE,
+    ),
+    "shared_edge": re.compile(
+        _TURKISH_WORD_BOUND_PRE
+        + r"(?:ortak\s+kenar|kenar\s+ortaklığı)"
+        + _COPULA
+        + _TURKISH_WORD_BOUND_POST,
+        re.IGNORECASE,
+    ),
+    "shared_wall": re.compile(
+        _TURKISH_WORD_BOUND_PRE
+        + r"(?:ortak\s+duvar|duvar\s+paylaşımı)"
+        + _COPULA
+        + _TURKISH_WORD_BOUND_POST,
+        re.IGNORECASE,
+    ),
+}
+
+
+def extract_trusted_relative_spatial_evidence(request: ConversationRequest) -> set[str]:
+    """Extract trusted relative spatial claim categories present in request context."""
+    texts: list[str] = [request.message]
+
+    if request.conversation_summary:
+        texts.append(request.conversation_summary)
+
+    for decision in request.current_decisions:
+        if isinstance(decision, str):
+            texts.append(decision)
+        elif hasattr(decision, "description") and decision.description:
+            texts.append(str(decision.description))
+        elif isinstance(decision, dict) and decision.get("description"):
+            texts.append(str(decision["description"]))
+
+    for proposal in request.pending_proposals:
+        if hasattr(proposal, "action") and hasattr(proposal.action, "description"):
+            if proposal.action.description:
+                texts.append(proposal.action.description)
+        elif isinstance(proposal, dict):
+            action = proposal.get("action", {})
+            if isinstance(action, dict) and action.get("description"):
+                texts.append(str(action["description"]))
+
+    for entity in request.visible_entities:
+        if entity.name:
+            texts.append(entity.name)
+
+    evidence: set[str] = set()
+    combined = " ".join(texts)
+    for category, pattern in RELATIVE_SPATIAL_PATTERNS.items():
+        if pattern.search(combined):
+            evidence.add(category)
+
+    return evidence
+
+
+def validate_relative_spatial_claims(
+    result: ArchitecturalIntentResult,
+    request: ConversationRequest,
+) -> None:
+    """Ensure no ungrounded relative spatial claims exist in public model output fields."""
+    trusted_evidence = extract_trusted_relative_spatial_evidence(request)
+
+    public_texts = [
+        result.assistant_message,
+        *([result.follow_up_question] if result.follow_up_question is not None else []),
+        *result.user_requirements,
+        *result.interpreted_priorities,
+        *result.constraints_to_check,
+        *result.missing_information,
+        *result.warnings,
+        *(action.description for action in result.proposed_actions if action.description),
+    ]
+
+    combined = " ".join(public_texts)
+    model_claims: set[str] = set()
+    for category, pattern in RELATIVE_SPATIAL_PATTERNS.items():
+        if pattern.search(combined):
+            model_claims.add(category)
+
+    unsupported = model_claims - trusted_evidence
+    if unsupported:
+        sorted_unsupported = sorted(unsupported)
+        unsupported_str = ", ".join(sorted_unsupported)
+        raise UnsupportedSpatialClaimError(
+            f"Kullanıcı bağlamında bulunmayan göreli mekânsal iddia ({unsupported_str}) kullanıldı."
+        )
+
+
+_RELATIVE_NEUTRALIZATION_RULES: list[tuple[re.Pattern[str], str]] = [
+    (
+        re.compile(
+            r"girişten\s+sonra\s+(?:hemen\s+)?(?:sağ|sol)\s+tarafta(?:\s+yer\s+alır|\s+bulunur)?"
+            + _COPULA,
+            re.IGNORECASE,
+        ),
+        "girişle ilişkisi daha açık kurulacak biçimde ele alınır",
+    ),
+    (
+        re.compile(
+            r"girişin\s+(?:hemen\s+)?(?:yanında|karşısında|sağında|solunda)(?:\s+yer\s+alır|\s+bulunur)?"
+            + _COPULA,
+            re.IGNORECASE,
+        ),
+        "giriş alanıyla ilişkili biçimde ele alınır",
+    ),
+    (
+        re.compile(r"girişten\s+sonra(?:\s+hemen)?", re.IGNORECASE),
+        "giriş alanıyla ilişkili olarak",
+    ),
+    (
+        re.compile(
+            r"(?:doğrudan\s+)?(?:bir\s+)?kenar\s+ortaklığı(?:\s+oluşturur|\s+sağlar|\s+kurgulanır)?"
+            + _COPULA,
+            re.IGNORECASE,
+        ),
+        "daha güçlü fiziksel ilişki kuracak biçimde ele alınır",
+    ),
+    (
+        re.compile(
+            r"ortak\s+kenar(?:\s+paylaşır|\s+oluşturur|\s+sağlar)?" + _COPULA,
+            re.IGNORECASE,
+        ),
+        "fiziksel ilişki kuracak biçimde ele alınır",
+    ),
+    (
+        re.compile(
+            r"ortak\s+duvar(?:\s+paylaşır|\s+bulunur|\s+oluşturur)?" + _COPULA,
+            re.IGNORECASE,
+        ),
+        "ilişkili bir yapıda ele alınır",
+    ),
+    (
+        re.compile(r"duvar\s+paylaşımı", re.IGNORECASE),
+        "mekânsal ilişki",
+    ),
+    (
+        re.compile(
+            r"(?:fiziksel\s+olarak\s+bitişik|doğrudan\s+komşu)(?:\s+konumdadır|\s+yer\s+alır)?"
+            + _COPULA,
+            re.IGNORECASE,
+        ),
+        "ilişkili konumda ele alınır",
+    ),
+    (
+        re.compile(
+            r"bitişik(?:tir|tür|tirler)?(?:\s+konumdadır|\s+yer\s+alır|\s+bulunur)?" + _COPULA,
+            re.IGNORECASE,
+        ),
+        "yakın kurgulanır",
+    ),
+    (
+        re.compile(r"yan\s+yana(?:\s+konumlanır|\s+yer\s+alır)?" + _COPULA, re.IGNORECASE),
+        "birlikte kurgulanır",
+    ),
+    (
+        re.compile(
+            r"(?:sağ|sol)\s+tarafında(?:\s+yer\s+alır|\s+bulunur)?" + _COPULA,
+            re.IGNORECASE,
+        ),
+        "bütünleşik alanda kurgulanır",
+    ),
+    (
+        re.compile(
+            r"(?:sağ|sol)\s+tarafta(?:\s+yer\s+alır|\s+bulunur)?" + _COPULA,
+            re.IGNORECASE,
+        ),
+        "bağlantılı alanda kurgulanır",
+    ),
+    (
+        re.compile(
+            r"(?:[A-Za-z0-9ıişğüçÖÇŞİĞÜ]+(?:ın|in|un|ün|nın|nin|nun|nün)\s+)?(?:sağında|solunda)"
+            + _COPULA
+            + r"(?:\s+yer\s+alır|\s+bulunur|\s+kurgulanır)?",
+            re.IGNORECASE,
+        ),
+        "işlevsel yakınlıkta kurgulanır",
+    ),
+    (
+        re.compile(
+            r"(?:[A-Za-z0-9ıişğüçÖÇŞİĞÜ]+(?:ın|in|un|ün|nın|nin|nun|nün)\s+)?(?:sağda|solda)"
+            + _COPULA
+            + r"(?:\s+yer\s+alır|\s+bulunur)?",
+            re.IGNORECASE,
+        ),
+        "yakın konumda kurgulanır",
+    ),
+    (
+        re.compile(
+            r"karşı\s+karşıya(?:\s+olur|\s+gelir|\s+konumlanır)?" + _COPULA,
+            re.IGNORECASE,
+        ),
+        "karşılıklı kurguda ele alınır",
+    ),
+    (
+        re.compile(
+            r"(?:[A-Za-z0-9ıişğüçÖÇŞİĞÜ]+(?:ın|in|un|ün|nın|nin|nun|nün)\s+)?karşısında"
+            + _COPULA
+            + r"(?:\s+yer\s+alır|\s+bulunur|\s+konumlanır)?",
+            re.IGNORECASE,
+        ),
+        "karşılıklı ilişkide kurgulanır",
+    ),
+    (
+        re.compile(
+            r"karşı\s+tarafında" + _COPULA + r"(?:\s+yer\s+alır|\s+bulunur)?",
+            re.IGNORECASE,
+        ),
+        "karşılıklı konumda kurgulanır",
+    ),
+    (
+        re.compile(
+            r"(?:[A-Za-z0-9ıişğüçÖÇŞİĞÜ]+(?:a|e|ya|ye)\s+)?bitişik(?:tir|tür|tirler)?(?:\s+konumdadır|\s+yer\s+alır|\s+bulunur)?"
+            + _COPULA,
+            re.IGNORECASE,
+        ),
+        "ilişkili konumdadır",
+    ),
+    (
+        re.compile(
+            r"(?:ön|arka)\s+tarafında" + _COPULA + r"(?:\s+yer\s+alır|\s+bulunur)?",
+            re.IGNORECASE,
+        ),
+        "ilişkili alanda kurgulanır",
+    ),
+    (
+        re.compile(
+            r"(?:önünde|arkasında)" + _COPULA + r"(?:\s+yer\s+alır|\s+bulunur)?",
+            re.IGNORECASE,
+        ),
+        "ilişkili alanda kurgulanır",
+    ),
+]
+
+
+def neutralize_unsupported_relative_spatial_claims(
+    text: str,
+    unsupported_categories: set[str],
+) -> str:
+    """Neutralize ungrounded relative/topological spatial claims to natural abstract phrases."""
+    if not unsupported_categories:
+        return text
+
+    sanitized = text
+    for pattern, replacement in _RELATIVE_NEUTRALIZATION_RULES:
+        sanitized = pattern.sub(replacement, sanitized)
+
+    sanitized = re.sub(r"[ \t]+", " ", sanitized)
+    sanitized = re.sub(r" +([,.!?;:])", r"\1", sanitized)
+    return sanitized
 
 
 def neutralize_unsupported_spatial_directions(
@@ -613,6 +902,7 @@ class ArchitecturalIntentPolicyValidator:
     ) -> ArchitecturalIntentResult:
         """Sanitize machine IDs, internal terms, and neutralize unsupported spatial directions."""
         trusted_evidence = extract_trusted_direction_evidence(request)
+        trusted_relative = extract_trusted_relative_spatial_evidence(request)
 
         public_texts = [
             result.assistant_message,
@@ -632,10 +922,19 @@ class ArchitecturalIntentPolicyValidator:
 
         unsupported_directions = model_directions - trusted_evidence
 
+        model_relatives: set[str] = set()
+        for category, pattern in RELATIVE_SPATIAL_PATTERNS.items():
+            if pattern.search(combined):
+                model_relatives.add(category)
+
+        unsupported_relatives = model_relatives - trusted_relative
+
         def _clean(text: str) -> str:
             text = sanitize_public_text(text, request.visible_entities)
             if unsupported_directions:
                 text = neutralize_unsupported_spatial_directions(text, unsupported_directions)
+            if unsupported_relatives:
+                text = neutralize_unsupported_relative_spatial_claims(text, unsupported_relatives)
             return text
 
         actions = [
@@ -688,6 +987,7 @@ class ArchitecturalIntentPolicyValidator:
                 )
 
         validate_spatial_direction_claims(result, request)
+        validate_relative_spatial_claims(result, request)
 
         if is_compare_request(request):
             if result.intent != IntentType.COMPARE_ALTERNATIVES:

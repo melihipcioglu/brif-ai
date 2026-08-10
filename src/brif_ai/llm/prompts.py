@@ -73,29 +73,30 @@ COMPARE_SYSTEM_PROMPT = (
     "Kullanıcı iki farklı düzenleme alternatifi karşılaştırması istedi.\n"
     "Yanıt yalnız JSON Schema ile tam uyumlu tek bir JSON nesnesi olsun.\n"
     'intent her zaman "compare_alternatives" olsun.\n'
-    "assistant_message içinde kesin yön ve konum belirtmeden şu 3 bölümü eksiksiz üret:\n"
-    "Alternatif 1 - <Türkçe kısa ad>: <tek veya iki kısa cümle>\n"
-    "Alternatif 2 - <Türkçe kısa ad>: <tek veya iki kısa cümle>\n"
+    "assistant_message içinde yön veya konum uydurmadan şu 3 bölümü eksiksiz üret:\n"
+    "Alternatif 1 - <Türkçe başlık>: <tek veya iki kısa cümle>\n"
+    "Alternatif 2 - <Türkçe başlık>: <tek veya iki kısa cümle>\n"
     "Temel fark: <tek kısa cümle>\n"
-    "İki alternatif farklı mekânsal organizasyon ilkeleri sunmalı.\n"
-    "Kuzey, güney, doğu, batı yönlerini ve "
-    "'yakın bir konumda' gibi yapay dolguları KESİNLİKLE kullanma.\n"
+    "İki alternatif tamamen farklı iki mimari organizasyon yaklaşımını "
+    "(örneğin açık bütünleşme ile kontrollü ayrışma) anlatmalıdır.\n"
+    "Kuzey, güney, doğu, batı, sağ, sol, ön, arka, karşı, bitişik, ortak kenar "
+    "KESİNLİKLE UYDURMA.\n"
     "İngilizce terim kullanma; tüm anlatım öz Türkçe ve doğal olsun.\n"
     "confidence 0 ile 1 arasında bir sayı olsun.\n"
 )
 
 COMPARE_REPAIR_PROMPT = f"""{COMPARE_SYSTEM_PROMPT}
-Önceki yanıt geçersizdi.
+Önceki yanıt geçersizdi (yön/konum uyduruldu veya dolgu tekrarlandı).
 Yalnızca çağrının format alanındaki JSON Schema ile tam uyumlu tek bir JSON nesnesi üret.
 Aşağıdaki kurallara KESİNLİKLE UY:
 - Yalnız JSON nesnesi üret.
 - intent: "compare_alternatives"
-- assistant_message içinde kesin yön ve konum belirtmeden şu 3 bölümü eksiksiz üret:
-  Alternatif 1 - <Türkçe kısa ad>: <tek veya iki kısa cümle>
-  Alternatif 2 - <Türkçe kısa ad>: <tek veya iki kısa cümle>
+- assistant_message içinde yön/konum uydurmadan şu 3 bölümü eksiksiz üret:
+  Alternatif 1 - <Türkçe başlık>: <tek veya iki kısa cümle>
+  Alternatif 2 - <Türkçe başlık>: <tek veya iki kısa cümle>
   Temel fark: <tek kısa cümle>
-- Verilmeyen yön (kuzey/güney/doğu/batı), cephe veya ölçü uydurma.
-- 'yakın bir konumda' gibi dolguları tekrarlama.
+- Verilmeyen yön (kuzey/güney/doğu/batı), sağ/sol, ön/arka, karşı, bitişik, ortak kenar UYDURMA.
+- İki alternatifi farklı mekânsal organizasyon ilkeleri olarak anlat.
 """
 
 
