@@ -431,7 +431,7 @@ def test_streamlit_headless_startup_and_health_check() -> None:
 
 def test_streamlit_apptest_single_choice_unselected_and_error_preservation() -> None:
     """Verify Streamlit AppTest for unselected radio, error display, and value preservation."""
-    from streamlit.testing.v1 import AppTest  # type: ignore[import-not-found]
+    from streamlit.testing.v1 import AppTest
 
     demo_script = str(Path(__file__).resolve().parents[2] / "apps" / "daily_routines_demo.py")
     at = AppTest.from_file(demo_script).run()
