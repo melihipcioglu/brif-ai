@@ -11,16 +11,28 @@ class ConversationOrchestrator {
     this.stateMachine = options.stateMachine || new ContextStateMachine(this.hierarchy);
     this.store = options.store || new ScopedDocumentStore();
     this.resolver = options.resolver || new WorkspaceScopeResolver(this.hierarchy, this.store);
-    this.validator = new ContextValidator(this.hierarchy, this.stateMachine);
+    this.validator = options.validator || (typeof ContextValidator !== 'undefined'
+      ? new ContextValidator(this.hierarchy, this.stateMachine)
+      : { validateActiveContext: () => ({ isValid: true }) });
 
     this.assistant = options.assistant;
     this.presenter = options.presenter;
     this.historyManager = options.historyManager;
-    this.intentParser = new DemoIntentParser();
+    this.intentParser = options.intentParser || (typeof DemoIntentParser !== 'undefined'
+      ? new DemoIntentParser()
+      : { isMasterBathInitial: () => false, parseMasterBathPreference: () => null });
     this.localLLMGateway = options.localLLMGateway || null;
     this.proposalRecords = [];
+    this.briefMutationProposalRecords = [];
     this.pendingProposals = new Map();
     this.proposalSequence = 0;
+    this.userMessageSequence = 0;
+    this.lastUserMessageText = '';
+    this.lastUserMessageRef = '';
+
+    this.briefSnapshotsByProject = options.briefSnapshotsByProject
+      ? JSON.parse(JSON.stringify(options.briefSnapshotsByProject))
+      : {};
 
     this.chatContainerId = options.chatContainerId || 'chatMessagesContainer';
     this.allChatMessages = [];
@@ -45,7 +57,37 @@ class ConversationOrchestrator {
     });
   }
 
+  getActiveBriefSnapshot() {
+    const activeProjectId = this.stateMachine.getSnapshot().projectId;
+    return this.briefSnapshotsByProject[activeProjectId] || null;
+  }
+
+  replaceActiveBriefSnapshot(newSnapshot) {
+    const activeProjectId = this.stateMachine.getSnapshot().projectId;
+    if (!newSnapshot || newSnapshot.project_id !== activeProjectId) {
+      return false;
+    }
+    this.briefSnapshotsByProject[activeProjectId] = JSON.parse(JSON.stringify(newSnapshot));
+    return true;
+  }
+
+  getBriefMutationDescription(briefMutation) {
+    if (!briefMutation) return '';
+    const type = briefMutation.mutation_type;
+    if (type === 'ADD_BRIEF_ITEM' && briefMutation.brief_item) {
+      return `“${briefMutation.brief_item.normalized_statement}” brief'e eklensin mi?`;
+    }
+    if (type === 'ADD_SPACE_REQUEST' && briefMutation.space_request) {
+      return `“${briefMutation.space_request.display_name}” mekân talebi brief'e eklensin mi?`;
+    }
+    if (type === 'ADD_USAGE_SCENARIO' && briefMutation.usage_scenario) {
+      return `“${briefMutation.usage_scenario.title}” kullanım senaryosu brief'e eklensin mi?`;
+    }
+    return briefMutation.description || 'Brief güncellemesi eklensin mi?';
+  }
+
   setChatInputLocked(locked) {
+    if (typeof document === 'undefined') return;
     const chatContainer = document.getElementById(this.chatContainerId);
     const parent = chatContainer ? (chatContainer.closest('[data-test-scope-guard-root]') || chatContainer.parentElement) : document;
     const input = (parent && parent.querySelector('#assistantUserInput')) || document.getElementById('assistantUserInput');
@@ -247,6 +289,7 @@ class ConversationOrchestrator {
   }
 
   renderFilteredChatMessages() {
+    if (typeof document === 'undefined') return;
     const chatContainer = document.getElementById(this.chatContainerId);
     if (!chatContainer) return;
 
@@ -319,7 +362,13 @@ class ConversationOrchestrator {
         msg.proposedActions.forEach(proposal => {
           const label = document.createElement('span');
           label.className = 'message-text';
-          label.textContent = proposal.action.description;
+          if (proposal.briefMutation) {
+            label.textContent = this.getBriefMutationDescription(proposal.briefMutation);
+          } else if (proposal.action) {
+            label.textContent = proposal.action.description;
+          } else {
+            label.textContent = proposal.description || 'Öneri';
+          }
           proposals.appendChild(label);
           const button = document.createElement('button');
           button.type = 'button';
@@ -328,10 +377,10 @@ class ConversationOrchestrator {
           if (proposal.status === 'approved') {
             button.disabled = true;
             button.classList.add('proposal-approved');
-            button.textContent = 'Onaylandı';
+            button.textContent = proposal.briefMutation ? 'Brief\'e eklendi' : 'Onaylandı';
             button.setAttribute('aria-disabled', 'true');
           } else {
-            button.textContent = 'Öneriyi onayla';
+            button.textContent = proposal.briefMutation ? 'Brief\'e eklemeyi onayla' : 'Öneriyi onayla';
           }
           proposals.appendChild(button);
         });
@@ -372,7 +421,11 @@ class ConversationOrchestrator {
   async handleUserMessage(messageText) {
     if (!messageText) return null;
 
-    const pendingCommand = this.handlePendingProposalCommand(messageText);
+    this.userMessageSequence += 1;
+    this.lastUserMessageRef = `chatmsg_${this.userMessageSequence}`;
+    this.lastUserMessageText = String(messageText);
+
+    const pendingCommand = await this.handlePendingProposalCommand(messageText);
     if (pendingCommand) return pendingCommand;
 
     if (this.isRequestPending) return null;
@@ -429,11 +482,16 @@ class ConversationOrchestrator {
     const proposedActions = Array.isArray(result.proposed_actions)
       ? result.proposed_actions
       : [];
-    const proposals = proposedActions.map(action => {
+    const proposedBriefMutations = Array.isArray(result.proposed_brief_mutations)
+      ? result.proposed_brief_mutations
+      : [];
+
+    const actionProposals = proposedActions.map(action => {
       const actionCopy = JSON.parse(JSON.stringify(action));
       const existing = Array.from(this.pendingProposals.values()).find(candidate =>
         candidate.contextFingerprint === contextFingerprint &&
         candidate.generationId === proposalGenerationId &&
+        candidate.action &&
         JSON.stringify(candidate.action) === JSON.stringify(actionCopy)
       );
       if (existing) return existing;
@@ -443,16 +501,46 @@ class ConversationOrchestrator {
       const proposal = {
         id,
         action: actionCopy,
+        briefMutation: null,
         contextFingerprint,
-        generationId: proposalGenerationId
+        generationId: proposalGenerationId,
+        userMessageText: this.lastUserMessageText || '',
+        userMessageRef: this.lastUserMessageRef || 'chatmsg_1'
       };
       this.pendingProposals.set(id, proposal);
       return proposal;
     });
+
+    const mutationProposals = proposedBriefMutations.map(mutation => {
+      const mutationCopy = JSON.parse(JSON.stringify(mutation));
+      const existing = Array.from(this.pendingProposals.values()).find(candidate =>
+        candidate.contextFingerprint === contextFingerprint &&
+        candidate.generationId === proposalGenerationId &&
+        candidate.briefMutation &&
+        JSON.stringify(candidate.briefMutation) === JSON.stringify(mutationCopy)
+      );
+      if (existing) return existing;
+
+      this.proposalSequence += 1;
+      const id = `proposal_${this.proposalSequence}`;
+      const proposal = {
+        id,
+        action: null,
+        briefMutation: mutationCopy,
+        contextFingerprint,
+        generationId: proposalGenerationId,
+        userMessageText: this.lastUserMessageText || '',
+        userMessageRef: this.lastUserMessageRef || 'chatmsg_1'
+      };
+      this.pendingProposals.set(id, proposal);
+      return proposal;
+    });
+
+    const proposals = [...actionProposals, ...mutationProposals];
     this.appendAssistantMessage(assistantMessage, [], proposals);
   }
 
-  approveProposalById(proposalId) {
+  async approveProposalById(proposalId) {
     const proposal = this.pendingProposals.get(proposalId);
     if (!proposal) return null;
     const current = this.stateMachine.getSnapshot();
@@ -462,6 +550,58 @@ class ConversationOrchestrator {
     ) {
       this.appendAssistantMessage('Bağlam değiştiği için bu öneri onaylanamadı.');
       return null;
+    }
+
+    if (proposal.briefMutation) {
+      if (!this.localLLMGateway) {
+        this.appendAssistantMessage('Yerel LLM ağ geçidi tanımlı değil; brief güncellemesi onaylanamadı.');
+        return null;
+      }
+      const activeBrief = this.getActiveBriefSnapshot();
+      if (!activeBrief) {
+        this.appendAssistantMessage('Aktif brief snapshot bulunamadı.');
+        return null;
+      }
+      const payload = {
+        brief_snapshot: activeBrief,
+        proposed_mutation: proposal.briefMutation,
+        current_project_id: current.projectId,
+        proposal_fingerprint: proposal.contextFingerprint,
+        current_fingerprint: current.contextFingerprint,
+        proposal_generation_id: proposal.generationId,
+        current_generation_id: current.generationId,
+        user_message: proposal.userMessageText || '',
+        source_reference: proposal.userMessageRef || 'chatmsg_1'
+      };
+      const response = await this.localLLMGateway.approveBriefMutation(payload);
+      const replaced = (response && response.success && response.resulting_snapshot)
+        ? this.replaceActiveBriefSnapshot(response.resulting_snapshot)
+        : false;
+      if (replaced) {
+        const record = response.approval_record || {
+          proposal_status: 'user_approved',
+          approved_at: new Date().toISOString(),
+          context_fingerprint: current.contextFingerprint,
+          generation_id: current.generationId,
+          mutation_id: proposal.briefMutation.mutation_id,
+          proposed_brief_mutation: proposal.briefMutation,
+          resulting_brief_version: response.resulting_snapshot.brief_version
+        };
+        this.briefMutationProposalRecords.push(record);
+        this.pendingProposals.delete(proposalId);
+        this.allChatMessages.forEach(message => {
+          if (!Array.isArray(message.proposedActions)) return;
+          message.proposedActions.forEach(candidate => {
+            if (candidate.id === proposalId) candidate.status = 'approved';
+          });
+        });
+        this.appendAssistantMessage('Bu gereksinim onaylı brief\'e eklendi.');
+        return record;
+      } else {
+        const errorMsg = (response && response.error) ? response.error : 'Bilinmeyen hata';
+        this.appendAssistantMessage(`Brief güncellemesi onaylanamadı: ${errorMsg}`);
+        return null;
+      }
     }
 
     const record = {
@@ -497,7 +637,11 @@ class ConversationOrchestrator {
     }
 
     this.pendingProposals.delete(proposalId);
-    this.appendAssistantMessage('Bekleyen öneri iptal edildi. Plan değiştirilmedi.');
+    if (proposal.briefMutation) {
+      this.appendAssistantMessage('Brief önerisi iptal edildi; mevcut brief değiştirilmedi.');
+    } else {
+      this.appendAssistantMessage('Bekleyen öneri iptal edildi. Plan değiştirilmedi.');
+    }
     return true;
   }
 
@@ -514,7 +658,8 @@ class ConversationOrchestrator {
       status: 'pending_user_confirmation',
       context_fingerprint: proposal.contextFingerprint,
       generation_id: proposal.generationId,
-      action: JSON.parse(JSON.stringify(proposal.action))
+      action: proposal.action ? JSON.parse(JSON.stringify(proposal.action)) : null,
+      brief_mutation: proposal.briefMutation ? JSON.parse(JSON.stringify(proposal.briefMutation)) : null
     }));
   }
 
@@ -522,19 +667,31 @@ class ConversationOrchestrator {
     const transcript = this.allChatMessages
       .slice(-6)
       .map(message => message.role + ': ' + message.text);
-    const pending = this.getPendingProposalContext().map(proposal =>
-      `${proposal.status}: ${proposal.action.description}`
-    );
+    const pending = this.getPendingProposalContext().map(proposal => {
+      if (proposal.action) {
+        return `${proposal.status}: ${proposal.action.description}`;
+      }
+      if (proposal.brief_mutation) {
+        return `${proposal.status}: ${this.getBriefMutationDescription(proposal.brief_mutation)}`;
+      }
+      return proposal.status;
+    });
     return [...transcript, ...pending].join('\n');
   }
 
   getCurrentDecisions() {
-    return this.proposalRecords.map(record => (
-      record.proposal_status + ': ' + record.proposed_action.description
-    ));
+    return this.proposalRecords.map(record => {
+      if (record.proposed_action) {
+        return record.proposal_status + ': ' + record.proposed_action.description;
+      }
+      if (record.proposed_brief_mutation) {
+        return record.proposal_status + ': Brief mutation v' + record.resulting_brief_version;
+      }
+      return record.proposal_status;
+    });
   }
 
-  handlePendingProposalCommand(messageText) {
+  async handlePendingProposalCommand(messageText) {
     const pending = this.getActivePendingProposals();
     if (pending.length === 0) return null;
     const normalized = String(messageText || '').trim().toLocaleLowerCase('tr-TR');
@@ -542,7 +699,7 @@ class ConversationOrchestrator {
     if (['onayla', 'onaylıyorum', 'kabul et', 'kabul ediyorum'].some(command =>
       normalized.includes(command)
     )) {
-      const record = this.approveProposalById(pending[0].id);
+      const record = await this.approveProposalById(pending[0].id);
       return { status: record ? 'approved' : 'stale', record };
     }
 
@@ -847,5 +1004,9 @@ function escapeHtml(str) {
   });
 }
 
-// Global Export
-window.ConversationOrchestrator = ConversationOrchestrator;
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = ConversationOrchestrator;
+}
+if (typeof window !== 'undefined') {
+  window.ConversationOrchestrator = ConversationOrchestrator;
+}

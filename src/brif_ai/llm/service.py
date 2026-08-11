@@ -190,7 +190,9 @@ class LocalLLMConversationService:
         user_message: str,
         snapshot: BriefSnapshot,
         *,
+        current_project_id: str | None = None,
         approved_at: datetime | None = None,
+        source_reference: str | None = None,
     ) -> tuple[BriefSnapshot, BriefMutationApprovalRecord]:
         LocalLLMConversationService.ensure_current_context(
             proposal_fingerprint,
@@ -199,12 +201,18 @@ class LocalLLMConversationService:
         if proposal_generation_id != current_generation_id:
             raise StaleContextError("Eski jenerasyona ait öneri onaylanamaz.")
 
+        if current_project_id is not None and snapshot.project_id != current_project_id:
+            raise ValueError(
+                f"brief_snapshot project_id '{snapshot.project_id}' "
+                f"does not match current_project_id '{current_project_id}'"
+            )
+
         ts = approved_at or datetime.now(timezone.utc)  # noqa: UP017
         new_snapshot = apply_approved_brief_mutation(
             snapshot,
             proposed_mutation,
             user_message,
-            source_reference=current_fingerprint,
+            source_reference=source_reference or current_fingerprint,
             approved_at=ts,
         )
 
