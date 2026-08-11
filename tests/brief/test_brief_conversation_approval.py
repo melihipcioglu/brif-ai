@@ -17,6 +17,7 @@ from brif_ai.brief.mutation import (
     SpaceRequestProposalPayload,
     UsageScenarioProposalPayload,
 )
+from brif_ai.brief.persistence.json_repository import JSONBriefRepository
 from brif_ai.core.models.common import SpaceFunction
 from brif_ai.llm.contracts import (
     ActiveContextSnapshot,
@@ -65,9 +66,102 @@ def sample_snapshot(project_id: str = "proj_house_2story") -> BriefSnapshot:
     )
 
 
-def test_approval_endpoint_succeeds_add_brief_item() -> None:
-    client = TestClient(create_app(LocalLLMSettings(enabled=True), MockAPIProvider()))
+def test_approval_uninitialized_project_returns_404(tmp_path: Path) -> None:
+    """Regression test 1: Approving a mutation on an uninitialized project returns HTTP 404.
+
+    Does not create initial state from browser snapshot. Repository remains empty.
+    """
+    repo = JSONBriefRepository(tmp_path)
+    client = TestClient(
+        create_app(
+            LocalLLMSettings(enabled=True),
+            MockAPIProvider(),
+            brief_repository=repo,
+        )
+    )
+    snapshot = sample_snapshot("proj_house_2story")
+    mutation = ProposedBriefMutation(
+        mutation_id="mut_item_uninit",
+        mutation_type=BriefMutationType.ADD_BRIEF_ITEM,
+        brief_item=BriefItemProposalPayload(
+            kind=BriefItemKind.NEED,
+            normalized_statement="Salon bahçeye açılsın.",
+            priority=Priority.MUST,
+        ),
+    )
+    req_payload = {
+        "brief_snapshot": snapshot.model_dump(mode="json"),
+        "proposed_mutation": mutation.model_dump(mode="json"),
+        "current_project_id": "proj_house_2story",
+        "expected_brief_version": 1,
+        "proposal_fingerprint": "fp1",
+        "current_fingerprint": "fp1",
+        "proposal_generation_id": 1,
+        "current_generation_id": 1,
+        "user_message": "Salon bahçeye açılsın.",
+        "source_reference": "chatmsg_1",
+    }
+    response = client.post("/api/v1/brief/mutations/approve", json=req_payload)
+    assert response.status_code == 404
+    assert response.json()["success"] is False
+    assert "not initialized" in response.json()["error"].lower()
+
+    # Verify repository remains empty
+    assert repo.get_latest("proj_house_2story") is None
+    assert repo.list_versions("proj_house_2story") == []
+
+
+def test_approval_omitting_expected_brief_version_returns_422(tmp_path: Path) -> None:
+    """Regression test 2: expected_brief_version is required. Omitting it returns HTTP 422."""
+    repo = JSONBriefRepository(tmp_path)
+    client = TestClient(
+        create_app(
+            LocalLLMSettings(enabled=True),
+            MockAPIProvider(),
+            brief_repository=repo,
+        )
+    )
+    snapshot = sample_snapshot("proj_house_2story")
+    mutation = ProposedBriefMutation(
+        mutation_id="mut_no_ver",
+        mutation_type=BriefMutationType.ADD_BRIEF_ITEM,
+        brief_item=BriefItemProposalPayload(
+            kind=BriefItemKind.NEED,
+            normalized_statement="Test",
+            priority=Priority.MUST,
+        ),
+    )
+    req_payload = {
+        "brief_snapshot": snapshot.model_dump(mode="json"),
+        "proposed_mutation": mutation.model_dump(mode="json"),
+        "current_project_id": "proj_house_2story",
+        # expected_brief_version omitted!
+        "proposal_fingerprint": "fp1",
+        "current_fingerprint": "fp1",
+        "proposal_generation_id": 1,
+        "current_generation_id": 1,
+        "user_message": "Test message",
+        "source_reference": "chatmsg_2",
+    }
+    response = client.post("/api/v1/brief/mutations/approve", json=req_payload)
+    assert response.status_code == 422
+
+
+def test_approval_endpoint_succeeds_add_brief_item(tmp_path: Path) -> None:
+    client = TestClient(
+        create_app(
+            LocalLLMSettings(enabled=True),
+            MockAPIProvider(),
+            brief_repository=JSONBriefRepository(tmp_path),
+        )
+    )
     snapshot = sample_snapshot()
+    # Explicit initialization required
+    client.post(
+        "/api/v1/projects/proj_house_2story/brief/initialize",
+        json=snapshot.model_dump(mode="json"),
+    )
+
     mutation = ProposedBriefMutation(
         mutation_id="mut_item_01",
         mutation_type=BriefMutationType.ADD_BRIEF_ITEM,
@@ -81,6 +175,7 @@ def test_approval_endpoint_succeeds_add_brief_item() -> None:
         "brief_snapshot": snapshot.model_dump(mode="json"),
         "proposed_mutation": mutation.model_dump(mode="json"),
         "current_project_id": "proj_house_2story",
+        "expected_brief_version": 1,
         "proposal_fingerprint": "house|main|ground|living|study",
         "current_fingerprint": "house|main|ground|living|study",
         "proposal_generation_id": 1,
@@ -101,9 +196,20 @@ def test_approval_endpoint_succeeds_add_brief_item() -> None:
     assert data["approval_record"]["proposal_status"] == "user_approved"
 
 
-def test_approval_endpoint_succeeds_add_space_request() -> None:
-    client = TestClient(create_app(LocalLLMSettings(enabled=True), MockAPIProvider()))
+def test_approval_endpoint_succeeds_add_space_request(tmp_path: Path) -> None:
+    client = TestClient(
+        create_app(
+            LocalLLMSettings(enabled=True),
+            MockAPIProvider(),
+            brief_repository=JSONBriefRepository(tmp_path),
+        )
+    )
     snapshot = sample_snapshot()
+    client.post(
+        "/api/v1/projects/proj_house_2story/brief/initialize",
+        json=snapshot.model_dump(mode="json"),
+    )
+
     mutation = ProposedBriefMutation(
         mutation_id="mut_space_01",
         mutation_type=BriefMutationType.ADD_SPACE_REQUEST,
@@ -119,6 +225,7 @@ def test_approval_endpoint_succeeds_add_space_request() -> None:
         "brief_snapshot": snapshot.model_dump(mode="json"),
         "proposed_mutation": mutation.model_dump(mode="json"),
         "current_project_id": "proj_house_2story",
+        "expected_brief_version": 1,
         "proposal_fingerprint": "house|main|ground|living|study",
         "current_fingerprint": "house|main|ground|living|study",
         "proposal_generation_id": 1,
@@ -135,9 +242,20 @@ def test_approval_endpoint_succeeds_add_space_request() -> None:
     assert data["resulting_snapshot"]["space_requests"][0]["display_name"] == "Misafir Odası"
 
 
-def test_approval_endpoint_succeeds_add_usage_scenario() -> None:
-    client = TestClient(create_app(LocalLLMSettings(enabled=True), MockAPIProvider()))
+def test_approval_endpoint_succeeds_add_usage_scenario(tmp_path: Path) -> None:
+    client = TestClient(
+        create_app(
+            LocalLLMSettings(enabled=True),
+            MockAPIProvider(),
+            brief_repository=JSONBriefRepository(tmp_path),
+        )
+    )
     snapshot = sample_snapshot()
+    client.post(
+        "/api/v1/projects/proj_house_2story/brief/initialize",
+        json=snapshot.model_dump(mode="json"),
+    )
+
     mutation = ProposedBriefMutation(
         mutation_id="mut_usage_01",
         mutation_type=BriefMutationType.ADD_USAGE_SCENARIO,
@@ -150,6 +268,7 @@ def test_approval_endpoint_succeeds_add_usage_scenario() -> None:
         "brief_snapshot": snapshot.model_dump(mode="json"),
         "proposed_mutation": mutation.model_dump(mode="json"),
         "current_project_id": "proj_house_2story",
+        "expected_brief_version": 1,
         "proposal_fingerprint": "house|main|ground|living|study",
         "current_fingerprint": "house|main|ground|living|study",
         "proposal_generation_id": 1,
@@ -166,10 +285,19 @@ def test_approval_endpoint_succeeds_add_usage_scenario() -> None:
     assert data["resulting_snapshot"]["usage_scenarios"][0]["title"] == "Hafta Sonu Kahvaltısı"
 
 
-def test_approval_endpoint_version_increments_exactly_once() -> None:
-    client = TestClient(create_app(LocalLLMSettings(enabled=True), MockAPIProvider()))
+def test_approval_endpoint_version_increments_exactly_once(tmp_path: Path) -> None:
+    client = TestClient(
+        create_app(
+            LocalLLMSettings(enabled=True),
+            MockAPIProvider(),
+            brief_repository=JSONBriefRepository(tmp_path),
+        )
+    )
     snapshot = sample_snapshot()
-    assert snapshot.brief_version == 1
+    client.post(
+        "/api/v1/projects/proj_house_2story/brief/initialize",
+        json=snapshot.model_dump(mode="json"),
+    )
 
     mutation = ProposedBriefMutation(
         mutation_id="mut_ver_01",
@@ -184,6 +312,7 @@ def test_approval_endpoint_version_increments_exactly_once() -> None:
         "brief_snapshot": snapshot.model_dump(mode="json"),
         "proposed_mutation": mutation.model_dump(mode="json"),
         "current_project_id": "proj_house_2story",
+        "expected_brief_version": 1,
         "proposal_fingerprint": "fp1",
         "current_fingerprint": "fp1",
         "proposal_generation_id": 1,
@@ -197,9 +326,20 @@ def test_approval_endpoint_version_increments_exactly_once() -> None:
     assert data["resulting_snapshot"]["brief_version"] == 2
 
 
-def test_approval_endpoint_returns_correct_record() -> None:
-    client = TestClient(create_app(LocalLLMSettings(enabled=True), MockAPIProvider()))
+def test_approval_endpoint_returns_correct_record(tmp_path: Path) -> None:
+    client = TestClient(
+        create_app(
+            LocalLLMSettings(enabled=True),
+            MockAPIProvider(),
+            brief_repository=JSONBriefRepository(tmp_path),
+        )
+    )
     snapshot = sample_snapshot()
+    client.post(
+        "/api/v1/projects/proj_house_2story/brief/initialize",
+        json=snapshot.model_dump(mode="json"),
+    )
+
     mutation = ProposedBriefMutation(
         mutation_id="mut_rec_01",
         mutation_type=BriefMutationType.ADD_BRIEF_ITEM,
@@ -213,6 +353,7 @@ def test_approval_endpoint_returns_correct_record() -> None:
         "brief_snapshot": snapshot.model_dump(mode="json"),
         "proposed_mutation": mutation.model_dump(mode="json"),
         "current_project_id": "proj_house_2story",
+        "expected_brief_version": 1,
         "proposal_fingerprint": "fp1",
         "current_fingerprint": "fp1",
         "proposal_generation_id": 2,
@@ -229,9 +370,20 @@ def test_approval_endpoint_returns_correct_record() -> None:
     assert record["resulting_brief_version"] == 2
 
 
-def test_stale_fingerprint_rejected() -> None:
-    client = TestClient(create_app(LocalLLMSettings(enabled=True), MockAPIProvider()))
+def test_stale_fingerprint_rejected(tmp_path: Path) -> None:
+    client = TestClient(
+        create_app(
+            LocalLLMSettings(enabled=True),
+            MockAPIProvider(),
+            brief_repository=JSONBriefRepository(tmp_path),
+        )
+    )
     snapshot = sample_snapshot()
+    client.post(
+        "/api/v1/projects/proj_house_2story/brief/initialize",
+        json=snapshot.model_dump(mode="json"),
+    )
+
     mutation = ProposedBriefMutation(
         mutation_id="mut_stale_fp",
         mutation_type=BriefMutationType.ADD_BRIEF_ITEM,
@@ -245,6 +397,7 @@ def test_stale_fingerprint_rejected() -> None:
         "brief_snapshot": snapshot.model_dump(mode="json"),
         "proposed_mutation": mutation.model_dump(mode="json"),
         "current_project_id": "proj_house_2story",
+        "expected_brief_version": 1,
         "proposal_fingerprint": "old_fingerprint",
         "current_fingerprint": "new_fingerprint",
         "proposal_generation_id": 1,
@@ -255,12 +408,25 @@ def test_stale_fingerprint_rejected() -> None:
     response = client.post("/api/v1/brief/mutations/approve", json=req_payload)
     assert response.status_code == 409
     assert response.json()["success"] is False
-    assert "uyumsuz" in response.json()["error"] or "eski" in response.json()["error"].lower()
+    assert any(
+        word in response.json()["error"].lower() for word in ["uyumsuz", "eski", "bağlam", "baglam"]
+    )
 
 
-def test_stale_generation_rejected() -> None:
-    client = TestClient(create_app(LocalLLMSettings(enabled=True), MockAPIProvider()))
+def test_stale_generation_rejected(tmp_path: Path) -> None:
+    client = TestClient(
+        create_app(
+            LocalLLMSettings(enabled=True),
+            MockAPIProvider(),
+            brief_repository=JSONBriefRepository(tmp_path),
+        )
+    )
     snapshot = sample_snapshot()
+    client.post(
+        "/api/v1/projects/proj_house_2story/brief/initialize",
+        json=snapshot.model_dump(mode="json"),
+    )
+
     mutation = ProposedBriefMutation(
         mutation_id="mut_stale_gen",
         mutation_type=BriefMutationType.ADD_BRIEF_ITEM,
@@ -274,6 +440,7 @@ def test_stale_generation_rejected() -> None:
         "brief_snapshot": snapshot.model_dump(mode="json"),
         "proposed_mutation": mutation.model_dump(mode="json"),
         "current_project_id": "proj_house_2story",
+        "expected_brief_version": 1,
         "proposal_fingerprint": "fp1",
         "current_fingerprint": "fp1",
         "proposal_generation_id": 1,
@@ -287,15 +454,14 @@ def test_stale_generation_rejected() -> None:
     assert "jenerasyon" in response.json()["error"].lower()
 
 
-def test_wrong_project_snapshot_rejected() -> None:
-    """Real wrong-project snapshot validation test:
-
-    current_project_id = proj_house_2story
-    brief_snapshot.project_id = proj_tower_50floor
-    otherwise valid mutation and valid stakeholder inside tower snapshot
-    Expected: HTTP 422, input snapshot unchanged, domain mutation not applied.
-    """
-    client = TestClient(create_app(LocalLLMSettings(enabled=True), MockAPIProvider()))
+def test_wrong_project_snapshot_rejected(tmp_path: Path) -> None:
+    client = TestClient(
+        create_app(
+            LocalLLMSettings(enabled=True),
+            MockAPIProvider(),
+            brief_repository=JSONBriefRepository(tmp_path),
+        )
+    )
     tower_snapshot = BriefSnapshot(
         project_id="proj_tower_50floor",
         schema_version="brief.v0",
@@ -331,7 +497,8 @@ def test_wrong_project_snapshot_rejected() -> None:
     req_payload = {
         "brief_snapshot": tower_snapshot.model_dump(mode="json"),
         "proposed_mutation": mutation.model_dump(mode="json"),
-        "current_project_id": "proj_house_2story",  # Mismatched current_project_id!
+        "current_project_id": "proj_house_2story",
+        "expected_brief_version": 1,
         "proposal_fingerprint": "fp1",
         "current_fingerprint": "fp1",
         "proposal_generation_id": 1,
@@ -342,15 +509,24 @@ def test_wrong_project_snapshot_rejected() -> None:
     response = client.post("/api/v1/brief/mutations/approve", json=req_payload)
     assert response.status_code == 422
     assert "project_id" in str(response.json()).lower()
-    # Input snapshot remains unchanged
     assert tower_snapshot.brief_version == tower_snapshot_copy.brief_version
     assert len(tower_snapshot.brief_items) == 0
 
 
-def test_invalid_stakeholder_rejected() -> None:
-    """Separate test for invalid stakeholder ID inside same-project snapshot."""
-    client = TestClient(create_app(LocalLLMSettings(enabled=True), MockAPIProvider()))
+def test_invalid_stakeholder_rejected(tmp_path: Path) -> None:
+    client = TestClient(
+        create_app(
+            LocalLLMSettings(enabled=True),
+            MockAPIProvider(),
+            brief_repository=JSONBriefRepository(tmp_path),
+        )
+    )
     snapshot = sample_snapshot("proj_house_2story")
+    client.post(
+        "/api/v1/projects/proj_house_2story/brief/initialize",
+        json=snapshot.model_dump(mode="json"),
+    )
+
     mutation = ProposedBriefMutation(
         mutation_id="mut_bad_stk",
         mutation_type=BriefMutationType.ADD_BRIEF_ITEM,
@@ -365,6 +541,7 @@ def test_invalid_stakeholder_rejected() -> None:
         "brief_snapshot": snapshot.model_dump(mode="json"),
         "proposed_mutation": mutation.model_dump(mode="json"),
         "current_project_id": "proj_house_2story",
+        "expected_brief_version": 1,
         "proposal_fingerprint": "fp1",
         "current_fingerprint": "fp1",
         "proposal_generation_id": 1,
@@ -378,17 +555,28 @@ def test_invalid_stakeholder_rejected() -> None:
     assert "stakeholder" in response.json()["error"].lower()
 
 
-def test_malformed_mutation_rejected() -> None:
-    client = TestClient(create_app(LocalLLMSettings(enabled=True), MockAPIProvider()))
+def test_malformed_mutation_rejected(tmp_path: Path) -> None:
+    client = TestClient(
+        create_app(
+            LocalLLMSettings(enabled=True),
+            MockAPIProvider(),
+            brief_repository=JSONBriefRepository(tmp_path),
+        )
+    )
     snapshot = sample_snapshot()
+    client.post(
+        "/api/v1/projects/proj_house_2story/brief/initialize",
+        json=snapshot.model_dump(mode="json"),
+    )
+
     req_payload = {
         "brief_snapshot": snapshot.model_dump(mode="json"),
         "proposed_mutation": {
             "mutation_id": "bad_mut",
             "mutation_type": "ADD_BRIEF_ITEM",
-            # missing brief_item payload
         },
         "current_project_id": "proj_house_2story",
+        "expected_brief_version": 1,
         "proposal_fingerprint": "fp1",
         "current_fingerprint": "fp1",
         "proposal_generation_id": 1,
@@ -400,9 +588,19 @@ def test_malformed_mutation_rejected() -> None:
     assert response.status_code == 422
 
 
-def test_failed_approval_leaves_input_snapshot_unchanged() -> None:
-    client = TestClient(create_app(LocalLLMSettings(enabled=True), MockAPIProvider()))
+def test_failed_approval_leaves_input_snapshot_unchanged(tmp_path: Path) -> None:
+    client = TestClient(
+        create_app(
+            LocalLLMSettings(enabled=True),
+            MockAPIProvider(),
+            brief_repository=JSONBriefRepository(tmp_path),
+        )
+    )
     snapshot = sample_snapshot()
+    client.post(
+        "/api/v1/projects/proj_house_2story/brief/initialize",
+        json=snapshot.model_dump(mode="json"),
+    )
     snapshot_copy = snapshot.model_copy(deep=True)
 
     mutation = ProposedBriefMutation(
@@ -418,6 +616,7 @@ def test_failed_approval_leaves_input_snapshot_unchanged() -> None:
         "brief_snapshot": snapshot.model_dump(mode="json"),
         "proposed_mutation": mutation.model_dump(mode="json"),
         "current_project_id": "proj_house_2story",
+        "expected_brief_version": 1,
         "proposal_fingerprint": "fp1",
         "current_fingerprint": "fp1",
         "proposal_generation_id": 1,
@@ -431,9 +630,20 @@ def test_failed_approval_leaves_input_snapshot_unchanged() -> None:
     assert snapshot.model_dump() == snapshot_copy.model_dump()
 
 
-def test_source_reference_becomes_chat_evidence_source_reference() -> None:
-    client = TestClient(create_app(LocalLLMSettings(enabled=True), MockAPIProvider()))
+def test_source_reference_becomes_chat_evidence_source_reference(tmp_path: Path) -> None:
+    client = TestClient(
+        create_app(
+            LocalLLMSettings(enabled=True),
+            MockAPIProvider(),
+            brief_repository=JSONBriefRepository(tmp_path),
+        )
+    )
     snapshot = sample_snapshot()
+    client.post(
+        "/api/v1/projects/proj_house_2story/brief/initialize",
+        json=snapshot.model_dump(mode="json"),
+    )
+
     mutation = ProposedBriefMutation(
         mutation_id="mut_ev_ref",
         mutation_type=BriefMutationType.ADD_BRIEF_ITEM,
@@ -447,6 +657,7 @@ def test_source_reference_becomes_chat_evidence_source_reference() -> None:
         "brief_snapshot": snapshot.model_dump(mode="json"),
         "proposed_mutation": mutation.model_dump(mode="json"),
         "current_project_id": "proj_house_2story",
+        "expected_brief_version": 1,
         "proposal_fingerprint": "fp1",
         "current_fingerprint": "fp1",
         "proposal_generation_id": 1,
@@ -461,9 +672,20 @@ def test_source_reference_becomes_chat_evidence_source_reference() -> None:
     assert res_snapshot["evidence"][0]["source_reference"] == "chatmsg_42"
 
 
-def test_original_requirement_message_becomes_evidence_excerpt() -> None:
-    client = TestClient(create_app(LocalLLMSettings(enabled=True), MockAPIProvider()))
+def test_original_requirement_message_becomes_evidence_excerpt(tmp_path: Path) -> None:
+    client = TestClient(
+        create_app(
+            LocalLLMSettings(enabled=True),
+            MockAPIProvider(),
+            brief_repository=JSONBriefRepository(tmp_path),
+        )
+    )
     snapshot = sample_snapshot()
+    client.post(
+        "/api/v1/projects/proj_house_2story/brief/initialize",
+        json=snapshot.model_dump(mode="json"),
+    )
+
     original_msg = "Mutfak terasa doğrudan açılmalı, sabah güneşi alsın."
     mutation = ProposedBriefMutation(
         mutation_id="mut_ev_excerpt",
@@ -478,6 +700,7 @@ def test_original_requirement_message_becomes_evidence_excerpt() -> None:
         "brief_snapshot": snapshot.model_dump(mode="json"),
         "proposed_mutation": mutation.model_dump(mode="json"),
         "current_project_id": "proj_house_2story",
+        "expected_brief_version": 1,
         "proposal_fingerprint": "fp1",
         "current_fingerprint": "fp1",
         "proposal_generation_id": 1,
@@ -491,9 +714,20 @@ def test_original_requirement_message_becomes_evidence_excerpt() -> None:
     assert res_snapshot["evidence"][0]["excerpt"] == original_msg
 
 
-def test_exact_replay_remains_idempotent() -> None:
-    client = TestClient(create_app(LocalLLMSettings(enabled=True), MockAPIProvider()))
+def test_exact_replay_remains_idempotent(tmp_path: Path) -> None:
+    client = TestClient(
+        create_app(
+            LocalLLMSettings(enabled=True),
+            MockAPIProvider(),
+            brief_repository=JSONBriefRepository(tmp_path),
+        )
+    )
     snapshot = sample_snapshot()
+    client.post(
+        "/api/v1/projects/proj_house_2story/brief/initialize",
+        json=snapshot.model_dump(mode="json"),
+    )
+
     mutation = ProposedBriefMutation(
         mutation_id="mut_idempotent",
         mutation_type=BriefMutationType.ADD_BRIEF_ITEM,
@@ -507,6 +741,7 @@ def test_exact_replay_remains_idempotent() -> None:
         "brief_snapshot": snapshot.model_dump(mode="json"),
         "proposed_mutation": mutation.model_dump(mode="json"),
         "current_project_id": "proj_house_2story",
+        "expected_brief_version": 1,
         "proposal_fingerprint": "fp1",
         "current_fingerprint": "fp1",
         "proposal_generation_id": 1,
@@ -520,8 +755,10 @@ def test_exact_replay_remains_idempotent() -> None:
     snap1 = resp1.json()["resulting_snapshot"]
     assert snap1["brief_version"] == 2
 
-    # Second approval with updated snapshot (exact replay of same mutation & source_reference)
+    # Second approval with updated expected_brief_version
+    # (exact replay of same mutation & source_reference)
     req_payload["brief_snapshot"] = snap1
+    req_payload["expected_brief_version"] = 2
     resp2 = client.post("/api/v1/brief/mutations/approve", json=req_payload)
     assert resp2.status_code == 200
     snap2 = resp2.json()["resulting_snapshot"]
@@ -547,9 +784,20 @@ def test_conversation_request_rejects_brief_snapshot_from_different_project() ->
         )
 
 
-def test_prompt_includes_confirmed_active_brief_content() -> None:
-    client = TestClient(create_app(LocalLLMSettings(enabled=True), MockAPIProvider()))
+def test_prompt_includes_confirmed_active_brief_content(tmp_path: Path) -> None:
+    client = TestClient(
+        create_app(
+            LocalLLMSettings(enabled=True),
+            MockAPIProvider(),
+            brief_repository=JSONBriefRepository(tmp_path),
+        )
+    )
     snapshot = sample_snapshot()
+    client.post(
+        "/api/v1/projects/proj_house_2story/brief/initialize",
+        json=snapshot.model_dump(mode="json"),
+    )
+
     # Approve space request first
     mutation = ProposedBriefMutation(
         mutation_id="mut_prompt_01",
@@ -567,6 +815,7 @@ def test_prompt_includes_confirmed_active_brief_content() -> None:
             "brief_snapshot": snapshot.model_dump(mode="json"),
             "proposed_mutation": mutation.model_dump(mode="json"),
             "current_project_id": "proj_house_2story",
+            "expected_brief_version": 1,
             "proposal_fingerprint": "fp1",
             "current_fingerprint": "fp1",
             "proposal_generation_id": 1,

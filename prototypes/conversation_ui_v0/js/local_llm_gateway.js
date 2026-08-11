@@ -253,6 +253,39 @@ class LocalLLMGateway {
     });
   }
 
+  async fetchProjectBrief(projectId) {
+    try {
+      const response = await this.fetchFn(`${this.baseUrl}/api/v1/projects/${encodeURIComponent(projectId)}/brief`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (response.status === 200) {
+        const snapshot = await response.json();
+        return { ok: true, snapshot };
+      }
+      return { ok: false, status: response.status, error: `HTTP ${response.status}` };
+    } catch (error) {
+      return { ok: false, status: 0, error: error.message };
+    }
+  }
+
+  async initializeProjectBrief(projectId, snapshot) {
+    try {
+      const response = await this.fetchFn(`${this.baseUrl}/api/v1/projects/${encodeURIComponent(projectId)}/brief/initialize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(snapshot)
+      });
+      if (response.status === 200) {
+        const result = await response.json();
+        return { ok: true, snapshot: result };
+      }
+      return { ok: false, status: response.status, error: `HTTP ${response.status}` };
+    } catch (error) {
+      return { ok: false, status: 0, error: error.message };
+    }
+  }
+
   async approveBriefMutation(payload, options = {}) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);

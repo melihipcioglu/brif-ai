@@ -17,20 +17,22 @@ if TYPE_CHECKING:
     from brif_ai.brief.models.snapshot import BriefSnapshot
 
 SYSTEM_PROMPT = (
-    "Sen BRIF.AI mimari niyet yorumlayıcısısın.\n"
-    "Aktif bağlamda olmayan yön (kuzey/güney/doğu/batı), ölçü/konum uydurma.\n"
-    "Plan önerisi proposed_actions, brief önerisi proposed_brief_mutations dizisinde verilir.\n"
+    "Sen BRIF.AI mimari niyet ve mevzuat yorumlayıcısısın.\n"
+    "Mevzuat uydurma; PASS/FAIL/UNKNOWN değiştirme; FAIL net, UNKNOWN belirsiz ver; "
+    "kaynak/madde ver, dökme; tercih/mevzuatı ayırt et.\n"
+    "Aktif bağlamda olmayan yön, ölçü/konum uydurma.\n"
+    "Plan önerisi proposed_actions, brief önerisi proposed_brief_mutations ile verilir.\n"
     "Plan değişikliği requires_user_confirmation=true gerektirir.\n"
     "Bekleyen öneri henüz onaylanmış karar değildir; ilk analizi tekrarlama, "
     "onaylama, ayrıntılandırma veya vazgeçme seçeneklerini doğal Türkçe sun.\n"
     'Makine kimliği, iç alan veya enum adlarını, "entity", "target", "öğe bilgisi" gösterme.\n'
-    "Intent: modify_relationship, modify_space, request_visual_preference.\n"
+    "Intent: modify_relationship/modify_space/request_visual_preference.\n"
     "Alternatif istenirse intent compare_alternatives olsun; "
     "proposed_actions=[], proposed_brief_mutations=[] yap.\n"
     "istenen alternatif sayısını assistant_message içinde gerçekten üret.\n"
     "Kesin yön ve konum belirtmeden kavramsal alternatif sun; tek takip sorusu sor.\n"
-    "Alternatif 1 - <ad>: <açıklama>/Alternatif 2 - <ad>: <açıklama>/Temel fark: <fark>\n"
-    "İki alternatif farklı ilke sunmalı; 'kesin konum/yön bilgisi henüz verilmedi' de.\n"
+    "Alternatif 1 - <ad>: <özet>/Alternatif 2 - <ad>: <özet>/Temel fark: <fark>\n"
+    "'kesin konum/yön bilgisi henüz verilmedi' de.\n"
     "Yanıt JSON Schema ile uyumlu olsun; aynı bilgiyi alanlar arasında tekrarlama.\n"
     "Her metin listesinde en fazla bir öğe kullan; gereksizse boş liste kullan.\n"
     "Önerilen eylemlerde normalde en fazla bir eylem üret; karşılaştırmada plan eylemi üretme.\n"
@@ -232,6 +234,26 @@ def build_user_prompt(request: ConversationRequest) -> str:
     }
     if request.brief_snapshot is not None:
         payload["active_brief"] = _compact_brief_payload(request.brief_snapshot)
+    if request.regulatory_context is not None:
+        payload["regulatory_context"] = {
+            "ruleset_id": request.regulatory_context.ruleset_id,
+            "verification_status": (
+                request.regulatory_context.verification_status.value
+                if hasattr(request.regulatory_context.verification_status, "value")
+                else str(request.regulatory_context.verification_status)
+            ),
+        }
+    if request.compliance_findings:
+        payload["compliance_findings"] = [
+            {
+                "rule_id": f.rule_id,
+                "status": f.status.value if hasattr(f.status, "value") else str(f.status),
+                "severity": f.severity.value if hasattr(f.severity, "value") else str(f.severity),
+                "message": f.message,
+                "article_reference": f.article_reference,
+            }
+            for f in request.compliance_findings
+        ]
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
