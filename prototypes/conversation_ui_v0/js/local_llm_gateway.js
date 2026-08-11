@@ -108,7 +108,10 @@ class LocalLLMGateway {
   }
 
   buildRequest(message, snapshot) {
-    return {
+    const activeBrief = this.orchestrator && typeof this.orchestrator.getActiveBriefSnapshot === 'function'
+      ? this.orchestrator.getActiveBriefSnapshot()
+      : null;
+    const req = {
       message,
       active_context: {
         project_id: snapshot.projectId,
@@ -124,6 +127,10 @@ class LocalLLMGateway {
       current_decisions: this.orchestrator.getCurrentDecisions(),
       pending_proposals: this.orchestrator.getPendingProposalContext(snapshot)
     };
+    if (activeBrief && activeBrief.project_id === snapshot.projectId) {
+      req.brief_snapshot = activeBrief;
+    }
+    return req;
   }
 
   collectVisibleEntities(snapshot) {
@@ -196,7 +203,40 @@ class LocalLLMGateway {
       && (typeof result.follow_up_question !== 'string'
         || !result.follow_up_question.trim())) return false;
     if (!Array.isArray(result.proposed_actions)) return false;
-    if (result.proposed_actions.length > 0 && !result.needs_user_confirmation) return false;
+    if (!Array.isArray(result.proposed_brief_mutations)) {
+      result.proposed_brief_mutations = [];
+    }
+    const briefMutations = result.proposed_brief_mutations;
+    if ((result.proposed_actions.length > 0 || briefMutations.length > 0) && !result.needs_user_confirmation) return false;
+    if (result.intent === 'compare_alternatives' && briefMutations.length > 0) return false;
+
+    const validMutationTypes = new Set(['ADD_BRIEF_ITEM', 'ADD_SPACE_REQUEST', 'ADD_USAGE_SCENARIO']);
+    const isValidBriefMutation = (mutation) => {
+      if (!mutation || typeof mutation !== 'object') return false;
+      if (typeof mutation.mutation_id !== 'string' || !mutation.mutation_id.trim()) return false;
+      if (!validMutationTypes.has(mutation.mutation_type)) return false;
+
+      const hasItem = mutation.brief_item && typeof mutation.brief_item === 'object';
+      const hasSpace = mutation.space_request && typeof mutation.space_request === 'object';
+      const hasUsage = mutation.usage_scenario && typeof mutation.usage_scenario === 'object';
+
+      const count = (hasItem ? 1 : 0) + (hasSpace ? 1 : 0) + (hasUsage ? 1 : 0);
+      if (count !== 1) return false;
+
+      if (mutation.mutation_type === 'ADD_BRIEF_ITEM') {
+        if (!hasItem) return false;
+        if (typeof mutation.brief_item.normalized_statement !== 'string' || !mutation.brief_item.normalized_statement.trim()) return false;
+      } else if (mutation.mutation_type === 'ADD_SPACE_REQUEST') {
+        if (!hasSpace) return false;
+        if (typeof mutation.space_request.display_name !== 'string' || !mutation.space_request.display_name.trim()) return false;
+      } else if (mutation.mutation_type === 'ADD_USAGE_SCENARIO') {
+        if (!hasUsage) return false;
+        if (typeof mutation.usage_scenario.title !== 'string' || !mutation.usage_scenario.title.trim()) return false;
+      }
+      return true;
+    };
+
+    if (!briefMutations.every(isValidBriefMutation)) return false;
 
     const visibleIds = new Set(
       (requestBody.visible_entities || []).map(entity => entity.entity_id)
@@ -213,6 +253,29 @@ class LocalLLMGateway {
     });
   }
 
+  async approveBriefMutation(payload, options = {}) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const response = await this.fetchFn(`${this.baseUrl}/api/v1/brief/mutations/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+      return await this.readResponse(response);
+    } catch (error) {
+      return {
+        success: false,
+        error: error && error.name === 'AbortError'
+          ? 'Brief onay isteği zaman aşımına uğradı.'
+          : 'Brief onay servisine ulaşılamadı.'
+      };
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
   async readResponse(response) {
     try {
       return await response.json();
@@ -227,4 +290,9 @@ class LocalLLMGateway {
   }
 }
 
-window.LocalLLMGateway = LocalLLMGateway;
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = LocalLLMGateway;
+}
+if (typeof window !== 'undefined') {
+  window.LocalLLMGateway = LocalLLMGateway;
+}

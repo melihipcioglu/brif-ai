@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import TYPE_CHECKING
 
 from brif_ai.llm.compare_engine import CompareFailureCategory, CompareRequestAnalysis
 from brif_ai.llm.contracts import (
@@ -11,6 +12,9 @@ from brif_ai.llm.contracts import (
     PendingProposalContext,
     VisibleEntity,
 )
+
+if TYPE_CHECKING:
+    from brif_ai.brief.models.snapshot import BriefSnapshot
 
 SYSTEM_PROMPT = (
     "Sen BRIF.AI mimari niyet yorumlayıcısısın.\n"
@@ -171,11 +175,48 @@ def _proposal_payload(proposal: PendingProposalContext) -> dict[str, object]:
     return payload
 
 
+def _compact_brief_payload(snapshot: BriefSnapshot) -> dict[str, object]:
+    return {
+        "brief_version": snapshot.brief_version,
+        "brief_items": [
+            {
+                "kind": item.kind.value if hasattr(item.kind, "value") else str(item.kind),
+                "statement": item.normalized_statement,
+                "priority": (
+                    item.priority.value if hasattr(item.priority, "value") else str(item.priority)
+                ),
+            }
+            for item in snapshot.brief_items
+        ],
+        "space_requests": [
+            {
+                "display_name": req.display_name,
+                "space_function": (
+                    req.space_function.value
+                    if hasattr(req.space_function, "value")
+                    else str(req.space_function)
+                ),
+                "minimum_quantity": req.minimum_quantity,
+                "maximum_quantity": req.maximum_quantity,
+                "mandatory": req.mandatory,
+            }
+            for req in snapshot.space_requests
+        ],
+        "usage_scenarios": [
+            {
+                "title": us.title,
+                "description": us.description,
+            }
+            for us in snapshot.usage_scenarios
+        ],
+    }
+
+
 def build_user_prompt(request: ConversationRequest) -> str:
     """Serialize validated context once, without repeating inherited scope."""
 
     active = request.active_context
-    payload = {
+    payload: dict[str, object] = {
         "message": request.message,
         "active_context": active.model_dump(mode="json"),
         "visible_entities": [
@@ -189,6 +230,8 @@ def build_user_prompt(request: ConversationRequest) -> str:
             _proposal_payload(proposal) for proposal in request.pending_proposals
         ],
     }
+    if request.brief_snapshot is not None:
+        payload["active_brief"] = _compact_brief_payload(request.brief_snapshot)
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
@@ -199,7 +242,7 @@ def build_compare_user_prompt(
     """Serialize only trusted compare context; mutation scope identifiers are unnecessary."""
 
     active = request.active_context
-    payload = {
+    payload: dict[str, object] = {
         "message": request.message,
         "visible_entity_names": [
             entity.name
@@ -216,4 +259,6 @@ def build_compare_user_prompt(
         "compare_context": analysis.prompt_payload(),
         "context_generation": active.generation_id,
     }
+    if request.brief_snapshot is not None:
+        payload["active_brief"] = _compact_brief_payload(request.brief_snapshot)
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))

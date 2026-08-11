@@ -9,6 +9,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
+from brif_ai.brief.models.snapshot import BriefSnapshot
 from brif_ai.brief.mutation import ProposedBriefMutation
 
 if sys.version_info >= (3, 11):  # noqa: UP036
@@ -136,13 +137,19 @@ class VisibleEntity(StrictContract):
 class ConversationRequest(StrictContract):
     message: NonEmptyString
     active_context: ActiveContextSnapshot
-    visible_entities: list[VisibleEntity]
+    visible_entities: list[VisibleEntity] = Field(default_factory=list)
     conversation_summary: str = ""
     current_decisions: list[str] = Field(default_factory=list)
     pending_proposals: list[PendingProposalContext] = Field(default_factory=list)
+    brief_snapshot: BriefSnapshot | None = None
 
     @model_validator(mode="after")
     def validate_pending_proposals(self) -> ConversationRequest:
+        if (
+            self.brief_snapshot is not None
+            and self.brief_snapshot.project_id != self.active_context.project_id
+        ):
+            raise ValueError("brief snapshot project_id must match active context project_id")
         visible_ids = {
             entity.entity_id
             for entity in self.visible_entities
@@ -308,3 +315,31 @@ class BriefMutationApprovalRecord(StrictContract):
     mutation_id: NonEmptyString
     proposed_brief_mutation: ProposedBriefMutation
     resulting_brief_version: int = Field(ge=1)
+
+
+class BriefMutationApprovalRequest(StrictContract):
+    brief_snapshot: BriefSnapshot
+    proposed_mutation: ProposedBriefMutation
+    current_project_id: NonEmptyString
+    proposal_fingerprint: NonEmptyString
+    current_fingerprint: NonEmptyString
+    proposal_generation_id: int = Field(ge=0)
+    current_generation_id: int = Field(ge=0)
+    user_message: str
+    source_reference: NonEmptyString
+
+    @model_validator(mode="after")
+    def validate_project_context(self) -> BriefMutationApprovalRequest:
+        if self.brief_snapshot.project_id != self.current_project_id:
+            raise ValueError(
+                f"brief_snapshot project_id '{self.brief_snapshot.project_id}' "
+                f"does not match current_project_id '{self.current_project_id}'"
+            )
+        return self
+
+
+class BriefMutationApprovalResponse(StrictContract):
+    success: bool
+    resulting_snapshot: BriefSnapshot | None = None
+    approval_record: BriefMutationApprovalRecord | None = None
+    error: str | None = None

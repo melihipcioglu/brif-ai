@@ -11,6 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from brif_ai.llm.contracts import (
+    BriefMutationApprovalRequest,
+    BriefMutationApprovalResponse,
     ConversationInterpretationResponse,
     ConversationRequest,
     HealthResponse,
@@ -26,7 +28,7 @@ from brif_ai.llm.provider import (
     ProviderTimeoutError,
     ProviderUnavailableError,
 )
-from brif_ai.llm.service import LocalLLMConversationService
+from brif_ai.llm.service import LocalLLMConversationService, StaleContextError
 from brif_ai.llm.settings import LocalLLMSettings
 
 ALLOWED_ORIGINS = [
@@ -133,6 +135,62 @@ def create_app(
                 resolved_settings,
                 "Yerel model aktif proje kapsamıyla uyumsuz bir hedef üretti.",
                 422,
+            )
+
+    @application.post(
+        "/api/v1/brief/mutations/approve",
+        response_model=BriefMutationApprovalResponse,
+    )
+    async def approve_brief_mutation(
+        request: BriefMutationApprovalRequest,
+    ) -> BriefMutationApprovalResponse | JSONResponse:
+        try:
+            new_snapshot, record = service.record_brief_mutation_approval(
+                proposal_fingerprint=request.proposal_fingerprint,
+                current_fingerprint=request.current_fingerprint,
+                proposal_generation_id=request.proposal_generation_id,
+                current_generation_id=request.current_generation_id,
+                proposed_mutation=request.proposed_mutation,
+                user_message=request.user_message,
+                snapshot=request.brief_snapshot,
+                current_project_id=request.current_project_id,
+                source_reference=request.source_reference,
+            )
+            return BriefMutationApprovalResponse(
+                success=True,
+                resulting_snapshot=new_snapshot,
+                approval_record=record,
+                error=None,
+            )
+        except StaleContextError as error:
+            return JSONResponse(
+                status_code=409,
+                content=BriefMutationApprovalResponse(
+                    success=False,
+                    resulting_snapshot=None,
+                    approval_record=None,
+                    error=str(error),
+                ).model_dump(mode="json"),
+            )
+        except ValueError as error:
+            return JSONResponse(
+                status_code=422,
+                content=BriefMutationApprovalResponse(
+                    success=False,
+                    resulting_snapshot=None,
+                    approval_record=None,
+                    error=str(error),
+                ).model_dump(mode="json"),
+            )
+        except Exception as error:
+            return JSONResponse(
+                status_code=500,
+                content=BriefMutationApprovalResponse(
+                    success=False,
+                    resulting_snapshot=None,
+                    approval_record=None,
+                    error=f"Onay işlemi sırasında sunucu hatası oluştu: {error}",
+                ).model_dump(mode="json"),
             )
 
     return application

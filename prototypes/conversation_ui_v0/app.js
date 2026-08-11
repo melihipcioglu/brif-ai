@@ -34,8 +34,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     hierarchy, store, resolver, guard, registry
   });
 
+  let loadedBriefSnapshots = null;
+  try {
+    const briefResp = await fetch('./data/brief_snapshots.demo.json');
+    if (briefResp.ok) {
+      loadedBriefSnapshots = await briefResp.json();
+    }
+  } catch (err) {
+    console.warn('Demo brief snapshot file loading skipped:', err);
+  }
+
   const orchestrator = new ConversationOrchestrator({
-    hierarchy, stateMachine, store, resolver, assistant, presenter, historyManager: changeHistory
+    hierarchy,
+    stateMachine,
+    store,
+    resolver,
+    assistant,
+    presenter,
+    historyManager: changeHistory,
+    briefSnapshotsByProject: loadedBriefSnapshots
   });
   window.appOrchestrator = orchestrator;
 
