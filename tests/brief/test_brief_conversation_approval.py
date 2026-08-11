@@ -5,9 +5,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
+from apps.api.main import create_app
 from fastapi.testclient import TestClient
 
-from apps.api.main import create_app
 from brif_ai.brief.models.common import BriefItemKind, Priority
 from brif_ai.brief.models.snapshot import BriefSnapshot, Stakeholder
 from brif_ai.brief.mutation import (
