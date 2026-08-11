@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 
 from brif_ai.brief.models.snapshot import BriefSnapshot
 from brif_ai.brief.mutation import ProposedBriefMutation
+from brif_ai.regulatory.models import ComplianceFinding, ProjectRegulatoryContext
 
 if sys.version_info >= (3, 11):  # noqa: UP036
     from enum import StrEnum
@@ -142,6 +143,8 @@ class ConversationRequest(StrictContract):
     current_decisions: list[str] = Field(default_factory=list)
     pending_proposals: list[PendingProposalContext] = Field(default_factory=list)
     brief_snapshot: BriefSnapshot | None = None
+    regulatory_context: ProjectRegulatoryContext | None = None
+    compliance_findings: list[ComplianceFinding] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_pending_proposals(self) -> ConversationRequest:
@@ -321,6 +324,7 @@ class BriefMutationApprovalRequest(StrictContract):
     brief_snapshot: BriefSnapshot
     proposed_mutation: ProposedBriefMutation
     current_project_id: NonEmptyString
+    expected_brief_version: int = Field(ge=1)
     proposal_fingerprint: NonEmptyString
     current_fingerprint: NonEmptyString
     proposal_generation_id: int = Field(ge=0)

@@ -62,6 +62,26 @@ class ConversationOrchestrator {
     return this.briefSnapshotsByProject[activeProjectId] || null;
   }
 
+  async loadProjectBrief(projectId) {
+    if (!this.localLLMGateway) return false;
+    const res = await this.localLLMGateway.fetchProjectBrief(projectId);
+    if (res.ok && res.snapshot) {
+      this.briefSnapshotsByProject[projectId] = res.snapshot;
+      return true;
+    }
+    if (res.status === 404) {
+      const seed = this.demoBriefSnapshotsSeed ? this.demoBriefSnapshotsSeed[projectId] : null;
+      if (seed) {
+        const initRes = await this.localLLMGateway.initializeProjectBrief(projectId, seed);
+        if (initRes.ok && initRes.snapshot) {
+          this.briefSnapshotsByProject[projectId] = initRes.snapshot;
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   replaceActiveBriefSnapshot(newSnapshot) {
     const activeProjectId = this.stateMachine.getSnapshot().projectId;
     if (!newSnapshot || newSnapshot.project_id !== activeProjectId) {
@@ -566,6 +586,7 @@ class ConversationOrchestrator {
         brief_snapshot: activeBrief,
         proposed_mutation: proposal.briefMutation,
         current_project_id: current.projectId,
+        expected_brief_version: activeBrief.brief_version,
         proposal_fingerprint: proposal.contextFingerprint,
         current_fingerprint: current.contextFingerprint,
         proposal_generation_id: proposal.generationId,
