@@ -1657,11 +1657,6 @@ class ArchitecturalIntentPolicyValidator:
             None,
         )
         subject = f"{entity_name} ile ilgili" if entity_name else "Talep ettiğiniz mekânla ilgili"
-        question = (
-            f"{entity_name} seçildikten sonra bu talebi birlikte inceleyelim mi?"
-            if entity_name
-            else "Mekânı seçerek bu talebi birlikte inceleyelim mi?"
-        )
         active = request.active_context
         recovered = result.model_copy(
             update={
@@ -1679,9 +1674,9 @@ class ArchitecturalIntentPolicyValidator:
                     "Değerlendirilecek mekânın aktif kapsamda seçilmesi gerekiyor."
                 ],
                 "proposed_actions": [],
-                "needs_follow_up": True,
-                "follow_up_question": question,
-                "follow_up_topic": result.follow_up_topic or ElicitationTopic.SPATIAL_RELATIONSHIPS,
+                "needs_follow_up": False,
+                "follow_up_question": None,
+                "follow_up_topic": None,
                 "needs_user_confirmation": False,
                 "warnings": [],
             }

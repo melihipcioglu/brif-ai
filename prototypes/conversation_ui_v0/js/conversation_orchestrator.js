@@ -552,6 +552,7 @@ class ConversationOrchestrator {
         id,
         action: null,
         briefMutation: mutationCopy,
+        answersCurrentOpenQuestion: result.answers_current_open_question === true,
         contextFingerprint,
         generationId: proposalGenerationId,
         userMessageText: this.lastUserMessageText || '',
@@ -597,7 +598,8 @@ class ConversationOrchestrator {
         proposal_generation_id: proposal.generationId,
         current_generation_id: current.generationId,
         user_message: proposal.userMessageText || '',
-        source_reference: proposal.userMessageRef || 'chatmsg_1'
+        source_reference: proposal.userMessageRef || 'chatmsg_1',
+        answers_current_open_question: proposal.answersCurrentOpenQuestion === true
       };
       const response = await this.localLLMGateway.approveBriefMutation(payload);
       const replaced = (response && response.success && response.resulting_snapshot)

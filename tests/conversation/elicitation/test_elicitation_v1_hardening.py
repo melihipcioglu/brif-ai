@@ -278,6 +278,9 @@ def test_interpret_replaces_client_snapshot_with_server_authoritative(tmp_path: 
 
     # Client sends modified/fake brief_snapshot content
     payload = conversation_request_payload("proj_house_2story", 1)
+    # Keep the client snapshot schema-valid so the request reaches the endpoint.
+    # The fake brief item below is still intentionally different from server state.
+    payload["brief_snapshot"]["evidence"] = [ev.model_dump(mode="json")]
     fake_item = {
         "id": "bi_fake_client",
         "kind": "NEED",

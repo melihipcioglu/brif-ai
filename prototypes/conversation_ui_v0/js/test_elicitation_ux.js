@@ -158,9 +158,75 @@ async function testSinglePendingProposalTextApproval() {
   console.log('✔ testSinglePendingProposalTextApproval passed');
 }
 
+
+async function testOpenQuestionAnswerFlagReachesApprovalRequest() {
+  const { orchestrator, gateway } = createOrchestrator();
+
+  orchestrator.appendAssistantMessage = function() {};
+
+  orchestrator.briefSnapshotsByProject.proj_house_2story = {
+    project_id: 'proj_house_2story',
+    brief_version: 1
+  };
+
+  orchestrator.lastUserMessageText = 'Ben, e?im ve iki ?ocu?um.';
+  orchestrator.lastUserMessageRef = 'chatmsg_1';
+
+  let capturedPayload = null;
+
+  gateway.approveBriefMutation = async function(payload) {
+    capturedPayload = payload;
+    return {
+      success: true,
+      resulting_snapshot: {
+        project_id: 'proj_house_2story',
+        brief_version: 2
+      },
+      approval_record: {
+        proposal_status: 'user_approved',
+        resulting_brief_version: 2
+      }
+    };
+  };
+
+  orchestrator.handleStructuredLLMResponse({
+    assistant_message: 'D?rt ki?ilik aile bilgisini brief i?in kaydedebilirim.',
+    intent: 'gather_requirement',
+    confidence: 0.95,
+    needs_follow_up: false,
+    needs_user_confirmation: true,
+    proposed_actions: [],
+    proposed_brief_mutations: [{
+      mutation_id: 'mut_household',
+      mutation_type: 'ADD_BRIEF_ITEM',
+      brief_item: {
+        normalized_statement: 'D?rt ki?ilik aile'
+      }
+    }],
+    answers_current_open_question: true
+  }, 'house|main', 1);
+
+  const proposal = Array.from(orchestrator.pendingProposals.values())
+    .find(candidate => candidate.briefMutation);
+
+  assert.ok(proposal, 'Brief mutation proposal must exist');
+
+  await orchestrator.approveProposalById(proposal.id);
+
+  assert.ok(capturedPayload, 'Approval request must be sent');
+  assert.strictEqual(
+    capturedPayload.answers_current_open_question,
+    true,
+    'answers_current_open_question must reach the approval API'
+  );
+
+  console.log('? testOpenQuestionAnswerFlagReachesApprovalRequest passed');
+}
+
 async function run() {
   await testMultiplePendingProposalsTextSafety();
   await testSinglePendingProposalTextApproval();
+  await testOpenQuestionAnswerFlagReachesApprovalRequest();
 }
 
 run().catch(err => {
