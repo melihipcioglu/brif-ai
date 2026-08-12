@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,8 @@ from apps.api.main import (
 )
 from fastapi.testclient import TestClient
 
+from brif_ai.brief.models.snapshot import BriefSnapshot, Stakeholder
+from brif_ai.brief.persistence.json_repository import JSONBriefRepository
 from brif_ai.llm.contracts import (
     ArchitecturalIntentResult,
     ConversationRequest,
@@ -27,6 +30,43 @@ from brif_ai.llm.provider import (
 from brif_ai.llm.settings import LocalLLMSettings
 
 from .test_contracts import valid_result_data
+
+
+def _seed_authoritative_brief(root: Path) -> None:
+    repo = JSONBriefRepository(root)
+    repo.save(
+        BriefSnapshot(
+            project_id="proj_house_2story",
+            schema_version="brief.v0",
+            brief_version=1,
+            created_at=datetime(2026, 8, 1, 12, 0, tzinfo=UTC),
+            stakeholders=[
+                Stakeholder(
+                    id="stk_owner",
+                    display_name="Ev Sahibi",
+                    role="CLIENT_OWNER",
+                    active=True,
+                )
+            ],
+            evidence=[],
+            brief_items=[],
+            space_requests=[],
+            usage_scenarios=[],
+            contradictions=[],
+            open_questions=[],
+        )
+    )
+
+
+@pytest.fixture(autouse=True)
+def _isolated_authoritative_brief(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Every API test gets a clean authoritative repository.
+    # This prevents dependence on ~/.brif_ai/data from the developer machine.
+    monkeypatch.setenv("BRIF_AI_DATA_DIR", str(tmp_path))
+    _seed_authoritative_brief(tmp_path)
 
 
 class APIProvider:

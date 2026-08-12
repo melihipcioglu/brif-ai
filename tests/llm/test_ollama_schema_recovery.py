@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -9,6 +11,8 @@ import pytest
 from apps.api.main import create_app
 from fastapi.testclient import TestClient
 
+from brif_ai.brief.models.snapshot import BriefSnapshot, Stakeholder
+from brif_ai.brief.persistence.json_repository import JSONBriefRepository
 from brif_ai.llm.contracts import (
     ArchitecturalIntentResult,
     ConversationInterpretationResponse,
@@ -35,6 +39,33 @@ def settings() -> LocalLLMSettings:
 
 def schema() -> dict[str, object]:
     return ArchitecturalIntentResult.model_json_schema()
+
+
+def _seeded_brief_repository(root: Path) -> JSONBriefRepository:
+    repo = JSONBriefRepository(root)
+    repo.save(
+        BriefSnapshot(
+            project_id="proj_house_2story",
+            schema_version="brief.v0",
+            brief_version=1,
+            created_at=datetime(2026, 8, 1, 12, 0, tzinfo=UTC),
+            stakeholders=[
+                Stakeholder(
+                    id="stk_owner",
+                    display_name="Ev Sahibi",
+                    role="CLIENT_OWNER",
+                    active=True,
+                )
+            ],
+            evidence=[],
+            brief_items=[],
+            space_requests=[],
+            usage_scenarios=[],
+            contradictions=[],
+            open_questions=[],
+        )
+    )
+    return repo
 
 
 def test_schema_invalid_response_is_repaired_once_without_reusing_untrusted_output() -> None:
@@ -159,7 +190,7 @@ def test_second_invalid_response_preserves_safe_error_without_a_third_attempt() 
     assert chat_calls == 2
 
 
-def test_second_invalid_response_returns_existing_safe_502() -> None:
+def test_second_invalid_response_returns_existing_safe_502(tmp_path: Path) -> None:
     chat_calls = 0
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -174,7 +205,8 @@ def test_second_invalid_response_returns_existing_safe_502() -> None:
         base_url="http://127.0.0.1:11434",
     )
     provider = OllamaProvider(settings(), async_client)
-    test_client = TestClient(create_app(settings(), provider))
+    brief_repository = _seeded_brief_repository(tmp_path)
+    test_client = TestClient(create_app(settings(), provider, brief_repository=brief_repository))
     try:
         response = test_client.post(
             "/api/v1/conversation/interpret",
