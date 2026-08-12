@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from brif_ai.brief.models.snapshot import BriefSnapshot
+from brif_ai.brief.mutation import NoActiveElicitationQuestionError
 from brif_ai.brief.persistence import (
     BriefNotFoundError,
     BriefPersistenceError,
@@ -193,7 +194,103 @@ def create_app(
     )
     async def interpret(request: ConversationRequest) -> Any:
         try:
-            return await service.interpret(request)
+            project_id = request.active_context.project_id
+
+            # Step 1: Extract client expected version
+            client_expected_version: int | None = None
+            if request.brief_snapshot is not None:
+                client_expected_version = request.brief_snapshot.brief_version
+
+            # Step 2: Fetch authoritative snapshot from persistence
+            authoritative_snapshot = persistent_brief_service.get_latest_brief(project_id)
+
+            # Step 3: No silent initialization — 404 if uninitialized
+            if authoritative_snapshot is None:
+                return JSONResponse(
+                    status_code=404,
+                    content={"detail": f"Project brief for '{project_id}' not found."},
+                )
+
+            # Step 4: Stale context rejection — 409 without calling LLM
+            if (
+                client_expected_version is not None
+                and client_expected_version != authoritative_snapshot.brief_version
+            ):
+                return JSONResponse(
+                    status_code=409,
+                    content={
+                        "detail": (
+                            f"Stale brief version: client sent {client_expected_version}, "
+                            f"server has {authoritative_snapshot.brief_version}."
+                        )
+                    },
+                )
+
+            # Step 5: Pre-LLM skip command check
+            skip_commands = ("geçelim", "bunu geç", "cevaplamak istemiyorum")
+            message_lower = request.message.strip().casefold()
+            if message_lower in skip_commands:
+                # Find active OPEN question with topic_key
+                has_active_open = any(
+                    oq.status.value == "OPEN" and oq.topic_key
+                    for oq in authoritative_snapshot.open_questions
+                )
+                if has_active_open:
+                    new_snapshot = persistent_brief_service.dismiss_active_open_question(
+                        project_id=project_id,
+                        expected_brief_version=authoritative_snapshot.brief_version,
+                    )
+                    return ConversationInterpretationResponse(
+                        success=True,
+                        llm_enabled=resolved_settings.enabled,
+                        provider=resolved_settings.provider,
+                        model=resolved_settings.model or None,
+                        context_fingerprint=request.active_context.context_fingerprint,
+                        generation_id=request.active_context.generation_id,
+                        result=None,
+                        error=None,
+                        resulting_brief_snapshot=new_snapshot,
+                    )
+
+            # Step 6: Replace client brief content with authoritative snapshot
+            prepared_request = request.model_copy(update={"brief_snapshot": authoritative_snapshot})
+
+            # Step 7: Execute LLM interpretation
+            interpretation_result = await service.interpret(prepared_request)
+
+            # Step 8: Post-LLM OpenQuestion persistence
+            resulting_snapshot: BriefSnapshot | None = None
+            if (
+                interpretation_result.result is not None
+                and interpretation_result.result.needs_follow_up
+                and interpretation_result.result.follow_up_topic is not None
+                and interpretation_result.result.follow_up_question is not None
+            ):
+                try:
+                    resulting_snapshot = persistent_brief_service.add_open_question(
+                        project_id=project_id,
+                        expected_brief_version=authoritative_snapshot.brief_version,
+                        question_text=interpretation_result.result.follow_up_question,
+                        reason=(
+                            f"Elicitation topic: "
+                            f"{interpretation_result.result.follow_up_topic.value}"
+                        ),
+                        topic_key=interpretation_result.result.follow_up_topic.value,
+                    )
+                except BriefVersionConflictError:
+                    return JSONResponse(
+                        status_code=409,
+                        content={
+                            "detail": (
+                                "Race condition: brief was modified while LLM was processing. "
+                                "Please retry."
+                            )
+                        },
+                    )
+
+            return interpretation_result.model_copy(
+                update={"resulting_brief_snapshot": resulting_snapshot}
+            )
         except ModelNotSelectedError as error:
             return _error_response(request, resolved_settings, str(error), 409)
         except ModelNotAvailableError as error:
@@ -232,6 +329,7 @@ def create_app(
                 user_message=request.user_message,
                 source_reference=src_ref,
                 approved_at=now,
+                answers_current_open_question=request.answers_current_open_question,
             )
             record = BriefMutationApprovalRecord(
                 mutation_id=request.proposed_mutation.mutation_id,
@@ -261,6 +359,16 @@ def create_app(
         except BriefNotFoundError as error:
             return JSONResponse(
                 status_code=404,
+                content=BriefMutationApprovalResponse(
+                    success=False,
+                    resulting_snapshot=None,
+                    approval_record=None,
+                    error=str(error),
+                ).model_dump(mode="json"),
+            )
+        except NoActiveElicitationQuestionError as error:
+            return JSONResponse(
+                status_code=422,
                 content=BriefMutationApprovalResponse(
                     success=False,
                     resulting_snapshot=None,

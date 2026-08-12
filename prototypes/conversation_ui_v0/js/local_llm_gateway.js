@@ -65,6 +65,12 @@ class LocalLLMGateway {
       }
 
       if (!this.isValidatedResult(payload.result, requestBody)) {
+        // Handle pre-LLM skip: result is null but resulting_brief_snapshot is present
+        if (payload.result === null && payload.resulting_brief_snapshot) {
+          this.orchestrator.replaceActiveBriefSnapshot(payload.resulting_brief_snapshot);
+          this.orchestrator.appendAssistantMessage('Anladım, bu soruyu geçiyoruz.');
+          return { status: 'skipped', payload };
+        }
         this.runFallback(message, 'invalid');
         return { status: 'invalid', payload };
       }
@@ -74,6 +80,12 @@ class LocalLLMGateway {
         payload.context_fingerprint,
         payload.generation_id
       );
+
+      // Sync resulting_brief_snapshot from server if present
+      if (payload.resulting_brief_snapshot) {
+        this.orchestrator.replaceActiveBriefSnapshot(payload.resulting_brief_snapshot);
+      }
+
       return { status: 'success', payload };
     } catch (error) {
       if (signal && signal.aborted) {

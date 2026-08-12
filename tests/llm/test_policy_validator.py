@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
+from brif_ai.conversation.elicitation.models import ElicitationContext, ElicitationTopic
 from brif_ai.llm.contracts import (
     ActiveContextSnapshot,
     ArchitecturalIntentResult,
@@ -276,6 +278,8 @@ def test_internal_id_is_removed_from_each_public_response_field(
     elif public_field == "follow_up_question":
         data["needs_follow_up"] = True
         data["follow_up_question"] = leaked_text
+        data["follow_up_topic"] = "household"
+        data["proposed_actions"] = []
     elif public_field == "warning":
         data["warnings"] = [leaked_text]
     elif public_field == "action_description":
@@ -287,8 +291,15 @@ def test_internal_id_is_removed_from_each_public_response_field(
     else:
         data["missing_information"] = [leaked_text]
 
+    req = conversation_request().model_copy(
+        update={
+            "elicitation_context": ElicitationContext(
+                allowed_follow_up_topic=ElicitationTopic.HOUSEHOLD
+            )
+        }
+    )
     safe_result = ArchitecturalIntentPolicyValidator().validate(
-        ArchitecturalIntentResult.model_validate(data), conversation_request()
+        ArchitecturalIntentResult.model_validate(data), req
     )
 
     assert_no_internal_ids(safe_result)
@@ -299,12 +310,8 @@ def test_follow_up_question_is_cleared_when_follow_up_is_not_needed() -> None:
     data["needs_follow_up"] = False
     data["follow_up_question"] = "Bu soru kullanıcıya gösterilmemeli."
 
-    safe_result = ArchitecturalIntentPolicyValidator().validate(
-        ArchitecturalIntentResult.model_validate(data), conversation_request()
-    )
-
-    assert safe_result.needs_follow_up is False
-    assert safe_result.follow_up_question is None
+    with pytest.raises(ValidationError, match="follow_up_question must be None"):
+        ArchitecturalIntentResult.model_validate(data)
 
 
 @pytest.mark.parametrize(
@@ -333,6 +340,8 @@ def test_internal_technical_terms_are_localized_in_each_public_response_field(
     elif public_field == "follow_up_question":
         data["needs_follow_up"] = True
         data["follow_up_question"] = leaked_text
+        data["follow_up_topic"] = "household"
+        data["proposed_actions"] = []
     elif public_field == "user_requirement":
         data["user_requirements"] = [leaked_text]
     elif public_field == "interpreted_priority":

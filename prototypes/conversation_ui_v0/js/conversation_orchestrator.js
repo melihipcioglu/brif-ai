@@ -62,6 +62,11 @@ class ConversationOrchestrator {
     return this.briefSnapshotsByProject[activeProjectId] || null;
   }
 
+  replaceActiveBriefSnapshot(newSnapshot) {
+    if (!newSnapshot || !newSnapshot.project_id) return;
+    this.briefSnapshotsByProject[newSnapshot.project_id] = newSnapshot;
+  }
+
   async loadProjectBrief(projectId) {
     if (!this.localLLMGateway) return false;
     const res = await this.localLLMGateway.fetchProjectBrief(projectId);
@@ -720,6 +725,12 @@ class ConversationOrchestrator {
     if (['onayla', 'onaylıyorum', 'kabul et', 'kabul ediyorum'].some(command =>
       normalized.includes(command)
     )) {
+      if (pending.length > 1) {
+        this.appendAssistantMessage(
+          'Birden fazla brief önerisi bekliyor. İstediğiniz öneriyi düğmesinden onaylayabilirsiniz.'
+        );
+        return { status: 'multiple_pending_requires_explicit_choice' };
+      }
       const record = await this.approveProposalById(pending[0].id);
       return { status: record ? 'approved' : 'stale', record };
     }
@@ -727,6 +738,12 @@ class ConversationOrchestrator {
     if (['vazgeç', 'iptal et', 'reddet'].some(command =>
       normalized.includes(command)
     )) {
+      if (pending.length > 1) {
+        this.appendAssistantMessage(
+          'Birden fazla brief önerisi bekliyor. İstediğiniz öneriyi düğmesinden reddedebilirsiniz.'
+        );
+        return { status: 'multiple_pending_requires_explicit_choice' };
+      }
       const dismissed = this.dismissProposalById(pending[0].id);
       return { status: dismissed ? 'dismissed' : 'stale' };
     }

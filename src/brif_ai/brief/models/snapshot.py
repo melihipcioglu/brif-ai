@@ -160,6 +160,7 @@ class OpenQuestion(ContractModel):
     related_brief_item_ids: list[ObjectId]
     status: OpenQuestionStatus
     resolution_note: NonEmptyString | None = None
+    topic_key: str | None = None
 
     @field_validator("related_brief_item_ids")
     @classmethod

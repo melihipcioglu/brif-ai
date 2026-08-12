@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from brif_ai.brief.models.snapshot import BriefSnapshot
 from brif_ai.brief.mutation import ProposedBriefMutation, apply_approved_brief_mutation
+from brif_ai.conversation.elicitation.planner import ElicitationPlanner
 from brif_ai.llm.contracts import (
     ArchitecturalIntentResult,
     BriefMutationApprovalRecord,
@@ -41,10 +42,12 @@ class LocalLLMConversationService:
         settings: LocalLLMSettings,
         provider: LocalLLMProvider,
         policy_validator: ArchitecturalIntentPolicyValidator | None = None,
+        elicitation_planner: ElicitationPlanner | None = None,
     ) -> None:
         self.settings = settings
         self.provider = provider
         self.policy_validator = policy_validator or ArchitecturalIntentPolicyValidator()
+        self.elicitation_planner = elicitation_planner or ElicitationPlanner()
 
     async def health(self) -> HealthResponse:
         selected_model = self.settings.model or None
@@ -125,6 +128,15 @@ class LocalLLMConversationService:
         self,
         request: ConversationRequest,
     ) -> ConversationInterpretationResponse:
+        # Server-authoritative computation of elicitation context (Hardening Requirement 2)
+        has_pending = len(request.pending_proposals) > 0
+        computed_elicitation = self.elicitation_planner.plan_context(
+            request.brief_snapshot,
+            pending_proposals_exist=has_pending,
+            user_message=request.message,
+        )
+        request = request.model_copy(update={"elicitation_context": computed_elicitation})
+
         if not self.settings.enabled:
             return ConversationInterpretationResponse(
                 success=False,

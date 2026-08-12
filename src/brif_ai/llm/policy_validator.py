@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 from brif_ai.brief.mutation import ProposedBriefMutation
+from brif_ai.conversation.elicitation.models import ElicitationTopic
 from brif_ai.llm.contracts import (
     PLAN_CHANGE_ACTIONS,
     ArchitecturalIntentResult,
@@ -1494,6 +1495,24 @@ class ArchitecturalIntentPolicyValidator:
                     "(needs_follow_up=false olmalı)."
                 )
 
+        if len(result.proposed_brief_mutations) > 3:
+            raise PolicyValidationError(
+                "Bir mesajda en fazla 3 brief değişiklik önerisi sunulabilir."
+            )
+
+        if request.elicitation_context is not None:
+            allowed_topic = request.elicitation_context.allowed_follow_up_topic
+            if result.needs_follow_up:
+                if allowed_topic is None:
+                    raise PolicyValidationError(
+                        "Takip sorusu için izin verilen bir mimari konu yok."
+                    )
+                if result.follow_up_topic != allowed_topic:
+                    raise PolicyValidationError(
+                        f"Takip sorusu konusu '{result.follow_up_topic}' "
+                        f"izin verilen konu '{allowed_topic}' ile uyuşmuyor."
+                    )
+
         validate_spatial_direction_claims(result, request)
         validate_relative_spatial_claims(result, request)
 
@@ -1599,6 +1618,8 @@ class ArchitecturalIntentPolicyValidator:
                         "Hangi görünür mekân veya öğe için değişiklik önerisi "
                         "hazırlamamı istersiniz?"
                     ),
+                    "follow_up_topic": result.follow_up_topic
+                    or ElicitationTopic.SPATIAL_RELATIONSHIPS,
                     "needs_user_confirmation": bool(
                         result.proposed_actions or result.proposed_brief_mutations
                     ),
@@ -1660,6 +1681,7 @@ class ArchitecturalIntentPolicyValidator:
                 "proposed_actions": [],
                 "needs_follow_up": True,
                 "follow_up_question": question,
+                "follow_up_topic": result.follow_up_topic or ElicitationTopic.SPATIAL_RELATIONSHIPS,
                 "needs_user_confirmation": False,
                 "warnings": [],
             }

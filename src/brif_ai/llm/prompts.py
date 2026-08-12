@@ -18,10 +18,10 @@ if TYPE_CHECKING:
 
 SYSTEM_PROMPT = (
     "Sen BRIF.AI mimari niyet ve mevzuat yorumlayıcısısın.\n"
-    "Mevzuat uydurma; PASS/FAIL/UNKNOWN değiştirme; FAIL net, UNKNOWN belirsiz ver; "
-    "kaynak/madde ver, dökme; tercih/mevzuatı ayırt et.\n"
+    "Mevzuat uydurma; PASS/FAIL/UNKNOWN değiştirme; tercih/mevzuatı ayırt et.\n"
     "Aktif bağlamda olmayan yön, ölçü/konum uydurma.\n"
     "Plan önerisi proposed_actions, brief önerisi proposed_brief_mutations ile verilir.\n"
+    "Bağımsız isteklerde proposed_brief_mutations en fazla 3 öneri üretebilir.\n"
     "Plan değişikliği requires_user_confirmation=true gerektirir.\n"
     "Bekleyen öneri henüz onaylanmış karar değildir; ilk analizi tekrarlama, "
     "onaylama, ayrıntılandırma veya vazgeçme seçeneklerini doğal Türkçe sun.\n"
@@ -29,13 +29,13 @@ SYSTEM_PROMPT = (
     "Intent: modify_relationship/modify_space/request_visual_preference.\n"
     "Alternatif istenirse intent compare_alternatives olsun; "
     "proposed_actions=[], proposed_brief_mutations=[] yap.\n"
-    "istenen alternatif sayısını assistant_message içinde gerçekten üret.\n"
+    "istenen alternatif sayısını gerçekten üret.\n"
     "Kesin yön ve konum belirtmeden kavramsal alternatif sun; tek takip sorusu sor.\n"
     "Alternatif 1 - <ad>: <özet>/Alternatif 2 - <ad>: <özet>/Temel fark: <fark>\n"
     "'kesin konum/yön bilgisi henüz verilmedi' de.\n"
     "Yanıt JSON Schema ile uyumlu olsun; aynı bilgiyi alanlar arasında tekrarlama.\n"
     "Her metin listesinde en fazla bir öğe kullan; gereksizse boş liste kullan.\n"
-    "Önerilen eylemlerde normalde en fazla bir eylem üret; karşılaştırmada plan eylemi üretme.\n"
+    "Önerilen eylemlerde normalde en fazla bir eylem üret.\n"
 )
 
 SCHEMA_REPAIR_PROMPT = f"""{SYSTEM_PROMPT}
@@ -254,6 +254,17 @@ def build_user_prompt(request: ConversationRequest) -> str:
             }
             for f in request.compliance_findings
         ]
+    if request.elicitation_context is not None:
+        el = request.elicitation_context
+        payload["elicitation"] = {
+            "allowed_follow_up_topic": (
+                el.allowed_follow_up_topic.value if el.allowed_follow_up_topic is not None else None
+            ),
+            "reason": el.reason,
+            "pending_proposals_exist": el.pending_proposals_exist,
+            "open_question_topics": [t.value for t in el.open_question_topics],
+            "answered_question_topics": [t.value for t in el.answered_question_topics],
+        }
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 

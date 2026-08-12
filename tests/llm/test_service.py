@@ -140,6 +140,9 @@ def test_scenario_c_without_active_entity_requires_follow_up() -> None:
     }
     data["proposed_actions"] = []
     data["needs_user_confirmation"] = False
+    data["needs_follow_up"] = True
+    data["follow_up_question"] = "Hangi mekânı düzenlemek istersiniz?"
+    data["follow_up_topic"] = "household"
     provider = MockProvider(ArchitecturalIntentResult.model_validate(data))
     llm_service = LocalLLMConversationService(
         LocalLLMSettings(enabled=True, model="local-model:latest"), provider
@@ -177,7 +180,7 @@ def test_out_of_scope_room_request_becomes_safe_follow_up() -> None:
     assert response.result is not None
     assert response.result.intent.value == "modify_relationship"
     assert response.result.target.entity_id is None
-    assert response.result.needs_follow_up is True
+    assert response.result.needs_follow_up is False
     assert response.result.needs_user_confirmation is False
     assert not any(
         action.action_type in PLAN_CHANGE_ACTIONS for action in response.result.proposed_actions
