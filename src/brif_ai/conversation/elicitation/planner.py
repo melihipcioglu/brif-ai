@@ -74,6 +74,12 @@ def question_for_topic(topic: ElicitationTopic) -> str:
     return _TOPIC_QUESTION_TEXT[topic]
 
 
+def elicitation_topic_priority_order() -> tuple[ElicitationTopic, ...]:
+    """Return the canonical server-authoritative elicitation topic order."""
+
+    return _TOPIC_PRIORITY_ORDER
+
+
 class ElicitationPlanner:
     """Plans allowed follow-up topics deterministically without LLM provider dependencies."""
 
@@ -118,7 +124,7 @@ class ElicitationPlanner:
 
         # Select highest-priority uncovered topic
         selected_topic: ElicitationTopic | None = None
-        for topic in _TOPIC_PRIORITY_ORDER:
+        for topic in elicitation_topic_priority_order():
             if topic not in excluded_topics:
                 selected_topic = topic
                 break
