@@ -21,6 +21,7 @@ from brif_ai.brief.models.common import (
     BriefItemKind,
     ConfirmationStatus,
     EvidenceSource,
+    OpenQuestionStatus,
     Priority,
 )
 from brif_ai.brief.models.snapshot import (
@@ -352,6 +353,184 @@ def apply_approved_brief_mutation(
         "usage_scenarios": [us.model_dump(mode="python") for us in new_usage_scenarios],
         "contradictions": [c.model_dump(mode="python") for c in snapshot.contradictions],
         "open_questions": [oq.model_dump(mode="python") for oq in snapshot.open_questions],
+    }
+
+    return BriefSnapshot.model_validate(candidate_data)
+
+
+def add_open_question_to_snapshot(
+    snapshot: BriefSnapshot,
+    question: str,
+    reason: str,
+    topic_key: str,
+    *,
+    related_brief_item_ids: list[str] | None = None,
+    created_at: datetime | None = None,
+) -> BriefSnapshot:
+    """Add a new OPEN question with topic_key to BriefSnapshot, returning version N+1."""
+    from brif_ai.brief.models.common import OpenQuestionStatus
+    from brif_ai.brief.models.snapshot import OpenQuestion
+
+    # Hard invariant: at most one active elicitation OPEN question.
+    # Any existing OPEN question with a topic_key blocks creation of another.
+    for oq in snapshot.open_questions:
+        if oq.status == OpenQuestionStatus.OPEN and oq.topic_key:
+            return snapshot
+
+    ts = created_at or datetime.now(timezone.utc)  # noqa: UP017
+    if ts.tzinfo is None or ts.utcoffset() != timezone.utc:  # noqa: UP017
+        ts = ts.replace(tzinfo=timezone.utc)  # noqa: UP017
+
+    qid = f"oq_{topic_key}_{snapshot.brief_version + 1}"
+    new_oq = OpenQuestion(
+        id=qid,
+        question=question,
+        reason=reason,
+        related_brief_item_ids=related_brief_item_ids or [],
+        status=OpenQuestionStatus.OPEN,
+        resolution_note=None,
+        topic_key=topic_key,
+    )
+
+    new_oqs = [oq.model_copy() for oq in snapshot.open_questions]
+    new_oqs.append(new_oq)
+
+    candidate_data = {
+        "project_id": snapshot.project_id,
+        "schema_version": snapshot.schema_version,
+        "brief_version": snapshot.brief_version + 1,
+        "created_at": ts,
+        "stakeholders": [s.model_dump(mode="python") for s in snapshot.stakeholders],
+        "evidence": [ev.model_dump(mode="python") for ev in snapshot.evidence],
+        "brief_items": [bi.model_dump(mode="python") for bi in snapshot.brief_items],
+        "space_requests": [sr.model_dump(mode="python") for sr in snapshot.space_requests],
+        "usage_scenarios": [us.model_dump(mode="python") for us in snapshot.usage_scenarios],
+        "contradictions": [c.model_dump(mode="python") for c in snapshot.contradictions],
+        "open_questions": [oq.model_dump(mode="python") for oq in new_oqs],
+    }
+
+    return BriefSnapshot.model_validate(candidate_data)
+
+
+def update_open_question_status_for_topic(
+    snapshot: BriefSnapshot,
+    topic_key: str,
+    new_status: OpenQuestionStatus,
+    resolution_note: str,
+    *,
+    updated_at: datetime | None = None,
+) -> BriefSnapshot:
+    """Transition matching OPEN question for topic_key, returning N+1 snapshot."""
+    from brif_ai.brief.models.common import OpenQuestionStatus
+
+    matching_index = next(
+        (
+            i
+            for i, oq in enumerate(snapshot.open_questions)
+            if oq.topic_key == topic_key and oq.status == OpenQuestionStatus.OPEN
+        ),
+        None,
+    )
+    if matching_index is None:
+        return snapshot
+
+    ts = updated_at or datetime.now(timezone.utc)  # noqa: UP017
+    if ts.tzinfo is None or ts.utcoffset() != timezone.utc:  # noqa: UP017
+        ts = ts.replace(tzinfo=timezone.utc)  # noqa: UP017
+
+    new_oqs = [oq.model_copy() for oq in snapshot.open_questions]
+    target = new_oqs[matching_index]
+    new_oqs[matching_index] = target.model_copy(
+        update={"status": new_status, "resolution_note": resolution_note}
+    )
+
+    candidate_data = {
+        "project_id": snapshot.project_id,
+        "schema_version": snapshot.schema_version,
+        "brief_version": snapshot.brief_version + 1,
+        "created_at": ts,
+        "stakeholders": [s.model_dump(mode="python") for s in snapshot.stakeholders],
+        "evidence": [ev.model_dump(mode="python") for ev in snapshot.evidence],
+        "brief_items": [bi.model_dump(mode="python") for bi in snapshot.brief_items],
+        "space_requests": [sr.model_dump(mode="python") for sr in snapshot.space_requests],
+        "usage_scenarios": [us.model_dump(mode="python") for us in snapshot.usage_scenarios],
+        "contradictions": [c.model_dump(mode="python") for c in snapshot.contradictions],
+        "open_questions": [oq.model_dump(mode="python") for oq in new_oqs],
+    }
+
+    return BriefSnapshot.model_validate(candidate_data)
+
+
+class NoActiveElicitationQuestionError(ValueError):
+    """Raised when answers_current_open_question=True but no active OPEN question exists."""
+
+
+def atomic_apply_mutation_and_resolve_question(
+    snapshot: BriefSnapshot,
+    mutation: ProposedBriefMutation,
+    user_message: str,
+    source_reference: str,
+    resolution_note: str,
+    *,
+    approved_at: datetime | None = None,
+) -> BriefSnapshot:
+    """Apply a brief mutation AND resolve the active OPEN question atomically.
+
+    Produces exactly ONE N+1 snapshot containing both:
+    1. The applied brief mutation (items/spaces/scenarios)
+    2. The active OPEN question transitioned to ANSWERED
+
+    Raises NoActiveElicitationQuestionError if no active OPEN question exists.
+    """
+    # First find the active OPEN question with a valid topic_key
+    active_oq_index = None
+    for i, oq in enumerate(snapshot.open_questions):
+        if oq.status == OpenQuestionStatus.OPEN and oq.topic_key:
+            active_oq_index = i
+            break
+
+    if active_oq_index is None:
+        raise NoActiveElicitationQuestionError(
+            "answers_current_open_question=True but no active OPEN question with topic_key exists"
+        )
+
+    # Apply the brief mutation first (this produces version N+1)
+    mutated = apply_approved_brief_mutation(
+        snapshot=snapshot,
+        mutation=mutation,
+        user_message=user_message,
+        source_reference=source_reference,
+        approved_at=approved_at,
+    )
+
+    # Now apply the question resolution ON the mutated snapshot
+    # but WITHOUT incrementing version again — we merge both into the same N+1
+    ts = approved_at or datetime.now(timezone.utc)  # noqa: UP017
+    if ts.tzinfo is None or ts.utcoffset() != timezone.utc:  # noqa: UP017
+        ts = ts.replace(tzinfo=timezone.utc)  # noqa: UP017
+
+    new_oqs = [oq.model_copy() for oq in mutated.open_questions]
+    # Find the same question in the mutated snapshot (index should be same)
+    target_oq = new_oqs[active_oq_index]
+    new_oqs[active_oq_index] = target_oq.model_copy(
+        update={
+            "status": OpenQuestionStatus.ANSWERED,
+            "resolution_note": resolution_note,
+        }
+    )
+
+    candidate_data = {
+        "project_id": mutated.project_id,
+        "schema_version": mutated.schema_version,
+        "brief_version": mutated.brief_version,  # Same version as mutation result (N+1)
+        "created_at": ts,
+        "stakeholders": [s.model_dump(mode="python") for s in mutated.stakeholders],
+        "evidence": [ev.model_dump(mode="python") for ev in mutated.evidence],
+        "brief_items": [bi.model_dump(mode="python") for bi in mutated.brief_items],
+        "space_requests": [sr.model_dump(mode="python") for sr in mutated.space_requests],
+        "usage_scenarios": [us.model_dump(mode="python") for us in mutated.usage_scenarios],
+        "contradictions": [c.model_dump(mode="python") for c in mutated.contradictions],
+        "open_questions": [oq.model_dump(mode="python") for oq in new_oqs],
     }
 
     return BriefSnapshot.model_validate(candidate_data)

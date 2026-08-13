@@ -30,9 +30,11 @@ class ConversationOrchestrator {
     this.lastUserMessageText = '';
     this.lastUserMessageRef = '';
 
-    this.briefSnapshotsByProject = options.briefSnapshotsByProject
+    const initialBriefSnapshots = options.briefSnapshotsByProject
       ? JSON.parse(JSON.stringify(options.briefSnapshotsByProject))
       : {};
+    this.demoBriefSnapshotsSeed = JSON.parse(JSON.stringify(initialBriefSnapshots));
+    this.briefSnapshotsByProject = initialBriefSnapshots;
 
     this.chatContainerId = options.chatContainerId || 'chatMessagesContainer';
     this.allChatMessages = [];
@@ -60,6 +62,11 @@ class ConversationOrchestrator {
   getActiveBriefSnapshot() {
     const activeProjectId = this.stateMachine.getSnapshot().projectId;
     return this.briefSnapshotsByProject[activeProjectId] || null;
+  }
+
+  replaceActiveBriefSnapshot(newSnapshot) {
+    if (!newSnapshot || !newSnapshot.project_id) return;
+    this.briefSnapshotsByProject[newSnapshot.project_id] = newSnapshot;
   }
 
   async loadProjectBrief(projectId) {
@@ -450,6 +457,20 @@ class ConversationOrchestrator {
 
     if (this.isRequestPending) return null;
 
+    // Always refresh the active brief from the authoritative server before
+    // sending a conversation turn. If the project has never been persisted,
+    // loadProjectBrief initializes it from the immutable demo seed.
+    if (this.localLLMGateway) {
+      const activeProjectId = this.stateMachine.getSnapshot().projectId;
+      const briefReady = await this.loadProjectBrief(activeProjectId);
+      if (!briefReady) {
+        this.appendAssistantMessage(
+          "Aktif proje brief'i sunucudan yüklenemedi. Konuşma isteği gönderilmedi."
+        );
+        return { status: 'brief_unavailable' };
+      }
+    }
+
     this.startPendingRequest(messageText);
 
     try {
@@ -547,6 +568,7 @@ class ConversationOrchestrator {
         id,
         action: null,
         briefMutation: mutationCopy,
+        answersCurrentOpenQuestion: result.answers_current_open_question === true,
         contextFingerprint,
         generationId: proposalGenerationId,
         userMessageText: this.lastUserMessageText || '',
@@ -592,7 +614,8 @@ class ConversationOrchestrator {
         proposal_generation_id: proposal.generationId,
         current_generation_id: current.generationId,
         user_message: proposal.userMessageText || '',
-        source_reference: proposal.userMessageRef || 'chatmsg_1'
+        source_reference: proposal.userMessageRef || 'chatmsg_1',
+        answers_current_open_question: proposal.answersCurrentOpenQuestion === true
       };
       const response = await this.localLLMGateway.approveBriefMutation(payload);
       const replaced = (response && response.success && response.resulting_snapshot)
@@ -720,6 +743,12 @@ class ConversationOrchestrator {
     if (['onayla', 'onaylıyorum', 'kabul et', 'kabul ediyorum'].some(command =>
       normalized.includes(command)
     )) {
+      if (pending.length > 1) {
+        this.appendAssistantMessage(
+          'Birden fazla brief önerisi bekliyor. İstediğiniz öneriyi düğmesinden onaylayabilirsiniz.'
+        );
+        return { status: 'multiple_pending_requires_explicit_choice' };
+      }
       const record = await this.approveProposalById(pending[0].id);
       return { status: record ? 'approved' : 'stale', record };
     }
@@ -727,6 +756,12 @@ class ConversationOrchestrator {
     if (['vazgeç', 'iptal et', 'reddet'].some(command =>
       normalized.includes(command)
     )) {
+      if (pending.length > 1) {
+        this.appendAssistantMessage(
+          'Birden fazla brief önerisi bekliyor. İstediğiniz öneriyi düğmesinden reddedebilirsiniz.'
+        );
+        return { status: 'multiple_pending_requires_explicit_choice' };
+      }
       const dismissed = this.dismissProposalById(pending[0].id);
       return { status: dismissed ? 'dismissed' : 'stale' };
     }
@@ -735,9 +770,9 @@ class ConversationOrchestrator {
   }
 
   handleLocalLLMFallback(messageText, status = 'error') {
-    const commandResult = this.handlePendingProposalCommand(messageText);
-    if (commandResult) return commandResult;
-
+    // Pending proposal commands are already awaited before an LLM request.
+    // Calling the async command handler here returns a truthy Promise and
+    // would suppress the visible fallback/error message.
     if (status === 'canceled') {
       const handledCount = this.handledCancellationMessages.get(messageText) || 0;
       if (handledCount > 0) {

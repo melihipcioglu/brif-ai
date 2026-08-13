@@ -11,6 +11,8 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 
 from brif_ai.brief.models.snapshot import BriefSnapshot
 from brif_ai.brief.mutation import ProposedBriefMutation
+from brif_ai.conversation.elicitation.household import HouseholdComposition
+from brif_ai.conversation.elicitation.models import ElicitationContext, ElicitationTopic
 from brif_ai.regulatory.models import ComplianceFinding, ProjectRegulatoryContext
 
 if sys.version_info >= (3, 11):  # noqa: UP036
@@ -145,6 +147,7 @@ class ConversationRequest(StrictContract):
     brief_snapshot: BriefSnapshot | None = None
     regulatory_context: ProjectRegulatoryContext | None = None
     compliance_findings: list[ComplianceFinding] = Field(default_factory=list)
+    elicitation_context: ElicitationContext | None = None
 
     @model_validator(mode="after")
     def validate_pending_proposals(self) -> ConversationRequest:
@@ -224,16 +227,34 @@ class ArchitecturalIntentResult(StrictContract):
     missing_information: list[str]
     proposed_actions: list[ProposedAction]
     proposed_brief_mutations: list[ProposedBriefMutation] = Field(default_factory=list)
+    household_composition: HouseholdComposition | None = None
+    answers_current_open_question: bool = False
     needs_follow_up: bool
-    follow_up_question: NonEmptyString | None
+    follow_up_question: NonEmptyString | None = None
+    follow_up_topic: ElicitationTopic | None = None
     needs_user_confirmation: bool
     confidence: float = Field(ge=0, le=1)
     warnings: list[str]
 
     @model_validator(mode="after")
     def validate_safety_invariants(self) -> ArchitecturalIntentResult:
-        if self.needs_follow_up and self.follow_up_question is None:
-            raise ValueError("follow_up_question is required when needs_follow_up is true")
+        if self.needs_follow_up:
+            if self.follow_up_question is None:
+                raise ValueError("follow_up_question is required when needs_follow_up is true")
+            if self.follow_up_topic is None:
+                raise ValueError("follow_up_topic is required when needs_follow_up is true")
+        else:
+            if self.follow_up_topic is not None:
+                raise ValueError("follow_up_topic must be None when needs_follow_up is false")
+            if self.follow_up_question is not None:
+                raise ValueError("follow_up_question must be None when needs_follow_up is false")
+
+        # Hardening Invariant 4: If result contains proposed brief mutations or actions,
+        # needs_follow_up MUST be False
+        if (self.proposed_brief_mutations or self.proposed_actions) and self.needs_follow_up:
+            raise ValueError(
+                "needs_follow_up must be false when brief mutations or actions are present"
+            )
 
         if self.proposed_actions and not self.needs_user_confirmation:
             raise ValueError("proposed actions require user confirmation")
@@ -256,6 +277,16 @@ class ArchitecturalIntentResult(StrictContract):
             action.action_type in PLAN_CHANGE_ACTIONS for action in self.proposed_actions
         ):
             raise ValueError("explain_plan cannot contain plan change suggestions")
+
+        if self.answers_current_open_question:
+            if not self.proposed_brief_mutations:
+                raise ValueError(
+                    "answers_current_open_question requires at least one proposed_brief_mutation"
+                )
+            if self.needs_follow_up:
+                raise ValueError(
+                    "answers_current_open_question and needs_follow_up cannot both be true"
+                )
 
         return self
 
@@ -301,6 +332,7 @@ class ConversationInterpretationResponse(StrictContract):
     generation_id: int = Field(ge=0)
     result: ArchitecturalIntentResult | None
     error: str | None
+    resulting_brief_snapshot: BriefSnapshot | None = None
 
 
 class ProposalApprovalRecord(StrictContract):
@@ -331,6 +363,7 @@ class BriefMutationApprovalRequest(StrictContract):
     current_generation_id: int = Field(ge=0)
     user_message: str
     source_reference: NonEmptyString
+    answers_current_open_question: bool = False
 
     @model_validator(mode="after")
     def validate_project_context(self) -> BriefMutationApprovalRequest:

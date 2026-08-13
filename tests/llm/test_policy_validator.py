@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
+from brif_ai.conversation.elicitation.models import ElicitationContext, ElicitationTopic
 from brif_ai.llm.contracts import (
     ActiveContextSnapshot,
     ArchitecturalIntentResult,
@@ -115,6 +117,113 @@ def assert_no_internal_ids(result: ArchitecturalIntentResult) -> None:
 
 def result() -> ArchitecturalIntentResult:
     return ArchitecturalIntentResult.model_validate(valid_result_data())
+
+
+def test_neutral_start_rejects_non_elicitation_intent() -> None:
+    request = conversation_request(entity_id=None).model_copy(
+        update={
+            "message": "Ba\u015flayal\u0131m.",
+            "elicitation_context": ElicitationContext(
+                allowed_follow_up_topic=ElicitationTopic.HOUSEHOLD,
+                reason="Test household elicitation.",
+                pending_proposals_exist=False,
+                open_question_topics=[],
+                answered_question_topics=[],
+            ),
+        }
+    )
+
+    data = valid_result_data()
+    data.update(
+        {
+            "assistant_message": "?ki farkl? yakla??m de?erlendirebiliriz.",
+            "intent": "compare_alternatives",
+            "target": {
+                "project_id": None,
+                "building_id": None,
+                "level_id": None,
+                "zone_id": None,
+                "entity_id": None,
+            },
+            "user_requirements": [],
+            "interpreted_priorities": [],
+            "constraints_to_check": [],
+            "missing_information": [],
+            "proposed_actions": [],
+            "proposed_brief_mutations": [],
+            "answers_current_open_question": False,
+            "needs_follow_up": False,
+            "follow_up_question": None,
+            "follow_up_topic": None,
+            "needs_user_confirmation": False,
+            "warnings": [],
+            "confidence": 0.9,
+        }
+    )
+
+    with pytest.raises(
+        PolicyValidationError,
+        match="neutral elicitation starter requires gather_requirement intent",
+    ):
+        ArchitecturalIntentPolicyValidator().validate(
+            ArchitecturalIntentResult.model_validate(data),
+            request,
+        )
+
+
+def test_neutral_start_accepts_planner_selected_household_question() -> None:
+    request = conversation_request(entity_id=None).model_copy(
+        update={
+            "message": "Ba\u015flayal\u0131m.",
+            "elicitation_context": ElicitationContext(
+                allowed_follow_up_topic=ElicitationTopic.HOUSEHOLD,
+                reason="Test household elicitation.",
+                pending_proposals_exist=False,
+                open_question_topics=[],
+                answered_question_topics=[],
+            ),
+        }
+    )
+
+    data = valid_result_data()
+    data.update(
+        {
+            "assistant_message": "?nce hane yap?s?n? netle?tirelim.",
+            "intent": "gather_requirement",
+            "target": {
+                "project_id": None,
+                "building_id": None,
+                "level_id": None,
+                "zone_id": None,
+                "entity_id": None,
+            },
+            "user_requirements": [],
+            "interpreted_priorities": [],
+            "constraints_to_check": [],
+            "missing_information": ["Hane yap?s? hen?z netle?medi."],
+            "proposed_actions": [],
+            "proposed_brief_mutations": [],
+            "answers_current_open_question": False,
+            "needs_follow_up": True,
+            "follow_up_question": "Evde ka? ki?i ya?ayacak?",
+            "follow_up_topic": "household",
+            "needs_user_confirmation": False,
+            "warnings": [],
+            "confidence": 0.95,
+        }
+    )
+
+    result = ArchitecturalIntentPolicyValidator().validate(
+        ArchitecturalIntentResult.model_validate(data),
+        request,
+    )
+
+    assert result.intent.value == "gather_requirement"
+    assert result.needs_follow_up is True
+    assert result.follow_up_topic == ElicitationTopic.HOUSEHOLD
+    assert result.follow_up_question == "Evde ka? ki?i ya?ayacak?"
+    assert result.proposed_actions == []
+    assert result.proposed_brief_mutations == []
 
 
 def test_visible_entities_outside_entity_id_rejected() -> None:
@@ -276,6 +385,8 @@ def test_internal_id_is_removed_from_each_public_response_field(
     elif public_field == "follow_up_question":
         data["needs_follow_up"] = True
         data["follow_up_question"] = leaked_text
+        data["follow_up_topic"] = "household"
+        data["proposed_actions"] = []
     elif public_field == "warning":
         data["warnings"] = [leaked_text]
     elif public_field == "action_description":
@@ -287,8 +398,15 @@ def test_internal_id_is_removed_from_each_public_response_field(
     else:
         data["missing_information"] = [leaked_text]
 
+    req = conversation_request().model_copy(
+        update={
+            "elicitation_context": ElicitationContext(
+                allowed_follow_up_topic=ElicitationTopic.HOUSEHOLD
+            )
+        }
+    )
     safe_result = ArchitecturalIntentPolicyValidator().validate(
-        ArchitecturalIntentResult.model_validate(data), conversation_request()
+        ArchitecturalIntentResult.model_validate(data), req
     )
 
     assert_no_internal_ids(safe_result)
@@ -299,12 +417,8 @@ def test_follow_up_question_is_cleared_when_follow_up_is_not_needed() -> None:
     data["needs_follow_up"] = False
     data["follow_up_question"] = "Bu soru kullanıcıya gösterilmemeli."
 
-    safe_result = ArchitecturalIntentPolicyValidator().validate(
-        ArchitecturalIntentResult.model_validate(data), conversation_request()
-    )
-
-    assert safe_result.needs_follow_up is False
-    assert safe_result.follow_up_question is None
+    with pytest.raises(ValidationError, match="follow_up_question must be None"):
+        ArchitecturalIntentResult.model_validate(data)
 
 
 @pytest.mark.parametrize(
@@ -333,6 +447,8 @@ def test_internal_technical_terms_are_localized_in_each_public_response_field(
     elif public_field == "follow_up_question":
         data["needs_follow_up"] = True
         data["follow_up_question"] = leaked_text
+        data["follow_up_topic"] = "household"
+        data["proposed_actions"] = []
     elif public_field == "user_requirement":
         data["user_requirements"] = [leaked_text]
     elif public_field == "interpreted_priority":

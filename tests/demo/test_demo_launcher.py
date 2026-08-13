@@ -403,7 +403,7 @@ def test_launch_demo_passes_isolated_llm_env_to_api_subprocess(tmp_path: Path) -
         assert spawn_env.get("BRIF_AI_LLM_BASE_URL") == "http://127.0.0.1:11434"
         assert spawn_env.get("BRIF_AI_LLM_MODEL") == "qwen3:4b-instruct"
         assert spawn_env.get("BRIF_AI_LLM_TIMEOUT_SECONDS") == "300"
-        assert spawn_env.get("BRIF_AI_LLM_NUM_PREDICT") == "512"
+        assert spawn_env.get("BRIF_AI_LLM_NUM_PREDICT") == "768"
         assert spawn_env.get("BRIF_AI_UI_ORIGIN") == "http://127.0.0.1:8098"
         mock_api_ready.assert_called_once()
 

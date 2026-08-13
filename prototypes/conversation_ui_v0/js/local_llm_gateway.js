@@ -46,12 +46,21 @@ class LocalLLMGateway {
         return { status: 'canceled' };
       }
 
-      if (!payload.llm_enabled) {
+      // HTTP failures must be classified before inspecting the success
+      // envelope. A 409/404 response may not contain llm_enabled and must
+      // never be mistaken for an intentionally disabled LLM.
+      if (!response.ok) {
+        const failureStatus = this.classifyFailure(response, payload);
+        this.runFallback(message, failureStatus);
+        return { status: failureStatus, payload };
+      }
+
+      if (payload.llm_enabled === false) {
         this.runFallback(message, 'disabled');
         return { status: 'demo', payload };
       }
 
-      if (!response.ok || !payload.success) {
+      if (!payload.success) {
         const failureStatus = this.classifyFailure(response, payload);
         this.runFallback(message, failureStatus);
         return { status: failureStatus, payload };
@@ -65,6 +74,12 @@ class LocalLLMGateway {
       }
 
       if (!this.isValidatedResult(payload.result, requestBody)) {
+        // Handle pre-LLM skip: result is null but resulting_brief_snapshot is present
+        if (payload.result === null && payload.resulting_brief_snapshot) {
+          this.orchestrator.replaceActiveBriefSnapshot(payload.resulting_brief_snapshot);
+          this.orchestrator.appendAssistantMessage('Anladım, bu soruyu geçiyoruz.');
+          return { status: 'skipped', payload };
+        }
         this.runFallback(message, 'invalid');
         return { status: 'invalid', payload };
       }
@@ -74,6 +89,12 @@ class LocalLLMGateway {
         payload.context_fingerprint,
         payload.generation_id
       );
+
+      // Sync resulting_brief_snapshot from server if present
+      if (payload.resulting_brief_snapshot) {
+        this.orchestrator.replaceActiveBriefSnapshot(payload.resulting_brief_snapshot);
+      }
+
       return { status: 'success', payload };
     } catch (error) {
       if (signal && signal.aborted) {
