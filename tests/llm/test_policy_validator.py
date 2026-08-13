@@ -119,6 +119,113 @@ def result() -> ArchitecturalIntentResult:
     return ArchitecturalIntentResult.model_validate(valid_result_data())
 
 
+def test_neutral_start_rejects_non_elicitation_intent() -> None:
+    request = conversation_request(entity_id=None).model_copy(
+        update={
+            "message": "Ba\u015flayal\u0131m.",
+            "elicitation_context": ElicitationContext(
+                allowed_follow_up_topic=ElicitationTopic.HOUSEHOLD,
+                reason="Test household elicitation.",
+                pending_proposals_exist=False,
+                open_question_topics=[],
+                answered_question_topics=[],
+            ),
+        }
+    )
+
+    data = valid_result_data()
+    data.update(
+        {
+            "assistant_message": "?ki farkl? yakla??m de?erlendirebiliriz.",
+            "intent": "compare_alternatives",
+            "target": {
+                "project_id": None,
+                "building_id": None,
+                "level_id": None,
+                "zone_id": None,
+                "entity_id": None,
+            },
+            "user_requirements": [],
+            "interpreted_priorities": [],
+            "constraints_to_check": [],
+            "missing_information": [],
+            "proposed_actions": [],
+            "proposed_brief_mutations": [],
+            "answers_current_open_question": False,
+            "needs_follow_up": False,
+            "follow_up_question": None,
+            "follow_up_topic": None,
+            "needs_user_confirmation": False,
+            "warnings": [],
+            "confidence": 0.9,
+        }
+    )
+
+    with pytest.raises(
+        PolicyValidationError,
+        match="neutral elicitation starter requires gather_requirement intent",
+    ):
+        ArchitecturalIntentPolicyValidator().validate(
+            ArchitecturalIntentResult.model_validate(data),
+            request,
+        )
+
+
+def test_neutral_start_accepts_planner_selected_household_question() -> None:
+    request = conversation_request(entity_id=None).model_copy(
+        update={
+            "message": "Ba\u015flayal\u0131m.",
+            "elicitation_context": ElicitationContext(
+                allowed_follow_up_topic=ElicitationTopic.HOUSEHOLD,
+                reason="Test household elicitation.",
+                pending_proposals_exist=False,
+                open_question_topics=[],
+                answered_question_topics=[],
+            ),
+        }
+    )
+
+    data = valid_result_data()
+    data.update(
+        {
+            "assistant_message": "?nce hane yap?s?n? netle?tirelim.",
+            "intent": "gather_requirement",
+            "target": {
+                "project_id": None,
+                "building_id": None,
+                "level_id": None,
+                "zone_id": None,
+                "entity_id": None,
+            },
+            "user_requirements": [],
+            "interpreted_priorities": [],
+            "constraints_to_check": [],
+            "missing_information": ["Hane yap?s? hen?z netle?medi."],
+            "proposed_actions": [],
+            "proposed_brief_mutations": [],
+            "answers_current_open_question": False,
+            "needs_follow_up": True,
+            "follow_up_question": "Evde ka? ki?i ya?ayacak?",
+            "follow_up_topic": "household",
+            "needs_user_confirmation": False,
+            "warnings": [],
+            "confidence": 0.95,
+        }
+    )
+
+    result = ArchitecturalIntentPolicyValidator().validate(
+        ArchitecturalIntentResult.model_validate(data),
+        request,
+    )
+
+    assert result.intent.value == "gather_requirement"
+    assert result.needs_follow_up is True
+    assert result.follow_up_topic == ElicitationTopic.HOUSEHOLD
+    assert result.follow_up_question == "Evde ka? ki?i ya?ayacak?"
+    assert result.proposed_actions == []
+    assert result.proposed_brief_mutations == []
+
+
 def test_visible_entities_outside_entity_id_rejected() -> None:
     data = valid_result_data()
     target = data["target"]

@@ -30,9 +30,11 @@ class ConversationOrchestrator {
     this.lastUserMessageText = '';
     this.lastUserMessageRef = '';
 
-    this.briefSnapshotsByProject = options.briefSnapshotsByProject
+    const initialBriefSnapshots = options.briefSnapshotsByProject
       ? JSON.parse(JSON.stringify(options.briefSnapshotsByProject))
       : {};
+    this.demoBriefSnapshotsSeed = JSON.parse(JSON.stringify(initialBriefSnapshots));
+    this.briefSnapshotsByProject = initialBriefSnapshots;
 
     this.chatContainerId = options.chatContainerId || 'chatMessagesContainer';
     this.allChatMessages = [];
@@ -455,6 +457,20 @@ class ConversationOrchestrator {
 
     if (this.isRequestPending) return null;
 
+    // Always refresh the active brief from the authoritative server before
+    // sending a conversation turn. If the project has never been persisted,
+    // loadProjectBrief initializes it from the immutable demo seed.
+    if (this.localLLMGateway) {
+      const activeProjectId = this.stateMachine.getSnapshot().projectId;
+      const briefReady = await this.loadProjectBrief(activeProjectId);
+      if (!briefReady) {
+        this.appendAssistantMessage(
+          'Aktif proje brief?i sunucudan y?klenemedi. Konu?ma iste?i g?nderilmedi.'
+        );
+        return { status: 'brief_unavailable' };
+      }
+    }
+
     this.startPendingRequest(messageText);
 
     try {
@@ -754,9 +770,9 @@ class ConversationOrchestrator {
   }
 
   handleLocalLLMFallback(messageText, status = 'error') {
-    const commandResult = this.handlePendingProposalCommand(messageText);
-    if (commandResult) return commandResult;
-
+    // Pending proposal commands are already awaited before an LLM request.
+    // Calling the async command handler here returns a truthy Promise and
+    // would suppress the visible fallback/error message.
     if (status === 'canceled') {
       const handledCount = this.handledCancellationMessages.get(messageText) || 0;
       if (handledCount > 0) {

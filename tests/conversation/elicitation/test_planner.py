@@ -69,7 +69,7 @@ def test_planner_skips_covered_and_open_topics() -> None:
     # HOUSEHOLD is covered by brief item
     item = BriefItem(
         id="bi_01",
-        kind=BriefItemKind.PREFERENCE,
+        kind=BriefItemKind.CONTEXT,
         normalized_statement="Dört kişilik aile",
         priority=Priority.MUST,
         stakeholder_ids=["stk_01"],
@@ -90,5 +90,5 @@ def test_planner_skips_covered_and_open_topics() -> None:
     planner = ElicitationPlanner()
     ctx = planner.plan_context(snap_updated, pending_proposals_exist=False)
 
-    # Next priority after HOUSEHOLD and SPACE_PROGRAM is ACCESSIBILITY
-    assert ctx.allowed_follow_up_topic == ElicitationTopic.ACCESSIBILITY
+    assert ctx.open_question_topics == [ElicitationTopic.SPACE_PROGRAM]
+    assert ctx.allowed_follow_up_topic is None

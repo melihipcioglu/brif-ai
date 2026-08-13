@@ -18,6 +18,7 @@ class BriefItemKind(StrEnum):
     PREFERENCE = "PREFERENCE"
     CONSTRAINT = "CONSTRAINT"
     GOAL = "GOAL"
+    CONTEXT = "CONTEXT"
 
 
 class Priority(StrEnum):

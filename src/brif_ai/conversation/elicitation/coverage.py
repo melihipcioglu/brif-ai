@@ -121,6 +121,21 @@ _TOPIC_KEYWORDS: dict[ElicitationTopic, tuple[str, ...]] = {
 }
 
 
+_TOPIC_ALLOWED_SOURCES: dict[ElicitationTopic, set[str]] = {
+    ElicitationTopic.HOUSEHOLD: {"brief_items"},
+    ElicitationTopic.SPACE_PROGRAM: {"space_requests", "brief_items"},
+    ElicitationTopic.DAILY_ROUTINES: {"usage_scenarios", "brief_items"},
+    ElicitationTopic.PRIVACY: {"brief_items"},
+    ElicitationTopic.SPATIAL_RELATIONSHIPS: {"brief_items"},
+    ElicitationTopic.KITCHEN_SERVICE: {"space_requests", "brief_items"},
+    ElicitationTopic.WORK_STUDY: {"space_requests", "brief_items"},
+    ElicitationTopic.STORAGE_SERVICE: {"space_requests", "brief_items"},
+    ElicitationTopic.OUTDOOR_USE: {"space_requests", "brief_items"},
+    ElicitationTopic.ACCESSIBILITY: {"brief_items"},
+    ElicitationTopic.BUDGET_PRIORITY: {"brief_items"},
+}
+
+
 class ElicitationCoverageEngine:
     """Evaluates which elicitation topics are covered in a confirmed BriefSnapshot."""
 
@@ -164,26 +179,34 @@ class ElicitationCoverageEngine:
         return count
 
     def evaluate_covered_topics(self, snapshot: BriefSnapshot | None) -> set[ElicitationTopic]:
-        """Evaluate covered topics based on snapshot items, room requests, and scenarios."""
+        """Evaluate covered topics based on type-aware source checking."""
         if snapshot is None:
             return set()
 
         covered: set[ElicitationTopic] = set(self.get_answered_question_topics(snapshot))
 
-        # Inspect brief items, space requests, and usage scenarios
-        texts: list[str] = []
-        for item in snapshot.brief_items:
-            texts.append(item.normalized_statement.casefold())
-        for req in snapshot.space_requests:
-            texts.append(req.display_name.casefold())
-        for us in snapshot.usage_scenarios:
-            texts.append(f"{us.title} {us.description}".casefold())
-
-        combined = " ".join(texts)
+        brief_item_texts = [item.normalized_statement.casefold() for item in snapshot.brief_items]
+        space_request_texts = [req.display_name.casefold() for req in snapshot.space_requests]
+        usage_scenario_texts = [
+            f"{us.title} {us.description}".casefold() for us in snapshot.usage_scenarios
+        ]
 
         for topic, keywords in _TOPIC_KEYWORDS.items():
             if topic in covered:
                 continue
+
+            allowed = _TOPIC_ALLOWED_SOURCES.get(
+                topic, {"brief_items", "space_requests", "usage_scenarios"}
+            )
+            topic_texts: list[str] = []
+            if "brief_items" in allowed:
+                topic_texts.extend(brief_item_texts)
+            if "space_requests" in allowed:
+                topic_texts.extend(space_request_texts)
+            if "usage_scenarios" in allowed:
+                topic_texts.extend(usage_scenario_texts)
+
+            combined = " ".join(topic_texts)
             for kw in keywords:
                 if kw in combined:
                     covered.add(topic)

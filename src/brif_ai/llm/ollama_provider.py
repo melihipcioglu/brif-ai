@@ -38,10 +38,12 @@ from brif_ai.llm.policy_validator import (
 )
 from brif_ai.llm.prompts import (
     COMPARE_SYSTEM_PROMPT,
+    ELICITATION_ANSWER_SYSTEM_PROMPT,
     SCHEMA_REPAIR_PROMPT,
     SYSTEM_PROMPT,
     build_compare_repair_prompt,
     build_compare_user_prompt,
+    build_elicitation_user_prompt,
     build_user_prompt,
 )
 from brif_ai.llm.provider import (
@@ -282,6 +284,25 @@ class OllamaProvider:
         compare_analysis: CompareRequestAnalysis | None = None,
         failure_category: CompareFailureCategory | None = None,
     ) -> dict[str, object]:
+        active_oq = None
+        if (
+            not is_compact
+            and request.elicitation_context is not None
+            and request.elicitation_context.open_question_topics
+            and request.brief_snapshot is not None
+        ):
+            active_topic_val = request.elicitation_context.open_question_topics[0].value
+            from brif_ai.brief.models.common import OpenQuestionStatus
+
+            active_oq = next(
+                (
+                    oq
+                    for oq in request.brief_snapshot.open_questions
+                    if oq.status == OpenQuestionStatus.OPEN and oq.topic_key == active_topic_val
+                ),
+                None,
+            )
+
         if is_compact:
             if compare_analysis is None:
                 raise ValueError("compare analysis is required for a compare request")
@@ -293,6 +314,15 @@ class OllamaProvider:
                 else COMPARE_SYSTEM_PROMPT
             )
             user_prompt = build_compare_user_prompt(request, compare_analysis)
+        elif active_oq is not None:
+            system_prompt = SCHEMA_REPAIR_PROMPT if repair else ELICITATION_ANSWER_SYSTEM_PROMPT
+            user_prompt = build_elicitation_user_prompt(
+                active_oq.id,
+                active_oq.topic_key or "",
+                active_oq.question,
+                request.message,
+                request.brief_snapshot,
+            )
         else:
             system_prompt = SCHEMA_REPAIR_PROMPT if repair else SYSTEM_PROMPT
             user_prompt = build_user_prompt(request)
@@ -355,7 +385,18 @@ class OllamaProvider:
                 )
                 validate_rendered_compare(parsed_result, request, compare_analysis)
             else:
-                parsed_result = ArchitecturalIntentResult.model_validate_json(content)
+                data = json.loads(content)
+                if isinstance(data, dict):
+                    if (
+                        request.elicitation_context is not None
+                        and request.elicitation_context.open_question_topics
+                    ):
+                        data["proposed_actions"] = []
+                    if data.get("proposed_brief_mutations") or data.get("proposed_actions"):
+                        data["needs_user_confirmation"] = True
+                    parsed_result = ArchitecturalIntentResult.model_validate(data)
+                else:
+                    parsed_result = ArchitecturalIntentResult.model_validate_json(content)
 
             if is_compact:
                 sanitized = parsed_result

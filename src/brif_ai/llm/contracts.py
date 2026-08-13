@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 
 from brif_ai.brief.models.snapshot import BriefSnapshot
 from brif_ai.brief.mutation import ProposedBriefMutation
+from brif_ai.conversation.elicitation.household import HouseholdComposition
 from brif_ai.conversation.elicitation.models import ElicitationContext, ElicitationTopic
 from brif_ai.regulatory.models import ComplianceFinding, ProjectRegulatoryContext
 
@@ -226,6 +227,7 @@ class ArchitecturalIntentResult(StrictContract):
     missing_information: list[str]
     proposed_actions: list[ProposedAction]
     proposed_brief_mutations: list[ProposedBriefMutation] = Field(default_factory=list)
+    household_composition: HouseholdComposition | None = None
     answers_current_open_question: bool = False
     needs_follow_up: bool
     follow_up_question: NonEmptyString | None = None

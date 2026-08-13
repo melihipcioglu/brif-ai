@@ -371,9 +371,10 @@ def add_open_question_to_snapshot(
     from brif_ai.brief.models.common import OpenQuestionStatus
     from brif_ai.brief.models.snapshot import OpenQuestion
 
-    # Do not add duplicate open question for same topic
+    # Hard invariant: at most one active elicitation OPEN question.
+    # Any existing OPEN question with a topic_key blocks creation of another.
     for oq in snapshot.open_questions:
-        if oq.topic_key == topic_key and oq.status == OpenQuestionStatus.OPEN:
+        if oq.status == OpenQuestionStatus.OPEN and oq.topic_key:
             return snapshot
 
     ts = created_at or datetime.now(timezone.utc)  # noqa: UP017

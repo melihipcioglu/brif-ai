@@ -46,12 +46,21 @@ class LocalLLMGateway {
         return { status: 'canceled' };
       }
 
-      if (!payload.llm_enabled) {
+      // HTTP failures must be classified before inspecting the success
+      // envelope. A 409/404 response may not contain llm_enabled and must
+      // never be mistaken for an intentionally disabled LLM.
+      if (!response.ok) {
+        const failureStatus = this.classifyFailure(response, payload);
+        this.runFallback(message, failureStatus);
+        return { status: failureStatus, payload };
+      }
+
+      if (payload.llm_enabled === false) {
         this.runFallback(message, 'disabled');
         return { status: 'demo', payload };
       }
 
-      if (!response.ok || !payload.success) {
+      if (!payload.success) {
         const failureStatus = this.classifyFailure(response, payload);
         this.runFallback(message, failureStatus);
         return { status: failureStatus, payload };

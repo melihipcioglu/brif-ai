@@ -47,7 +47,7 @@ class MockPresenter { render() {} }
 const LocalLLMGateway = require('./local_llm_gateway.js');
 const ConversationOrchestrator = require('./conversation_orchestrator.js');
 
-function createOrchestrator() {
+function createOrchestrator(briefSnapshotsByProject = {}) {
   const hierarchy = new MockEntityHierarchy();
   const stateMachine = new MockStateMachine();
   const orchestrator = new ConversationOrchestrator({
@@ -57,7 +57,7 @@ function createOrchestrator() {
     resolver: new MockScopeResolver(),
     assistant: new MockAssistant(),
     presenter: new MockPresenter(),
-    briefSnapshotsByProject: {}
+    briefSnapshotsByProject
   });
   const gateway = new LocalLLMGateway({
     stateMachine,
@@ -223,10 +223,169 @@ async function testOpenQuestionAnswerFlagReachesApprovalRequest() {
   console.log('? testOpenQuestionAnswerFlagReachesApprovalRequest passed');
 }
 
+
+async function testConversationRefreshesAuthoritativeBriefBeforeLLM() {
+  const seed = {
+    proj_house_2story: {
+      project_id: 'proj_house_2story',
+      brief_version: 1
+    }
+  };
+  const { orchestrator, gateway } = createOrchestrator(seed);
+
+  orchestrator.startPendingRequest = function() { return true; };
+  orchestrator.finishPendingRequest = function() {};
+
+  gateway.fetchProjectBrief = async function(projectId) {
+    assert.strictEqual(projectId, 'proj_house_2story');
+    return {
+      ok: true,
+      snapshot: {
+        project_id: 'proj_house_2story',
+        brief_version: 2
+      }
+    };
+  };
+
+  let versionObservedByInterpret = null;
+  gateway.interpret = async function() {
+    versionObservedByInterpret =
+      orchestrator.getActiveBriefSnapshot().brief_version;
+    return { status: 'success' };
+  };
+
+  await orchestrator.handleUserMessage('Ba?layal?m.');
+
+  assert.strictEqual(
+    versionObservedByInterpret,
+    2,
+    'Conversation must use the authoritative server brief, not stale demo v1'
+  );
+  assert.strictEqual(
+    orchestrator.demoBriefSnapshotsSeed.proj_house_2story.brief_version,
+    1,
+    'Immutable demo seed must remain available for first-time initialization'
+  );
+
+  console.log('? testConversationRefreshesAuthoritativeBriefBeforeLLM passed');
+}
+
+
+async function testMissingServerBriefUsesDemoSeed() {
+  const seed = {
+    proj_house_2story: {
+      project_id: 'proj_house_2story',
+      brief_version: 1
+    }
+  };
+  const { orchestrator, gateway } = createOrchestrator(seed);
+
+  gateway.fetchProjectBrief = async function() {
+    return { ok: false, status: 404 };
+  };
+
+  let initializedSnapshot = null;
+  gateway.initializeProjectBrief = async function(projectId, snapshot) {
+    assert.strictEqual(projectId, 'proj_house_2story');
+    initializedSnapshot = JSON.parse(JSON.stringify(snapshot));
+    return {
+      ok: true,
+      snapshot: JSON.parse(JSON.stringify(snapshot))
+    };
+  };
+
+  const loaded = await orchestrator.loadProjectBrief('proj_house_2story');
+
+  assert.strictEqual(loaded, true);
+  assert.ok(initializedSnapshot);
+  assert.strictEqual(initializedSnapshot.brief_version, 1);
+
+  console.log('? testMissingServerBriefUsesDemoSeed passed');
+}
+
+
+async function testHttp409IsNotMisclassifiedAsDisabledLLM() {
+  const seed = {
+    proj_house_2story: {
+      project_id: 'proj_house_2story',
+      brief_version: 1
+    }
+  };
+  const { orchestrator, gateway } = createOrchestrator(seed);
+
+  let fallbackStatus = null;
+  orchestrator.handleLocalLLMFallback = function(_message, status) {
+    fallbackStatus = status;
+    return { status };
+  };
+
+  gateway.fetchFn = async function() {
+    return {
+      ok: false,
+      status: 409,
+      json: async () => ({
+        detail: 'Stale brief version: client sent 1, server has 2.'
+      })
+    };
+  };
+
+  const result = await gateway.interpret('Ba?layal?m.');
+
+  assert.notStrictEqual(
+    fallbackStatus,
+    'disabled',
+    'HTTP 409 must never be reported as LLM disabled'
+  );
+  assert.strictEqual(result.status, 'error');
+
+  console.log('? testHttp409IsNotMisclassifiedAsDisabledLLM passed');
+}
+
+
+
+async function testInvalidLLMFailureIsVisibleToUser() {
+  const { orchestrator } = createOrchestrator();
+
+  let assistantMessage = null;
+
+  orchestrator.appendAssistantMessage = function(text) {
+    assistantMessage = text;
+  };
+
+  const result = orchestrator.handleLocalLLMFallback(
+    'Start.',
+    'invalid'
+  );
+
+  assert.ok(
+    assistantMessage,
+    'Invalid LLM response must produce a visible assistant message'
+  );
+
+  assert.strictEqual(
+    typeof assistantMessage,
+    'string',
+    'Visible fallback must be text'
+  );
+
+  assert.strictEqual(
+    result.status,
+    'invalid',
+    'Fallback status must remain invalid'
+  );
+
+  console.log('PASS testInvalidLLMFailureIsVisibleToUser');
+}
+
+
 async function run() {
   await testMultiplePendingProposalsTextSafety();
   await testSinglePendingProposalTextApproval();
   await testOpenQuestionAnswerFlagReachesApprovalRequest();
+  await testConversationRefreshesAuthoritativeBriefBeforeLLM();
+  await testMissingServerBriefUsesDemoSeed();
+  await testHttp409IsNotMisclassifiedAsDisabledLLM();
+  await testInvalidLLMFailureIsVisibleToUser();
 }
 
 run().catch(err => {

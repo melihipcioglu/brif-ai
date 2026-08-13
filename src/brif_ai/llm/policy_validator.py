@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
 from brif_ai.brief.mutation import ProposedBriefMutation
-from brif_ai.conversation.elicitation.models import ElicitationTopic
+from brif_ai.conversation.elicitation.models import (
+    ElicitationTopic,
+    get_permitted_mutations_for_topic,
+)
 from brif_ai.llm.contracts import (
     PLAN_CHANGE_ACTIONS,
     ArchitecturalIntentResult,
@@ -141,6 +145,28 @@ _RELATIONSHIP_TERMS = (
     "komşu",
     "arasında",
 )
+
+
+_NEUTRAL_ELICITATION_START_MESSAGES = frozenset(
+    {
+        "ba\u015fla",
+        "ba\u015flayal\u0131m",
+        "ba\u015flayabiliriz",
+        "devam",
+        "devam edelim",
+        "hadi ba\u015fla",
+        "hadi ba\u015flayal\u0131m",
+        "tamam ba\u015flayal\u0131m",
+        "evet ba\u015flayal\u0131m",
+    }
+)
+
+
+def is_neutral_elicitation_start(message: str) -> bool:
+    """Return True only for explicit low-information conversation starters."""
+
+    normalized = " ".join(re.findall(r"\w+", message.casefold(), flags=re.UNICODE))
+    return normalized in _NEUTRAL_ELICITATION_START_MESSAGES
 
 
 def sanitize_public_text(text: str, visible_entities: list[VisibleEntity]) -> str:
@@ -1410,23 +1436,82 @@ class ArchitecturalIntentPolicyValidator:
                 )
             )
 
-        sanitized = result.model_copy(
-            update={
-                "assistant_message": _clean(result.assistant_message),
-                "follow_up_question": (
-                    _clean(result.follow_up_question)
-                    if result.follow_up_question is not None
-                    else None
-                ),
-                "user_requirements": [_clean(text) for text in result.user_requirements],
-                "interpreted_priorities": [_clean(text) for text in result.interpreted_priorities],
-                "constraints_to_check": [_clean(text) for text in result.constraints_to_check],
-                "missing_information": [_clean(text) for text in result.missing_information],
-                "proposed_actions": actions,
-                "proposed_brief_mutations": sanitized_mutations,
-                "warnings": [_clean(text) for text in result.warnings],
-            }
-        )
+        updates: dict[str, Any] = {
+            "assistant_message": _clean(result.assistant_message),
+            "follow_up_question": (
+                _clean(result.follow_up_question) if result.follow_up_question is not None else None
+            ),
+            "user_requirements": [_clean(text) for text in result.user_requirements],
+            "interpreted_priorities": [_clean(text) for text in result.interpreted_priorities],
+            "constraints_to_check": [_clean(text) for text in result.constraints_to_check],
+            "missing_information": [_clean(text) for text in result.missing_information],
+            "proposed_actions": actions,
+            "proposed_brief_mutations": sanitized_mutations,
+            "warnings": [_clean(text) for text in result.warnings],
+        }
+        if sanitized_mutations:
+            updates["needs_user_confirmation"] = True
+
+        if (
+            request.elicitation_context is not None
+            and request.elicitation_context.open_question_topics
+        ):
+            updates["target"] = EntityTarget(project_id=request.active_context.project_id)
+            active_topic = request.elicitation_context.open_question_topics[0]
+            permitted = get_permitted_mutations_for_topic(active_topic)
+            permitted_vals = {p.value if hasattr(p, "value") else str(p) for p in permitted}
+            has_matching = any(
+                (
+                    m.mutation_type.value
+                    if hasattr(m.mutation_type, "value")
+                    else str(m.mutation_type)
+                )
+                in permitted_vals
+                for m in sanitized_mutations
+            )
+            if result.answers_current_open_question and has_matching:
+                updates["answers_current_open_question"] = True
+                updates["needs_user_confirmation"] = True
+                updates["needs_follow_up"] = False
+                updates["follow_up_question"] = None
+                updates["follow_up_topic"] = None
+
+                if active_topic == ElicitationTopic.HOUSEHOLD:
+                    from brif_ai.conversation.elicitation.household import (
+                        format_household_statement,
+                        reconcile_household_composition,
+                    )
+
+                    try:
+                        if result.household_composition is None:
+                            raise ValueError(
+                                "Household yanıtı structured household_composition içermiyor."
+                            )
+                        comp = reconcile_household_composition(result.household_composition)
+                        stmt = format_household_statement(comp)
+                        updates["household_composition"] = comp
+                        updates["assistant_message"] = f"Hane halkı bilgisi tanımlandı: {stmt}"
+                        for idx, m in enumerate(sanitized_mutations):
+                            if m.brief_item is not None:
+                                sanitized_mutations[idx] = m.model_copy(
+                                    update={
+                                        "brief_item": m.brief_item.model_copy(
+                                            update={"normalized_statement": stmt}
+                                        )
+                                    }
+                                )
+                        updates["proposed_brief_mutations"] = sanitized_mutations
+                    except ValueError:
+                        updates["answers_current_open_question"] = False
+                        updates["proposed_brief_mutations"] = []
+                        updates["needs_user_confirmation"] = False
+            else:
+                updates["answers_current_open_question"] = False
+
+        if sanitized_mutations or actions:
+            updates["needs_user_confirmation"] = True
+
+        sanitized = result.model_copy(update=updates)
         if not sanitized.needs_follow_up:
             return sanitized.model_copy(update={"follow_up_question": None})
         return sanitized
@@ -1501,7 +1586,56 @@ class ArchitecturalIntentPolicyValidator:
             )
 
         if request.elicitation_context is not None:
+            open_topics = request.elicitation_context.open_question_topics
+            if open_topics:
+                active_topic = open_topics[0]
+                permitted = get_permitted_mutations_for_topic(active_topic)
+                if result.needs_follow_up:
+                    raise PolicyValidationError(
+                        "Aktif bir elicitation sorusu varken yeni bir takip sorusu üretilemez."
+                    )
+                if result.proposed_actions:
+                    raise PolicyValidationError(
+                        "Aktif elicitation sırasında plan eylemi üretilemez."
+                    )
+                if result.answers_current_open_question:
+                    if not result.proposed_brief_mutations:
+                        raise PolicyValidationError(
+                            "answers_current_open_question=true için brief önerisi bulunmalıdır."
+                        )
+                    permitted_vals = {p.value if hasattr(p, "value") else str(p) for p in permitted}
+                    for mutation in result.proposed_brief_mutations:
+                        mut_val = (
+                            mutation.mutation_type.value
+                            if hasattr(mutation.mutation_type, "value")
+                            else str(mutation.mutation_type)
+                        )
+                        if mut_val not in permitted_vals:
+                            raise PolicyValidationError(
+                                f"Konu '{active_topic.value}' yanıtı için mutasyon türü "
+                                f"'{mut_val}' izinli değil."
+                            )
+
             allowed_topic = request.elicitation_context.allowed_follow_up_topic
+
+            if allowed_topic is not None and is_neutral_elicitation_start(request.message):
+                if result.intent != IntentType.GATHER_REQUIREMENT:
+                    raise PolicyValidationError(
+                        "neutral elicitation starter requires gather_requirement intent"
+                    )
+                if not result.needs_follow_up:
+                    raise PolicyValidationError(
+                        "neutral elicitation starter requires the planner-selected follow-up"
+                    )
+                if result.proposed_actions or result.proposed_brief_mutations:
+                    raise PolicyValidationError(
+                        "neutral elicitation starter cannot produce proposals"
+                    )
+                if result.needs_user_confirmation:
+                    raise PolicyValidationError(
+                        "neutral elicitation starter cannot require confirmation"
+                    )
+
             if result.needs_follow_up:
                 if allowed_topic is None:
                     raise PolicyValidationError(
@@ -1674,6 +1808,8 @@ class ArchitecturalIntentPolicyValidator:
                     "Değerlendirilecek mekânın aktif kapsamda seçilmesi gerekiyor."
                 ],
                 "proposed_actions": [],
+                "proposed_brief_mutations": [],
+                "answers_current_open_question": False,
                 "needs_follow_up": False,
                 "follow_up_question": None,
                 "follow_up_topic": None,

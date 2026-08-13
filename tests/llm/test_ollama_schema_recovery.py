@@ -239,14 +239,16 @@ def test_repair_does_not_weaken_plan_change_confirmation_rules() -> None:
             json={"message": {"content": json.dumps(data, ensure_ascii=False)}},
         )
 
-    async def run() -> None:
+    async def run() -> ArchitecturalIntentResult:
         async with httpx.AsyncClient(
             transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:11434"
         ) as client:
-            with pytest.raises(ProviderResponseError):
-                await OllamaProvider(settings(), client).interpret(conversation_request(), schema())
+            return await OllamaProvider(settings(), client).interpret(
+                conversation_request(), schema()
+            )
 
-    asyncio.run(run())
+    res = asyncio.run(run())
+    assert res.needs_user_confirmation is True
     assert chat_calls == 2
 
 

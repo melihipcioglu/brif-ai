@@ -29,11 +29,13 @@ from brif_ai.brief.mutation import (
     BriefItemProposalPayload,
     BriefMutationType,
     ProposedBriefMutation,
+    add_open_question_to_snapshot,
 )
 from brif_ai.brief.persistence.json_repository import JSONBriefRepository
 from brif_ai.brief.service import PersistentBriefService
 from brif_ai.conversation.elicitation.coverage import ElicitationCoverageEngine
 from brif_ai.conversation.elicitation.models import ElicitationTopic
+from brif_ai.conversation.elicitation.planner import ElicitationPlanner
 from brif_ai.llm.contracts import (
     ArchitecturalIntentResult,
     ConversationRequest,
@@ -127,10 +129,10 @@ def conversation_request_payload(
 
 def test_coverage_count_active_elicitation_open_questions_ignores_legacy_none() -> None:
     snap = sample_snapshot()
-    oq_legacy = OpenQuestion(
+    legacy_oq = OpenQuestion(
         id="oq_legacy",
-        question="Genel açıklama soru?",
-        reason="Eski soru",
+        question="Genel soru?",
+        reason="Neden",
         related_brief_item_ids=[],
         status=OpenQuestionStatus.OPEN,
         topic_key=None,
@@ -143,7 +145,7 @@ def test_coverage_count_active_elicitation_open_questions_ignores_legacy_none() 
         status=OpenQuestionStatus.OPEN,
         topic_key="household",
     )
-    snap_with_oqs = snap.model_copy(update={"open_questions": [oq_legacy, oq_elicitation]})
+    snap_with_oqs = snap.model_copy(update={"open_questions": [legacy_oq, oq_elicitation]})
 
     engine = ElicitationCoverageEngine()
     count = engine.count_active_elicitation_open_questions(snap_with_oqs)
@@ -151,6 +153,156 @@ def test_coverage_count_active_elicitation_open_questions_ignores_legacy_none() 
     assert count == 1
     open_topics = engine.get_open_question_topics(snap_with_oqs)
     assert open_topics == [ElicitationTopic.HOUSEHOLD]
+
+
+def test_coverage_type_aware_prevents_false_positive_household_coverage() -> None:
+    from brif_ai.brief.models.snapshot import Evidence, UsageScenario
+
+    ev = Evidence(
+        id="ev_us_1",
+        source_type=EvidenceSource.CHAT,
+        source_reference="ref_1",
+        excerpt="Ailece çalışıyoruz",
+    )
+    snap = sample_snapshot().model_copy(update={"evidence": [ev]})
+    us = UsageScenario(
+        id="us_01",
+        title="Aile birlikte çalışma senaryosu",
+        description="Akşam saatlerinde birlikte çalışma",
+        stakeholder_ids=["stk_owner"],
+        evidence_ids=["ev_us_1"],
+        confirmation_status=ConfirmationStatus.CONFIRMED,
+    )
+    snap_with_scenario = snap.model_copy(update={"usage_scenarios": [us]})
+
+    engine = ElicitationCoverageEngine()
+    covered = engine.evaluate_covered_topics(snap_with_scenario)
+
+    # HOUSEHOLD must NOT be covered by a usage scenario containing "aile"!
+    assert ElicitationTopic.HOUSEHOLD not in covered
+    assert ElicitationTopic.DAILY_ROUTINES in covered
+
+
+def test_backward_compatibility_legacy_snapshot_kinds_and_household_coverage() -> None:
+    """Legacy brief kinds remain valid and coverage stays source-aware."""
+    legacy_json = {
+        "project_id": "p1",
+        "schema_version": "v0",
+        "brief_version": 1,
+        "created_at": "2026-08-01T10:00:00Z",
+        "stakeholders": [
+            {
+                "id": "stk_owner",
+                "display_name": "Ev Sahibi",
+                "role": "CLIENT_OWNER",
+                "active": True,
+            }
+        ],
+        "evidence": [
+            {
+                "id": "ev_1",
+                "source_type": "CHAT",
+                "source_reference": "ref_1",
+                "excerpt": "Hane bilgisi",
+            }
+        ],
+        "brief_items": [
+            {
+                "id": "bi_legacy",
+                "kind": "PREFERENCE",
+                "normalized_statement": "Dört kişilik hane",
+                "priority": "MUST",
+                "stakeholder_ids": ["stk_owner"],
+                "evidence_ids": ["ev_1"],
+                "confirmation_status": "CONFIRMED",
+            }
+        ],
+        "space_requests": [],
+        "usage_scenarios": [
+            {
+                "id": "us_1",
+                "title": "Aile Kahvaltısı",
+                "description": "Hafta sonu ailece kahvaltı yapma rutini",
+                "stakeholder_ids": ["stk_owner"],
+                "evidence_ids": ["ev_1"],
+                "confirmation_status": "CONFIRMED",
+            }
+        ],
+        "contradictions": [],
+        "open_questions": [],
+    }
+    snapshot = BriefSnapshot.model_validate(legacy_json)
+    assert snapshot.brief_items[0].kind == BriefItemKind.PREFERENCE
+
+    coverage_engine = ElicitationCoverageEngine()
+    covered = coverage_engine.evaluate_covered_topics(snapshot)
+    assert ElicitationTopic.HOUSEHOLD in covered
+
+    snapshot_scenario_only = snapshot.model_copy(update={"brief_items": []})
+    covered_scenario_only = coverage_engine.evaluate_covered_topics(snapshot_scenario_only)
+    assert ElicitationTopic.HOUSEHOLD not in covered_scenario_only
+
+
+def test_permitted_mutations_policy_per_topic() -> None:
+    from brif_ai.conversation.elicitation.models import get_permitted_mutations_for_topic
+
+    assert get_permitted_mutations_for_topic(ElicitationTopic.HOUSEHOLD) == {
+        BriefMutationType.ADD_BRIEF_ITEM
+    }
+    assert get_permitted_mutations_for_topic(ElicitationTopic.SPACE_PROGRAM) == {
+        BriefMutationType.ADD_SPACE_REQUEST,
+        BriefMutationType.ADD_BRIEF_ITEM,
+    }
+    assert get_permitted_mutations_for_topic(ElicitationTopic.DAILY_ROUTINES) == {
+        BriefMutationType.ADD_USAGE_SCENARIO,
+        BriefMutationType.ADD_BRIEF_ITEM,
+    }
+    assert get_permitted_mutations_for_topic(ElicitationTopic.ACCESSIBILITY) == {
+        BriefMutationType.ADD_BRIEF_ITEM
+    }
+
+
+def test_existing_open_question_blocks_next_elicitation_topic() -> None:
+    snap = sample_snapshot()
+    household_question = OpenQuestion(
+        id="oq_household_2",
+        question="Household question",
+        reason="Household is unknown",
+        related_brief_item_ids=[],
+        status=OpenQuestionStatus.OPEN,
+        topic_key="household",
+    )
+    snap = snap.model_copy(update={"open_questions": [household_question]})
+
+    context = ElicitationPlanner().plan_context(snap)
+
+    assert context.allowed_follow_up_topic is None
+    assert context.open_question_topics == [ElicitationTopic.HOUSEHOLD]
+
+
+def test_domain_rejects_second_active_elicitation_open_question() -> None:
+    snap = sample_snapshot()
+    household_question = OpenQuestion(
+        id="oq_household_2",
+        question="Household question",
+        reason="Household is unknown",
+        related_brief_item_ids=[],
+        status=OpenQuestionStatus.OPEN,
+        topic_key="household",
+    )
+    snap = snap.model_copy(update={"open_questions": [household_question]})
+
+    result = add_open_question_to_snapshot(
+        snap,
+        question="Accessibility question",
+        reason="Accessibility is unknown",
+        topic_key="accessibility",
+    )
+
+    assert result.brief_version == snap.brief_version
+    assert len(result.open_questions) == 1
+    assert result.open_questions[0].topic_key == "household"
+    assert result.open_questions[0].status == OpenQuestionStatus.OPEN
 
 
 # ============================================================================
@@ -425,3 +577,107 @@ def test_atomic_approval_fails_when_no_active_open_question_exists(tmp_path: Pat
 
     assert response.status_code == 422
     assert "no active OPEN question" in response.json()["error"]
+
+
+def test_unrelated_mutation_does_not_resolve_active_open_question(tmp_path: Path) -> None:
+    repo = JSONBriefRepository(tmp_path)
+    service = PersistentBriefService(repo)
+
+    oq = OpenQuestion(
+        id="oq_household",
+        question="Evde kaç kişi yaşayacak?",
+        reason="Nüfus belirsiz",
+        related_brief_item_ids=[],
+        status=OpenQuestionStatus.OPEN,
+        topic_key="household",
+    )
+    snap = sample_snapshot("proj_house_2story", 1).model_copy(update={"open_questions": [oq]})
+    repo.save(snap)
+
+    mutation = ProposedBriefMutation(
+        mutation_id="mut_kitchen",
+        mutation_type=BriefMutationType.ADD_BRIEF_ITEM,
+        brief_item=BriefItemProposalPayload(
+            kind=BriefItemKind.PREFERENCE,
+            normalized_statement="Kapalı mutfak",
+            priority=Priority.MUST,
+        ),
+    )
+
+    # Approve unrelated mutation with answers_current_open_question=False
+    new_snap = service.record_brief_mutation_approval(
+        current_project_id="proj_house_2story",
+        expected_brief_version=1,
+        proposed_mutation=mutation,
+        user_message="Bu arada mutfak kapalı olsun.",
+        answers_current_open_question=False,
+    )
+
+    # Version should increment to 2, but household OPEN question MUST remain OPEN!
+    assert new_snap.brief_version == 2
+    assert len(new_snap.brief_items) == 1
+    assert new_snap.open_questions[0].status == OpenQuestionStatus.OPEN
+    assert new_snap.open_questions[0].topic_key == "household"
+
+
+def test_household_composition_arithmetic_reconciliation_overrides_disagreeing_total() -> None:
+    """If LLM payload gives total_count=3 but adult=2 and child=2, Python corrects total to 4."""
+    from brif_ai.conversation.elicitation.household import (
+        HouseholdComposition,
+        extract_household_composition,
+        format_household_statement,
+    )
+
+    llm_payload = HouseholdComposition(
+        total_count=3,
+        adult_count=2,
+        child_count=2,
+        child_ages=[],
+    )
+    comp = extract_household_composition("dummy message", llm_composition=llm_payload)
+    assert comp.total_count == 4
+    assert comp.adult_count == 2
+    assert comp.child_count == 2
+    assert format_household_statement(comp) == "Evde 4 kişi yaşayacak (2 yetişkin, 2 çocuk)."
+
+
+def test_household_composition_four_person_family_no_invented_children() -> None:
+    """Keep adult/child counts unknown when only total_count is known."""
+    from brif_ai.conversation.elicitation.household import (
+        HouseholdComposition,
+        extract_household_composition,
+        format_household_statement,
+    )
+
+    llm_payload = HouseholdComposition(total_count=4)
+    comp = extract_household_composition(
+        "Biz dört kişilik bir aileyiz.", llm_composition=llm_payload
+    )
+    assert comp.total_count == 4
+    assert comp.adult_count is None
+    assert comp.child_count is None
+    assert format_household_statement(comp) == "Evde 4 kişi yaşayacak."
+
+
+def test_household_only_total_drops_unsupported_llm_subgroups() -> None:
+    """Do not preserve adult/child counts that the user never stated."""
+    from brif_ai.conversation.elicitation.household import (
+        HouseholdComposition,
+        extract_household_composition,
+        format_household_statement,
+    )
+
+    result = extract_household_composition(
+        "Biz dört kişilik bir aileyiz.",
+        llm_composition=HouseholdComposition(
+            total_count=4,
+            adult_count=2,
+            child_count=2,
+        ),
+    )
+
+    assert result.total_count == 4
+    assert result.adult_count is None
+    assert result.child_count is None
+    assert result.child_ages == []
+    assert format_household_statement(result) == "Evde 4 kişi yaşayacak."

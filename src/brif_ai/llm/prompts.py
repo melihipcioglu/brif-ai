@@ -62,7 +62,11 @@ Aşağıdaki kurallara KESİNLİKLE UY:
 - user_requirements, interpreted_priorities, constraints_to_check,
   missing_information, proposed_actions, proposed_brief_mutations ve warnings
   her zaman JSON dizisi olsun; null veya metin kullanma.
-- needs_follow_up=true ise follow_up_question dolu bir metin olsun; false ise null olsun.
+- needs_follow_up=true ise follow_up_question dolu bir metin olsun ve follow_up_topic
+  girdideki elicitation.allowed_follow_up_topic ile birebir ayn? olsun.
+- needs_follow_up=false ise follow_up_question=null ve follow_up_topic=null olsun.
+- elicitation.allowed_follow_up_topic=null ise needs_follow_up=false olsun.
+- proposed_actions veya proposed_brief_mutations bo? de?ilse needs_follow_up=false olsun.
 - proposed_actions boş değilse needs_user_confirmation=true olsun ve her eylemde
   requires_user_confirmation=true kullan.
 - Plan değişikliği eyleminde yalnız görünür kapsamdaki gerçek target_entity_id değerini kullan;
@@ -274,24 +278,67 @@ def build_compare_user_prompt(
 ) -> str:
     """Serialize only trusted compare context; mutation scope identifiers are unnecessary."""
 
-    active = request.active_context
+    requested_count = getattr(
+        analysis, "requested_count", getattr(analysis, "alternative_count", None)
+    )
+    message = request.message
+    if requested_count is not None:
+        message = (
+            f"Kullanıcı talebi: {request.message} (İstenen alternatif sayısı: {requested_count})"
+        )
+
     payload: dict[str, object] = {
-        "message": request.message,
-        "visible_entity_names": [
-            entity.name
+        "intent": "compare_alternatives",
+        "message": message,
+        "active_context": request.active_context.model_dump(mode="json"),
+        "visible_entities": [
+            _visible_entity_payload(entity, request.active_context)
             for entity in request.visible_entities
             if _is_in_active_scope(request, entity)
         ],
         "conversation_summary": request.conversation_summary,
         "current_decisions": request.current_decisions,
-        "pending_decision_descriptions": [
-            proposal.action.description
-            for proposal in request.pending_proposals
-            if proposal.action is not None
-        ],
-        "compare_context": analysis.prompt_payload(),
-        "context_generation": active.generation_id,
     }
     if request.brief_snapshot is not None:
         payload["active_brief"] = _compact_brief_payload(request.brief_snapshot)
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+
+
+ELICITATION_ANSWER_SYSTEM_PROMPT = (
+    "Sen BRIF.AI mimari brief yorumlayıcısısın.\n"
+    "Aktif bir elicitation sorusu var; yalnız kullanıcının brief bilgisini yorumla.\n"
+    "Aktif soru yanıtlanıyorsa answers_current_open_question=true yap.\n"
+    "Yanıtsa izinli türde tam 1 proposed_brief_mutations üret.\n"
+    "Plan/geometri eylemi veya alternatif üretme; proposed_actions=[] olsun.\n"
+    "Yeni takip sorusu üretme; needs_follow_up=false ve follow-up alanları null olsun.\n"
+    "Household sorusunda household_composition alanını yapılandırılmış doldur.\n"
+    "Örnek: ben + eş + iki çocuk => total=4, adult=2, child=2.\n"
+    "Yalnız toplam biliniyorsa adult_count ve child_count null olsun; bilgi uydurma.\n"
+    "Toplam ile tek alt grup biliniyorsa diğer alt grup aritmetik olarak çıkarılabilir.\n"
+    "Household yanıtı değilse sayımlar null, child_ages=[] ve notes=null olsun.\n"
+    "Household brief maddesinde kind=CONTEXT kullan.\n"
+    "Başka bir brief ihtiyacıysa answers_current_open_question=false yap ve en fazla "
+    "1 brief mutasyonu üret.\n"
+    "Mesaj ilgisizse answers_current_open_question=false ve proposed_brief_mutations=[] yap.\n"
+)
+
+
+def build_elicitation_user_prompt(
+    active_question_id: str,
+    active_topic_key: str,
+    active_question_text: str,
+    user_message: str,
+    snapshot: BriefSnapshot | None = None,
+) -> str:
+    """Build compact user prompt for dedicated elicitation answer interpretation."""
+    payload: dict[str, object] = {
+        "active_open_question": {
+            "id": active_question_id,
+            "topic_key": active_topic_key,
+            "question": active_question_text,
+        },
+        "user_message": user_message,
+    }
+    if snapshot is not None:
+        payload["active_brief"] = _compact_brief_payload(snapshot)
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
