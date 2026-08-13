@@ -28,9 +28,7 @@ _NUMBER_TOKEN = r"\d+|bir|iki|üç|dört|beş|altı|alti|yedi|sekiz|dokuz|on"
 _TOTAL_COUNT_PATTERN = re.compile(
     rf"\b(?P<count>{_NUMBER_TOKEN})\s*kişi(?:lik|yiz|yizdir|dir|den|deniz|ler)?\b"
 )
-_ADULT_COUNT_PATTERN = re.compile(
-    rf"\b(?P<count>{_NUMBER_TOKEN})\s*yetişkin\w*\b"
-)
+_ADULT_COUNT_PATTERN = re.compile(rf"\b(?P<count>{_NUMBER_TOKEN})\s*yetişkin\w*\b")
 _CHILD_COUNT_PATTERN = re.compile(
     rf"\b(?P<count>{_NUMBER_TOKEN})\s*"
     r"(?:ve\s*\d+\s*yaşlarında\s*)?"
@@ -38,12 +36,8 @@ _CHILD_COUNT_PATTERN = re.compile(
 )
 _SELF_PATTERN = re.compile(r"\b(?:ben|kendim)\b")
 _SPOUSE_PATTERN = re.compile(r"\b(?:eşim\w*|karım\w*|kocam\w*|partnerim\w*)\b")
-_HOUSEHOLD_CONTEXT_PATTERN = re.compile(
-    r"\b(?:evde|hanede|aile\w*|yaşa\w*|otur\w*|kal\w*)\b"
-)
-_CHILD_REFERENCE_PATTERN = re.compile(
-    r"\b(?:çocuk(?!\s+oda)\w*|çocuğ\w*|oğl\w*|kız\w*|evlat\w*)\b"
-)
+_HOUSEHOLD_CONTEXT_PATTERN = re.compile(r"\b(?:evde|hanede|aile\w*|yaşa\w*|otur\w*|kal\w*)\b")
+_CHILD_REFERENCE_PATTERN = re.compile(r"\b(?:çocuk(?!\s+oda)\w*|çocuğ\w*|oğl\w*|kız\w*|evlat\w*)\b")
 _AGE_LIST_PATTERN = re.compile(
     rf"\b(?P<ages>(?:{_NUMBER_TOKEN})"
     rf"(?:\s*(?:,|ve)\s*(?:{_NUMBER_TOKEN}))*)\s*yaş(?:ında|larında)\b"
@@ -81,10 +75,7 @@ def _explicit_child_ages(text: str) -> list[int]:
         if child_before is None and child_after is None:
             continue
 
-        ages = [
-            _parse_int(token)
-            for token in re.split(r"\s*(?:,|ve)\s*", age_match.group("ages"))
-        ]
+        ages = [_parse_int(token) for token in re.split(r"\s*(?:,|ve)\s*", age_match.group("ages"))]
         return [age for age in ages if age is not None]
 
     return []

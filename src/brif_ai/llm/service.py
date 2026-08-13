@@ -498,9 +498,7 @@ class LocalLLMConversationService:
                 safe_result = safe_result.model_copy(
                     update={
                         "intent": IntentType.GATHER_REQUIREMENT,
-                        "target": EntityTarget(
-                            project_id=request.active_context.project_id
-                        ),
+                        "target": EntityTarget(project_id=request.active_context.project_id),
                         "assistant_message": (
                             f"Anladım. {household_statement} "
                             "Bunu hane bilgisi olarak brief'e eklemeyi öneriyorum."

@@ -564,9 +564,7 @@ def test_active_household_reconciles_real_false_negative_and_builds_canonical_pr
     request = _active_household_request("Ben, eşim ve iki çocuğum.")
     assert request.brief_snapshot is not None
     original_snapshot = request.brief_snapshot.model_dump(mode="python")
-    provider = MockProvider(
-        _stale_household_result(total_count=3, adult_count=1, child_count=2)
-    )
+    provider = MockProvider(_stale_household_result(total_count=3, adult_count=1, child_count=2))
     llm_service = LocalLLMConversationService(
         LocalLLMSettings(enabled=True, model="local-model:latest"),
         provider,
@@ -596,8 +594,7 @@ def test_active_household_reconciles_real_false_negative_and_builds_canonical_pr
     assert mutation.brief_item.kind is BriefItemKind.CONTEXT
     assert mutation.brief_item.priority is Priority.MUST
     assert (
-        mutation.brief_item.normalized_statement
-        == "Evde 4 kişi yaşayacak (2 yetişkin, 2 çocuk)."
+        mutation.brief_item.normalized_statement == "Evde 4 kişi yaşayacak (2 yetişkin, 2 çocuk)."
     )
 
     assert request.brief_snapshot.model_dump(mode="python") == original_snapshot
@@ -632,15 +629,12 @@ def test_active_household_drops_child_ages_not_grounded_in_current_message() -> 
     mutation = response.result.proposed_brief_mutations[0]
     assert mutation.brief_item is not None
     assert (
-        mutation.brief_item.normalized_statement
-        == "Evde 4 kişi yaşayacak (2 yetişkin, 2 çocuk)."
+        mutation.brief_item.normalized_statement == "Evde 4 kişi yaşayacak (2 yetişkin, 2 çocuk)."
     )
 
 
 def test_active_household_keeps_child_ages_grounded_in_current_message() -> None:
-    request = _active_household_request(
-        "Ben, eşim ve 4 ve 8 yaşlarında iki çocuğum."
-    )
+    request = _active_household_request("Ben, eşim ve 4 ve 8 yaşlarında iki çocuğum.")
     provider = MockProvider(
         _stale_household_result(
             total_count=4,
@@ -672,9 +666,7 @@ def test_unrelated_message_rejects_stale_household_extraction() -> None:
     request = _active_household_request("Bu arada mutfak kapalı olsun.")
     assert request.brief_snapshot is not None
     original_snapshot = request.brief_snapshot.model_dump(mode="python")
-    provider = MockProvider(
-        _stale_household_result(total_count=3, adult_count=1, child_count=2)
-    )
+    provider = MockProvider(_stale_household_result(total_count=3, adult_count=1, child_count=2))
     llm_service = LocalLLMConversationService(
         LocalLLMSettings(enabled=True, model="local-model:latest"),
         provider,
@@ -716,9 +708,7 @@ def test_household_service_does_not_use_text_fallback_as_primary_extraction() ->
 
 def test_household_total_only_does_not_invent_subgroups() -> None:
     request = _active_household_request("Biz dört kişilik bir aileyiz.")
-    provider = MockProvider(
-        _stale_household_result(total_count=4, adult_count=2, child_count=2)
-    )
+    provider = MockProvider(_stale_household_result(total_count=4, adult_count=2, child_count=2))
     llm_service = LocalLLMConversationService(
         LocalLLMSettings(enabled=True, model="local-model:latest"),
         provider,
@@ -741,9 +731,7 @@ def test_household_total_only_does_not_invent_subgroups() -> None:
 
 def test_greeting_does_not_invent_household_mutation() -> None:
     request = _active_household_request("Merhaba")
-    provider = MockProvider(
-        _stale_household_result(total_count=3, adult_count=1, child_count=2)
-    )
+    provider = MockProvider(_stale_household_result(total_count=3, adult_count=1, child_count=2))
     llm_service = LocalLLMConversationService(
         LocalLLMSettings(enabled=True, model="local-model:latest"),
         provider,
