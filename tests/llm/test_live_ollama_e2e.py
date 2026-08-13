@@ -32,9 +32,15 @@ def is_ollama_live() -> bool:
 def get_live_model_name() -> str:
     try:
         res = httpx.get("http://127.0.0.1:11434/api/tags", timeout=2.0)
-        models = res.json().get("models", [])
-        if models:
-            return models[0]["name"]
+        payload: object = res.json()
+        if isinstance(payload, dict):
+            models = payload.get("models")
+            if isinstance(models, list) and models:
+                first_model = models[0]
+                if isinstance(first_model, dict):
+                    name = first_model.get("name")
+                    if isinstance(name, str):
+                        return name
     except Exception:
         pass
     return "qwen3:4b-instruct"

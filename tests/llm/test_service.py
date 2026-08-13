@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+from typing import Any, cast
 
 import pytest
 
@@ -108,7 +109,7 @@ def test_neutral_start_constrains_provider_schema() -> None:
     )
 
     schema = _build_provider_output_schema(request)
-    properties = schema["properties"]
+    properties = cast(dict[str, Any], schema["properties"])
     assert properties["intent"]["enum"] == ["gather_requirement"]
     assert properties["needs_follow_up"]["enum"] == [True]
     assert properties["follow_up_topic"]["enum"] == ["household"]
@@ -166,6 +167,7 @@ def test_follow_up_wording_is_server_authoritative() -> None:
     response = asyncio.run(llm_service.interpret(request))
 
     assert response.result is not None
+    assert response.result.follow_up_topic is not None
     assert response.result.follow_up_topic.value == "household"
     assert response.result.follow_up_question == "Evde ka\u00e7 ki\u015fi ya\u015fayacak?"
     assert response.result.assistant_message == "Evde ka\u00e7 ki\u015fi ya\u015fayacak?"
@@ -448,7 +450,7 @@ def test_active_open_question_schema_forbids_new_follow_up() -> None:
     )
 
     schema = _build_provider_output_schema(request)
-    properties = schema.get("properties")
+    properties = cast(dict[str, Any], schema.get("properties"))
 
     assert isinstance(properties, dict)
     assert properties["needs_follow_up"]["enum"] == [False]
@@ -458,9 +460,11 @@ def test_active_open_question_schema_forbids_new_follow_up() -> None:
     assert properties["intent"]["enum"] == ["gather_requirement"]
     assert properties["proposed_actions"]["maxItems"] == 0
     assert properties["proposed_brief_mutations"]["maxItems"] == 1
-    assert "household_composition" in schema["required"]
+    required = cast(list[object], schema["required"])
+    assert "household_composition" in required
     assert properties["household_composition"] == {"$ref": "#/$defs/HouseholdComposition"}
-    household_def = schema["$defs"]["HouseholdComposition"]
+    schema_defs = cast(dict[str, Any], schema["$defs"])
+    household_def = cast(dict[str, Any], schema_defs["HouseholdComposition"])
     assert set(household_def["required"]) == {
         "total_count",
         "adult_count",

@@ -2,22 +2,33 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
-from typing import Any
 
 from brif_ai.brief.models.common import OpenQuestionStatus
 from brif_ai.brief.models.snapshot import BriefSnapshot, OpenQuestion, Stakeholder
 from brif_ai.conversation.elicitation.planner import ElicitationPlanner
-from brif_ai.llm.contracts import ActiveContextSnapshot, ConversationRequest
+from brif_ai.llm.contracts import (
+    ActiveContextSnapshot,
+    ArchitecturalIntentResult,
+    ConversationRequest,
+    LocalModelInfo,
+    ProviderHealth,
+)
 from brif_ai.llm.service import LocalLLMConversationService
 from brif_ai.llm.settings import LocalLLMSettings
 
 
 class NeverCallProvider:
+    async def health(self) -> ProviderHealth:
+        raise AssertionError("Neutral start with existing OPEN must not check provider health.")
+
+    async def list_models(self) -> list[LocalModelInfo]:
+        raise AssertionError("Neutral start with existing OPEN must not list provider models.")
+
     async def interpret(
         self,
         request: ConversationRequest,
-        output_schema: dict[str, Any] | None = None,
-    ) -> Any:
+        output_schema: dict[str, object],
+    ) -> ArchitecturalIntentResult:
         raise AssertionError("Neutral start with existing OPEN must not call the LLM.")
 
 
