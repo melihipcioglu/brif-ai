@@ -63,10 +63,10 @@ Aşağıdaki kurallara KESİNLİKLE UY:
   missing_information, proposed_actions, proposed_brief_mutations ve warnings
   her zaman JSON dizisi olsun; null veya metin kullanma.
 - needs_follow_up=true ise follow_up_question dolu bir metin olsun ve follow_up_topic
-  girdideki elicitation.allowed_follow_up_topic ile birebir ayn? olsun.
+  girdideki elicitation.allowed_follow_up_topic ile birebir aynı olsun.
 - needs_follow_up=false ise follow_up_question=null ve follow_up_topic=null olsun.
 - elicitation.allowed_follow_up_topic=null ise needs_follow_up=false olsun.
-- proposed_actions veya proposed_brief_mutations bo? de?ilse needs_follow_up=false olsun.
+- proposed_actions veya proposed_brief_mutations boş değilse needs_follow_up=false olsun.
 - proposed_actions boş değilse needs_user_confirmation=true olsun ve her eylemde
   requires_user_confirmation=true kullan.
 - Plan değişikliği eyleminde yalnız görünür kapsamdaki gerçek target_entity_id değerini kullan;

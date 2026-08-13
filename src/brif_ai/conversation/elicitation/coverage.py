@@ -88,7 +88,7 @@ _TOPIC_KEYWORDS: dict[ElicitationTopic, tuple[str, ...]] = {
     ),
     ElicitationTopic.STORAGE_SERVICE: (
         "depo",
-        "čamaşır odası",
+        "çamaşır odası",
         "giyinme odası",
         "vestiyer",
         "kiler",

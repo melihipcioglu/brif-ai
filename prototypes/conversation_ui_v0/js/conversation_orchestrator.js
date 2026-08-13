@@ -465,7 +465,7 @@ class ConversationOrchestrator {
       const briefReady = await this.loadProjectBrief(activeProjectId);
       if (!briefReady) {
         this.appendAssistantMessage(
-          'Aktif proje brief?i sunucudan y?klenemedi. Konu?ma iste?i g?nderilmedi.'
+          "Aktif proje brief'i sunucudan yüklenemedi. Konuşma isteği gönderilmedi."
         );
         return { status: 'brief_unavailable' };
       }

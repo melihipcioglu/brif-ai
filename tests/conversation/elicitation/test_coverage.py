@@ -83,6 +83,24 @@ def test_coverage_detects_covered_topics_from_snapshot_objects() -> None:
     assert ElicitationTopic.BUDGET_PRIORITY not in covered
 
 
+def test_confirmed_laundry_room_brief_item_covers_storage_service() -> None:
+    snap = _dummy_snapshot()
+    item = BriefItem(
+        id="bi_laundry_room",
+        kind=BriefItemKind.NEED,
+        normalized_statement="Çamaşır odası isteniyor.",
+        priority=Priority.MUST,
+        stakeholder_ids=["stk_01"],
+        evidence_ids=["ev_01"],
+        confirmation_status=ConfirmationStatus.CONFIRMED,
+    )
+    snap_with_laundry_room = snap.model_copy(update={"brief_items": [item]})
+
+    covered = ElicitationCoverageEngine().evaluate_covered_topics(snap_with_laundry_room)
+
+    assert ElicitationTopic.STORAGE_SERVICE in covered
+
+
 def test_coverage_detects_open_and_answered_question_topics() -> None:
     snap = _dummy_snapshot()
     oq_open = OpenQuestion(
