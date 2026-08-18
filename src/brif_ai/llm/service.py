@@ -147,6 +147,18 @@ def _build_provider_output_schema(
                 "notes",
             ]
             properties["household_composition"] = {"$ref": "#/$defs/HouseholdComposition"}
+        elif active_topic.value == "spatial_relationships":
+            current_spatial = properties.get("proposed_spatial_relationships")
+            if isinstance(current_spatial, dict):
+                properties["proposed_spatial_relationships"] = {
+                    **current_spatial,
+                    "maxItems": 2,
+                }
+        else:
+            properties["proposed_spatial_relationships"] = {
+                "type": "array",
+                "maxItems": 0,
+            }
 
         return schema
 

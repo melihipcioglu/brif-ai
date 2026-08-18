@@ -1,8 +1,4 @@
-"""BRIF.AI — Spatial Relationship Domain Package (V0.2).
-
-Provides strict immutable contracts and deterministic builder for spatial
-relationship graphs derived from approved briefs and structured relationship inputs.
-"""
+"""BRIF.AI Spatial Relationship Graph Domain Package."""
 
 from __future__ import annotations
 
@@ -16,6 +12,7 @@ from brif_ai.spatial.errors import (
     SpatialGraphError,
 )
 from brif_ai.spatial.models import (
+    ProposedSpatialRelationship,
     RelationshipProvenance,
     SpatialConflict,
     SpatialNode,
@@ -26,7 +23,16 @@ from brif_ai.spatial.models import (
     UnconstrainedPair,
     generate_relationship_id,
     generate_spatial_node_id,
+    project_space_requests_to_spatial_nodes,
 )
+from brif_ai.spatial.persistence import (
+    JSONSpatialRelationshipRepository,
+    SpatialGraphNotFoundError,
+    SpatialGraphPersistenceError,
+    SpatialGraphVersionConflictError,
+    SpatialRelationshipRepository,
+)
+from brif_ai.spatial.service import PersistentSpatialService
 from brif_ai.spatial.validator import (
     MUTUALLY_EXCLUSIVE_PAIRS,
     deduplicate_and_materialize_relationships,
@@ -36,26 +42,34 @@ from brif_ai.spatial.validator import (
 )
 
 __all__ = [
+    "JSONSpatialRelationshipRepository",
     "MUTUALLY_EXCLUSIVE_PAIRS",
     "DuplicateRelationshipError",
     "InvalidEvidenceReferenceError",
     "InvalidProvenanceError",
     "NonexistentSpaceError",
+    "PersistentSpatialService",
+    "ProposedSpatialRelationship",
     "RelationshipProvenance",
     "SelfRelationshipError",
     "SpatialConflict",
     "SpatialGraphError",
+    "SpatialGraphNotFoundError",
+    "SpatialGraphPersistenceError",
+    "SpatialGraphVersionConflictError",
     "SpatialNode",
     "SpatialRelationship",
     "SpatialRelationshipGraph",
     "SpatialRelationshipGraphBuilder",
     "SpatialRelationshipInput",
+    "SpatialRelationshipRepository",
     "SpatialRelationType",
     "UnconstrainedPair",
     "deduplicate_and_materialize_relationships",
     "detect_spatial_conflicts",
     "generate_relationship_id",
     "generate_spatial_node_id",
+    "project_space_requests_to_spatial_nodes",
     "validate_evidence_references",
     "validate_spatial_relationship_inputs",
 ]

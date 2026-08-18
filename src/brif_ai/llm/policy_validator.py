@@ -18,6 +18,7 @@ from brif_ai.llm.contracts import (
     IntentType,
     VisibleEntity,
 )
+from brif_ai.spatial.models import project_space_requests_to_spatial_nodes
 
 _TURKISH_WORD_BOUND_PRE = r"(?<![\wıişğüçÖÇŞİĞÜ])"
 _TURKISH_WORD_BOUND_POST = r"(?=[^\wıişğüçÖÇŞİĞÜ]|$)"
@@ -1436,6 +1437,13 @@ class ArchitecturalIntentPolicyValidator:
                 )
             )
 
+        sanitized_spatial_rels = [
+            r.model_copy(
+                update={"rationale": _clean(r.rationale) if r.rationale is not None else None}
+            )
+            for r in result.proposed_spatial_relationships
+        ]
+
         updates: dict[str, Any] = {
             "assistant_message": _clean(result.assistant_message),
             "follow_up_question": (
@@ -1447,9 +1455,10 @@ class ArchitecturalIntentPolicyValidator:
             "missing_information": [_clean(text) for text in result.missing_information],
             "proposed_actions": actions,
             "proposed_brief_mutations": sanitized_mutations,
+            "proposed_spatial_relationships": sanitized_spatial_rels,
             "warnings": [_clean(text) for text in result.warnings],
         }
-        if sanitized_mutations:
+        if sanitized_mutations or sanitized_spatial_rels or actions:
             updates["needs_user_confirmation"] = True
 
         if (
@@ -1469,7 +1478,11 @@ class ArchitecturalIntentPolicyValidator:
                 in permitted_vals
                 for m in sanitized_mutations
             )
-            if result.answers_current_open_question and has_matching:
+            has_spatial_match = (
+                bool(sanitized_spatial_rels)
+                and active_topic == ElicitationTopic.SPATIAL_RELATIONSHIPS
+            )
+            if result.answers_current_open_question and (has_matching or has_spatial_match):
                 updates["answers_current_open_question"] = True
                 updates["needs_user_confirmation"] = True
                 updates["needs_follow_up"] = False
@@ -1506,9 +1519,10 @@ class ArchitecturalIntentPolicyValidator:
                         updates["proposed_brief_mutations"] = []
                         updates["needs_user_confirmation"] = False
             else:
-                updates["answers_current_open_question"] = False
+                if not has_spatial_match and not has_matching:
+                    updates["answers_current_open_question"] = False
 
-        if sanitized_mutations or actions:
+        if sanitized_mutations or sanitized_spatial_rels or actions:
             updates["needs_user_confirmation"] = True
 
         sanitized = result.model_copy(update=updates)
@@ -1548,6 +1562,7 @@ class ArchitecturalIntentPolicyValidator:
                 "missing_information": [_clean(text) for text in result.missing_information],
                 "proposed_actions": actions,
                 "proposed_brief_mutations": [],
+                "proposed_spatial_relationships": [],
                 "warnings": [_clean(text) for text in result.warnings],
             }
         )
@@ -1572,6 +1587,10 @@ class ArchitecturalIntentPolicyValidator:
                 raise PolicyValidationError(
                     "Alternatif karşılaştırması brief değişiklik önerisi üretemez."
                 )
+            if result.proposed_spatial_relationships:
+                raise PolicyValidationError(
+                    "Alternatif karşılaştırması mekânsal ilişki önerisi üretemez."
+                )
             validate_alternative_quality(result, request)
 
             if result.needs_follow_up:
@@ -1585,10 +1604,49 @@ class ArchitecturalIntentPolicyValidator:
                 "Bir mesajda en fazla 3 brief değişiklik önerisi sunulabilir."
             )
 
+        if len(result.proposed_spatial_relationships) > 3:
+            raise PolicyValidationError(
+                "Bir mesajda en fazla 3 mekânsal ilişki önerisi sunulabilir."
+            )
+
+        # Validate spatial relationship endpoints and node authority
+        if result.proposed_spatial_relationships:
+            if request.brief_snapshot is None:
+                raise PolicyValidationError(
+                    "Mekânsal ilişki önerisi için aktif brief snapshot gereklidir."
+                )
+            valid_nodes = project_space_requests_to_spatial_nodes(
+                request.brief_snapshot.space_requests
+            )
+            valid_node_ids = {node.id for node in valid_nodes}
+            if not valid_node_ids:
+                raise PolicyValidationError(
+                    "Projeye ait onaylanmış mekân bulunamadığı için mekânsal ilişki önerilemez."
+                )
+            for rel in result.proposed_spatial_relationships:
+                if rel.source_space_id not in valid_node_ids:
+                    raise PolicyValidationError(
+                        f"Bilinmeyen kaynak mekân kimliği {rel.source_space_id!r} önerildi. "
+                        f"Yalnızca geçerli spatial node kimlikleri kullanılabilir."
+                    )
+                if rel.target_space_id not in valid_node_ids:
+                    raise PolicyValidationError(
+                        f"Bilinmeyen hedef mekân kimliği {rel.target_space_id!r} önerildi. "
+                        f"Yalnızca geçerli spatial node kimlikleri kullanılabilir."
+                    )
+                if rel.source_space_id == rel.target_space_id:
+                    raise PolicyValidationError(
+                        f"Bir mekânın kendisiyle ilişkisi önerilemez ({rel.source_space_id})."
+                    )
+
         if request.elicitation_context is not None:
-            open_topics = request.elicitation_context.open_question_topics
-            if open_topics:
-                active_topic = open_topics[0]
+            active_topic = (
+                request.elicitation_context.open_question_topics[0]
+                if request.elicitation_context.open_question_topics
+                else None
+            )
+
+            if active_topic is not None:
                 permitted = get_permitted_mutations_for_topic(active_topic)
                 if result.needs_follow_up:
                     raise PolicyValidationError(
@@ -1599,22 +1657,29 @@ class ArchitecturalIntentPolicyValidator:
                         "Aktif elicitation sırasında plan eylemi üretilemez."
                     )
                 if result.answers_current_open_question:
-                    if not result.proposed_brief_mutations:
+                    if (
+                        not result.proposed_brief_mutations
+                        and not result.proposed_spatial_relationships
+                    ):
                         raise PolicyValidationError(
-                            "answers_current_open_question=true için brief önerisi bulunmalıdır."
+                            "answers_current_open_question=true için "
+                            "brief veya mekânsal ilişki önerisi bulunmalıdır."
                         )
-                    permitted_vals = {p.value if hasattr(p, "value") else str(p) for p in permitted}
-                    for mutation in result.proposed_brief_mutations:
-                        mut_val = (
-                            mutation.mutation_type.value
-                            if hasattr(mutation.mutation_type, "value")
-                            else str(mutation.mutation_type)
-                        )
-                        if mut_val not in permitted_vals:
-                            raise PolicyValidationError(
-                                f"Konu '{active_topic.value}' yanıtı için mutasyon türü "
-                                f"'{mut_val}' izinli değil."
+                    if result.proposed_brief_mutations:
+                        permitted_vals = {
+                            p.value if hasattr(p, "value") else str(p) for p in permitted
+                        }
+                        for mutation in result.proposed_brief_mutations:
+                            mut_val = (
+                                mutation.mutation_type.value
+                                if hasattr(mutation.mutation_type, "value")
+                                else str(mutation.mutation_type)
                             )
+                            if mut_val not in permitted_vals:
+                                raise PolicyValidationError(
+                                    f"Konu '{active_topic.value}' yanıtı için mutasyon türü "
+                                    f"'{mut_val}' izinli değil."
+                                )
 
             allowed_topic = request.elicitation_context.allowed_follow_up_topic
 
@@ -1627,7 +1692,11 @@ class ArchitecturalIntentPolicyValidator:
                     raise PolicyValidationError(
                         "neutral elicitation starter requires the planner-selected follow-up"
                     )
-                if result.proposed_actions or result.proposed_brief_mutations:
+                if (
+                    result.proposed_actions
+                    or result.proposed_brief_mutations
+                    or result.proposed_spatial_relationships
+                ):
                     raise PolicyValidationError(
                         "neutral elicitation starter cannot produce proposals"
                     )

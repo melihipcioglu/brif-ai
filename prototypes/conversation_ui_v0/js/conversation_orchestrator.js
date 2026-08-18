@@ -113,6 +113,43 @@ class ConversationOrchestrator {
     return briefMutation.description || 'Brief güncellemesi eklensin mi?';
   }
 
+  getSpatialRelationshipDescription(spatialRel) {
+    if (!spatialRel) return '';
+    const activeBrief = this.getActiveBriefSnapshot();
+    let displayA = spatialRel.source_space_id;
+    let displayB = spatialRel.target_space_id;
+    if (activeBrief && Array.isArray(activeBrief.space_requests)) {
+      const findName = (id) => {
+        for (const req of activeBrief.space_requests) {
+          const cleanReqId = req.id.replace(/^sr_/, '');
+          if (id.includes(cleanReqId)) {
+            const idxMatch = id.match(/_(\d{2})$/);
+            if (idxMatch && req.minimum_quantity > 1) {
+              return `${req.display_name} ${parseInt(idxMatch[1], 10)}`;
+            }
+            return req.display_name;
+          }
+        }
+        return id;
+      };
+      displayA = findName(spatialRel.source_space_id);
+      displayB = findName(spatialRel.target_space_id);
+    }
+
+    const relationDescriptions = {
+      ADJACENT_TO: 'birbirine bitişik',
+      NEAR: 'birbirine yakın',
+      SEPARATED_FROM: 'birbirinden ayrışmış',
+      VISUAL_CONNECTION: 'arasında görsel bağlantı',
+      DIRECT_ACCESS: 'arasında doğrudan geçiş',
+      INDIRECT_ACCESS: 'arasında dolaylı bağlantı',
+      ACOUSTIC_SEPARATION: 'arasında ses yalıtımı / akustik ayrım',
+      PRIVACY_SEPARATION: 'arasında mahremiyet ayrımı'
+    };
+    const relText = relationDescriptions[spatialRel.relation_type] || spatialRel.relation_type;
+    return `“${displayA} ile ${displayB} ${relText} olmalı.” mekânsal ilişkisi onaylansın mı?`;
+  }
+
   setChatInputLocked(locked) {
     if (typeof document === 'undefined') return;
     const chatContainer = document.getElementById(this.chatContainerId);
@@ -391,6 +428,8 @@ class ConversationOrchestrator {
           label.className = 'message-text';
           if (proposal.briefMutation) {
             label.textContent = this.getBriefMutationDescription(proposal.briefMutation);
+          } else if (proposal.spatialRelationship) {
+            label.textContent = this.getSpatialRelationshipDescription(proposal.spatialRelationship);
           } else if (proposal.action) {
             label.textContent = proposal.action.description;
           } else {
@@ -404,10 +443,14 @@ class ConversationOrchestrator {
           if (proposal.status === 'approved') {
             button.disabled = true;
             button.classList.add('proposal-approved');
-            button.textContent = proposal.briefMutation ? 'Brief\'e eklendi' : 'Onaylandı';
+            button.textContent = proposal.spatialRelationship
+              ? 'İlişki onaylandı'
+              : (proposal.briefMutation ? 'Brief\'e eklendi' : 'Onaylandı');
             button.setAttribute('aria-disabled', 'true');
           } else {
-            button.textContent = proposal.briefMutation ? 'Brief\'e eklemeyi onayla' : 'Öneriyi onayla';
+            button.textContent = proposal.spatialRelationship
+              ? 'Mekânsal ilişkiyi onayla'
+              : (proposal.briefMutation ? 'Brief\'e eklemeyi onayla' : 'Öneriyi onayla');
           }
           proposals.appendChild(button);
         });
@@ -568,6 +611,7 @@ class ConversationOrchestrator {
         id,
         action: null,
         briefMutation: mutationCopy,
+        spatialRelationship: null,
         answersCurrentOpenQuestion: result.answers_current_open_question === true,
         contextFingerprint,
         generationId: proposalGenerationId,
@@ -578,7 +622,38 @@ class ConversationOrchestrator {
       return proposal;
     });
 
-    const proposals = [...actionProposals, ...mutationProposals];
+    const proposedSpatialRels = Array.isArray(result.proposed_spatial_relationships)
+      ? result.proposed_spatial_relationships
+      : [];
+
+    const spatialProposals = proposedSpatialRels.map(rel => {
+      const relCopy = JSON.parse(JSON.stringify(rel));
+      const existing = Array.from(this.pendingProposals.values()).find(candidate =>
+        candidate.contextFingerprint === contextFingerprint &&
+        candidate.generationId === proposalGenerationId &&
+        candidate.spatialRelationship &&
+        JSON.stringify(candidate.spatialRelationship) === JSON.stringify(relCopy)
+      );
+      if (existing) return existing;
+
+      this.proposalSequence += 1;
+      const id = `proposal_${this.proposalSequence}`;
+      const proposal = {
+        id,
+        action: null,
+        briefMutation: null,
+        spatialRelationship: relCopy,
+        answersCurrentOpenQuestion: result.answers_current_open_question === true,
+        contextFingerprint,
+        generationId: proposalGenerationId,
+        userMessageText: this.lastUserMessageText || '',
+        userMessageRef: this.lastUserMessageRef || 'chatmsg_1'
+      };
+      this.pendingProposals.set(id, proposal);
+      return proposal;
+    });
+
+    const proposals = [...actionProposals, ...mutationProposals, ...spatialProposals];
     this.appendAssistantMessage(assistantMessage, [], proposals);
   }
 
@@ -592,6 +667,63 @@ class ConversationOrchestrator {
     ) {
       this.appendAssistantMessage('Bağlam değiştiği için bu öneri onaylanamadı.');
       return null;
+    }
+
+    if (proposal.spatialRelationship) {
+      if (!this.localLLMGateway) {
+        this.appendAssistantMessage('Yerel LLM ağ geçidi tanımlı değil; mekânsal ilişki onaylanamadı.');
+        return null;
+      }
+      const activeBrief = this.getActiveBriefSnapshot();
+      if (!activeBrief) {
+        this.appendAssistantMessage('Aktif brief snapshot bulunamadı.');
+        return null;
+      }
+      const payload = {
+        brief_snapshot: activeBrief,
+        proposed_relationship: proposal.spatialRelationship,
+        current_project_id: current.projectId,
+        expected_brief_version: activeBrief.brief_version,
+        proposal_fingerprint: proposal.contextFingerprint,
+        current_fingerprint: current.contextFingerprint,
+        proposal_generation_id: proposal.generationId,
+        current_generation_id: current.generationId,
+        user_message: proposal.userMessageText || '',
+        source_reference: proposal.userMessageRef || 'chatmsg_1',
+        answers_current_open_question: proposal.answersCurrentOpenQuestion === true
+      };
+      const response = await this.localLLMGateway.approveSpatialRelationship(payload);
+      const replaced = (response && response.success && response.resulting_snapshot)
+        ? this.replaceActiveBriefSnapshot(response.resulting_snapshot)
+        : false;
+      if (replaced) {
+        const record = response.approval_record || {
+          proposal_status: 'user_approved',
+          approved_at: new Date().toISOString(),
+          context_fingerprint: current.contextFingerprint,
+          generation_id: current.generationId,
+          proposed_spatial_relationship: proposal.spatialRelationship,
+          resulting_brief_version: response.resulting_snapshot.brief_version,
+          resulting_evidence_id: response.resulting_snapshot.evidence[response.resulting_snapshot.evidence.length - 1]?.id || 'ev_1'
+        };
+        if (!Array.isArray(this.spatialRelationshipProposalRecords)) {
+          this.spatialRelationshipProposalRecords = [];
+        }
+        this.spatialRelationshipProposalRecords.push(record);
+        this.pendingProposals.delete(proposalId);
+        this.allChatMessages.forEach(message => {
+          if (!Array.isArray(message.proposedActions)) return;
+          message.proposedActions.forEach(candidate => {
+            if (candidate.id === proposalId) candidate.status = 'approved';
+          });
+        });
+        this.appendAssistantMessage('Bu mekânsal ilişki onaylandı.');
+        return record;
+      } else {
+        const errorMsg = (response && response.error) ? response.error : 'Bilinmeyen hata';
+        this.appendAssistantMessage(`Mekânsal ilişki onaylanamadı: ${errorMsg}`);
+        return null;
+      }
     }
 
     if (proposal.briefMutation) {
@@ -681,7 +813,9 @@ class ConversationOrchestrator {
     }
 
     this.pendingProposals.delete(proposalId);
-    if (proposal.briefMutation) {
+    if (proposal.spatialRelationship) {
+      this.appendAssistantMessage('Mekânsal ilişki önerisi iptal edildi.');
+    } else if (proposal.briefMutation) {
       this.appendAssistantMessage('Brief önerisi iptal edildi; mevcut brief değiştirilmedi.');
     } else {
       this.appendAssistantMessage('Bekleyen öneri iptal edildi. Plan değiştirilmedi.');
@@ -703,7 +837,8 @@ class ConversationOrchestrator {
       context_fingerprint: proposal.contextFingerprint,
       generation_id: proposal.generationId,
       action: proposal.action ? JSON.parse(JSON.stringify(proposal.action)) : null,
-      brief_mutation: proposal.briefMutation ? JSON.parse(JSON.stringify(proposal.briefMutation)) : null
+      brief_mutation: proposal.briefMutation ? JSON.parse(JSON.stringify(proposal.briefMutation)) : null,
+      spatial_relationship: proposal.spatialRelationship ? JSON.parse(JSON.stringify(proposal.spatialRelationship)) : null
     }));
   }
 
@@ -717,6 +852,9 @@ class ConversationOrchestrator {
       }
       if (proposal.brief_mutation) {
         return `${proposal.status}: ${this.getBriefMutationDescription(proposal.brief_mutation)}`;
+      }
+      if (proposal.spatial_relationship) {
+        return `${proposal.status}: ${this.getSpatialRelationshipDescription(proposal.spatial_relationship)}`;
       }
       return proposal.status;
     });
