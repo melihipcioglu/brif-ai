@@ -534,3 +534,101 @@ def atomic_apply_mutation_and_resolve_question(
     }
 
     return BriefSnapshot.model_validate(candidate_data)
+
+
+def append_chat_evidence_and_resolve_spatial_question(
+    snapshot: BriefSnapshot,
+    user_message: str,
+    source_reference: str,
+    *,
+    resolve_topic: str | None = "spatial_relationships",
+    resolution_note: str | None = None,
+    approved_at: datetime | None = None,
+) -> tuple[BriefSnapshot, Evidence]:
+    """Append or reuse CHAT Evidence in BriefSnapshot without creating a fake BriefItem.
+
+    Optionally resolves active open question with topic_key == resolve_topic.
+    Idempotent:
+    - If evidence already exists and no open question needs resolution, returns
+      (snapshot, existing_evidence) with no brief_version increment.
+    - If evidence is new or question is transitioned to ANSWERED, returns
+      (new_snapshot, evidence) with brief_version = snapshot.brief_version + 1.
+    """
+    clean_msg = user_message.strip()
+    excerpt = clean_msg[:500] if len(clean_msg) > 500 else clean_msg
+    src_ref = (
+        source_reference.strip()[:250]
+        if len(source_reference.strip()) > 250
+        else source_reference.strip()
+    )
+    if not src_ref:
+        src_ref = "conversation_msg"
+
+    ev_id = _generate_object_id("ev_", snapshot.project_id, src_ref, excerpt)
+    existing_ev = next(
+        (
+            ev
+            for ev in snapshot.evidence
+            if ev.id == ev_id
+            or (
+                ev.source_type == EvidenceSource.CHAT
+                and ev.source_reference == src_ref
+                and ev.excerpt == excerpt
+            )
+        ),
+        None,
+    )
+
+    evidence_added = False
+    if existing_ev is not None:
+        target_ev = existing_ev
+        new_evidence_list = list(snapshot.evidence)
+    else:
+        target_ev = Evidence(
+            id=ev_id,
+            source_type=EvidenceSource.CHAT,
+            source_reference=src_ref,
+            excerpt=excerpt,
+        )
+        new_evidence_list = list(snapshot.evidence) + [target_ev]
+        evidence_added = True
+
+    question_resolved = False
+    new_oqs = [oq.model_copy() for oq in snapshot.open_questions]
+    if resolve_topic is not None:
+        for idx, oq in enumerate(new_oqs):
+            if oq.status == OpenQuestionStatus.OPEN and oq.topic_key == resolve_topic:
+                note = (
+                    resolution_note
+                    or f"Kullanıcı mekânsal ilişki onayı ile çözüldü: {clean_msg[:200]}"
+                )
+                new_oqs[idx] = oq.model_copy(
+                    update={
+                        "status": OpenQuestionStatus.ANSWERED,
+                        "resolution_note": note,
+                    }
+                )
+                question_resolved = True
+                break
+
+    if not evidence_added and not question_resolved:
+        return snapshot, target_ev
+
+    ts = approved_at or datetime.now(timezone.utc)  # noqa: UP017
+    if ts.tzinfo is None or ts.utcoffset() != timezone.utc:  # noqa: UP017
+        ts = ts.replace(tzinfo=timezone.utc)  # noqa: UP017
+
+    candidate_data = {
+        "project_id": snapshot.project_id,
+        "schema_version": snapshot.schema_version,
+        "brief_version": snapshot.brief_version + 1,
+        "created_at": ts,
+        "stakeholders": [s.model_dump(mode="python") for s in snapshot.stakeholders],
+        "evidence": [ev.model_dump(mode="python") for ev in new_evidence_list],
+        "brief_items": [bi.model_dump(mode="python") for bi in snapshot.brief_items],
+        "space_requests": [sr.model_dump(mode="python") for sr in snapshot.space_requests],
+        "usage_scenarios": [us.model_dump(mode="python") for us in snapshot.usage_scenarios],
+        "contradictions": [c.model_dump(mode="python") for c in snapshot.contradictions],
+        "open_questions": [oq.model_dump(mode="python") for oq in new_oqs],
+    }
+    return BriefSnapshot.model_validate(candidate_data), target_ev

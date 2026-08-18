@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -13,7 +13,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from brif_ai.brief.models.snapshot import BriefSnapshot
-from brif_ai.brief.mutation import NoActiveElicitationQuestionError
+from brif_ai.brief.mutation import (
+    NoActiveElicitationQuestionError,
+    append_chat_evidence_and_resolve_spatial_question,
+)
 from brif_ai.brief.persistence import (
     BriefNotFoundError,
     BriefPersistenceError,
@@ -31,6 +34,9 @@ from brif_ai.llm.contracts import (
     ConversationRequest,
     HealthResponse,
     LocalModelInfo,
+    SpatialRelationshipApprovalRecord,
+    SpatialRelationshipApprovalRequest,
+    SpatialRelationshipApprovalResponse,
 )
 from brif_ai.llm.ollama_provider import OllamaProvider
 from brif_ai.llm.policy_validator import PolicyValidationError
@@ -44,6 +50,18 @@ from brif_ai.llm.provider import (
 )
 from brif_ai.llm.service import LocalLLMConversationService, StaleContextError
 from brif_ai.llm.settings import LocalLLMSettings
+from brif_ai.spatial.models import (
+    RelationshipProvenance,
+    SpatialRelationshipGraph,
+    SpatialRelationshipInput,
+    project_space_requests_to_spatial_nodes,
+)
+from brif_ai.spatial.persistence import (
+    JSONSpatialRelationshipRepository,
+    SpatialGraphPersistenceError,
+    SpatialRelationshipRepository,
+)
+from brif_ai.spatial.service import PersistentSpatialService
 
 ALLOWED_ORIGINS = [
     "http://localhost:8080",
@@ -96,11 +114,14 @@ def create_app(
     provider: LocalLLMProvider | None = None,
     cors_environ: Mapping[str, str] | None = None,
     brief_repository: BriefRepository | None = None,
+    spatial_repository: SpatialRelationshipRepository | None = None,
 ) -> FastAPI:
     resolved_settings = settings or LocalLLMSettings.from_env()
     resolved_provider = provider or OllamaProvider(resolved_settings)
     resolved_brief_repo = brief_repository or JSONBriefRepository()
     persistent_brief_service = PersistentBriefService(resolved_brief_repo)
+    resolved_spatial_repo = spatial_repository or JSONSpatialRelationshipRepository()
+    persistent_spatial_service = PersistentSpatialService(resolved_spatial_repo)
     service = LocalLLMConversationService(resolved_settings, resolved_provider)
 
     application = FastAPI(title="BRIF.AI Local LLM API", version="0.1.0")
@@ -321,7 +342,7 @@ def create_app(
                 raise StaleContextError("Eski jenerasyona ait öneri onaylanamaz.")
 
             src_ref = request.source_reference or request.current_fingerprint
-            now = datetime.now(timezone.utc)  # noqa: UP017
+            now = datetime.now(UTC)
             new_snapshot = persistent_brief_service.record_brief_mutation_approval(
                 current_project_id=request.current_project_id,
                 expected_brief_version=request.expected_brief_version,
@@ -404,6 +425,183 @@ def create_app(
                     resulting_snapshot=None,
                     approval_record=None,
                     error=f"Onay işlemi sırasında sunucu hatası oluştu: {error}",
+                ).model_dump(mode="json"),
+            )
+
+    @application.get(
+        "/api/v1/projects/{project_id}/spatial/graph",
+        response_model=SpatialRelationshipGraph,
+    )
+    async def get_project_spatial_graph(project_id: str) -> Any:
+        try:
+            graph = persistent_spatial_service.get_latest_graph(project_id)
+            if graph is None:
+                return JSONResponse(
+                    status_code=404,
+                    content={"detail": f"Spatial relationship graph for '{project_id}' not found."},
+                )
+            return graph
+        except (InvalidProjectIdError, SpatialGraphPersistenceError) as error:
+            return JSONResponse(status_code=422, content={"detail": str(error)})
+
+    @application.post(
+        "/api/v1/spatial/relationships/approve",
+        response_model=SpatialRelationshipApprovalResponse,
+    )
+    async def approve_spatial_relationship(request: SpatialRelationshipApprovalRequest) -> Any:
+        try:
+            if request.proposal_fingerprint != request.current_fingerprint:
+                raise StaleContextError("Farklı bağlama ait öneri onaylanamaz.")
+            if request.proposal_generation_id != request.current_generation_id:
+                raise StaleContextError("Eski jenerasyona ait öneri onaylanamaz.")
+
+            # 1. Fetch authoritative persisted BriefSnapshot
+            persisted_brief = persistent_brief_service.get_latest_brief(request.current_project_id)
+            if persisted_brief is None:
+                raise BriefNotFoundError(
+                    f"Cannot approve spatial relationship: Project '{request.current_project_id}' "
+                    "brief is not initialized."
+                )
+
+            if persisted_brief.brief_version != request.expected_brief_version:
+                raise BriefVersionConflictError(
+                    f"Stale brief approval: Current persisted brief version for "
+                    f"'{request.current_project_id}' is {persisted_brief.brief_version}, "
+                    f"but client expected version {request.expected_brief_version}."
+                )
+
+            # 2. Derive authoritative spatial nodes and validate endpoints
+            valid_nodes = project_space_requests_to_spatial_nodes(persisted_brief.space_requests)
+            valid_node_ids = {node.id for node in valid_nodes}
+            prop = request.proposed_relationship
+            if prop.source_space_id not in valid_node_ids:
+                raise PolicyValidationError(
+                    f"Unknown source space ID {prop.source_space_id!r} in spatial proposal"
+                )
+            if prop.target_space_id not in valid_node_ids:
+                raise PolicyValidationError(
+                    f"Unknown target space ID {prop.target_space_id!r} in spatial proposal"
+                )
+            if prop.source_space_id == prop.target_space_id:
+                raise PolicyValidationError(
+                    f"Self-relationship not allowed for space {prop.source_space_id!r}"
+                )
+
+            # 3. Create or reuse CHAT Evidence in memory (plus resolve open question if requested)
+            src_ref = request.source_reference or request.current_fingerprint
+            now = datetime.now(UTC)
+            resolve_topic = (
+                "spatial_relationships" if request.answers_current_open_question else None
+            )
+            new_snapshot, evidence = append_chat_evidence_and_resolve_spatial_question(
+                snapshot=persisted_brief,
+                user_message=request.user_message,
+                source_reference=src_ref,
+                resolve_topic=resolve_topic,
+                approved_at=now,
+            )
+
+            # 4. Construct SpatialRelationshipInput with USER_CONFIRMED and real evidence ID
+            rel_input = SpatialRelationshipInput(
+                source_space_id=prop.source_space_id,
+                target_space_id=prop.target_space_id,
+                relation_type=prop.relation_type,
+                provenance=RelationshipProvenance.USER_CONFIRMED,
+                priority=prop.priority,
+                evidence_ids=[evidence.id],
+                rationale=prop.rationale,
+                bidirectional=prop.bidirectional,
+            )
+
+            # 5. Build resulting SpatialRelationshipGraph in memory using existing graph (or None)
+            existing_graph = persistent_spatial_service.get_latest_graph(request.current_project_id)
+            is_new_version = (
+                existing_graph is None
+                or new_snapshot.brief_version != existing_graph.source_brief_version
+            )
+            new_graph = persistent_spatial_service.build_updated_graph_in_memory(
+                snapshot=new_snapshot,
+                existing_graph=existing_graph,
+                new_relationship=rel_input,
+                created_at=now if is_new_version else None,
+            )
+
+            # 6. Atomic Persistence: all in-memory validation and building succeeded!
+            if new_snapshot.brief_version != persisted_brief.brief_version:
+                persistent_brief_service.repository.save(new_snapshot)
+
+            saved_graph = persistent_spatial_service.save_graph(new_graph)
+
+            record = SpatialRelationshipApprovalRecord(
+                proposal_status="user_approved",
+                approved_at=now,
+                context_fingerprint=request.current_fingerprint,
+                generation_id=request.current_generation_id,
+                proposed_spatial_relationship=request.proposed_relationship,
+                resulting_brief_version=new_snapshot.brief_version,
+                resulting_evidence_id=evidence.id,
+            )
+
+            return SpatialRelationshipApprovalResponse(
+                success=True,
+                resulting_snapshot=new_snapshot,
+                resulting_spatial_graph=saved_graph,
+                approval_record=record,
+                error=None,
+            )
+        except (BriefVersionConflictError, StaleContextError) as error:
+            return JSONResponse(
+                status_code=409,
+                content=SpatialRelationshipApprovalResponse(
+                    success=False,
+                    resulting_snapshot=None,
+                    resulting_spatial_graph=None,
+                    approval_record=None,
+                    error=str(error),
+                ).model_dump(mode="json"),
+            )
+        except BriefNotFoundError as error:
+            return JSONResponse(
+                status_code=404,
+                content=SpatialRelationshipApprovalResponse(
+                    success=False,
+                    resulting_snapshot=None,
+                    resulting_spatial_graph=None,
+                    approval_record=None,
+                    error=str(error),
+                ).model_dump(mode="json"),
+            )
+        except (PolicyValidationError, ValueError, InvalidProjectIdError) as error:
+            return JSONResponse(
+                status_code=422,
+                content=SpatialRelationshipApprovalResponse(
+                    success=False,
+                    resulting_snapshot=None,
+                    resulting_spatial_graph=None,
+                    approval_record=None,
+                    error=str(error),
+                ).model_dump(mode="json"),
+            )
+        except (BriefPersistenceError, SpatialGraphPersistenceError) as error:
+            return JSONResponse(
+                status_code=500,
+                content=SpatialRelationshipApprovalResponse(
+                    success=False,
+                    resulting_snapshot=None,
+                    resulting_spatial_graph=None,
+                    approval_record=None,
+                    error=str(error),
+                ).model_dump(mode="json"),
+            )
+        except Exception as error:
+            return JSONResponse(
+                status_code=500,
+                content=SpatialRelationshipApprovalResponse(
+                    success=False,
+                    resulting_snapshot=None,
+                    resulting_spatial_graph=None,
+                    approval_record=None,
+                    error=f"Mekânsal ilişki onayı sırasında sunucu hatası oluştu: {error}",
                 ).model_dump(mode="json"),
             )
 

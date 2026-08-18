@@ -5,10 +5,11 @@ from __future__ import annotations
 from datetime import datetime
 
 from brif_ai.brief.models.common import OpenQuestionStatus
-from brif_ai.brief.models.snapshot import BriefSnapshot
+from brif_ai.brief.models.snapshot import BriefSnapshot, Evidence
 from brif_ai.brief.mutation import (
     ProposedBriefMutation,
     add_open_question_to_snapshot,
+    append_chat_evidence_and_resolve_spatial_question,
     apply_approved_brief_mutation,
     atomic_apply_mutation_and_resolve_question,
     update_open_question_status_for_topic,
@@ -205,3 +206,48 @@ class PersistentBriefService:
             )
 
         return self.repository.save(new_snapshot)
+
+    def record_chat_evidence_and_resolve_question(
+        self,
+        *,
+        current_project_id: str,
+        expected_brief_version: int,
+        user_message: str,
+        source_reference: str = "conversation_msg",
+        resolve_topic: str | None = "spatial_relationships",
+        resolution_note: str | None = None,
+        approved_at: datetime | None = None,
+    ) -> tuple[BriefSnapshot, Evidence]:
+        """Server-authoritative evidence append and question resolution.
+
+        Loads current persisted BriefSnapshot, enforces optimistic concurrency check,
+        calls append_chat_evidence_and_resolve_spatial_question, persists if changed,
+        and returns resulting (BriefSnapshot, Evidence).
+        """
+        persisted = self.repository.get_latest(current_project_id)
+        if persisted is None:
+            raise BriefNotFoundError(
+                f"Cannot append evidence: Project '{current_project_id}' brief is not initialized."
+            )
+
+        if persisted.brief_version != expected_brief_version:
+            raise BriefVersionConflictError(
+                f"Stale brief version: Current persisted brief version for "
+                f"'{current_project_id}' is {persisted.brief_version}, "
+                f"but client expected version {expected_brief_version}."
+            )
+
+        new_snapshot, evidence = append_chat_evidence_and_resolve_spatial_question(
+            snapshot=persisted,
+            user_message=user_message,
+            source_reference=source_reference,
+            resolve_topic=resolve_topic,
+            resolution_note=resolution_note,
+            approved_at=approved_at,
+        )
+
+        if new_snapshot.brief_version == persisted.brief_version:
+            return persisted, evidence
+
+        saved_snapshot = self.repository.save(new_snapshot)
+        return saved_snapshot, evidence

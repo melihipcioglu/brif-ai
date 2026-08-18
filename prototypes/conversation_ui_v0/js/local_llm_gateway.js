@@ -227,9 +227,13 @@ class LocalLLMGateway {
     if (!Array.isArray(result.proposed_brief_mutations)) {
       result.proposed_brief_mutations = [];
     }
+    if (!Array.isArray(result.proposed_spatial_relationships)) {
+      result.proposed_spatial_relationships = [];
+    }
     const briefMutations = result.proposed_brief_mutations;
-    if ((result.proposed_actions.length > 0 || briefMutations.length > 0) && !result.needs_user_confirmation) return false;
-    if (result.intent === 'compare_alternatives' && briefMutations.length > 0) return false;
+    const spatialRels = result.proposed_spatial_relationships;
+    if ((result.proposed_actions.length > 0 || briefMutations.length > 0 || spatialRels.length > 0) && !result.needs_user_confirmation) return false;
+    if (result.intent === 'compare_alternatives' && (briefMutations.length > 0 || spatialRels.length > 0)) return false;
 
     const validMutationTypes = new Set(['ADD_BRIEF_ITEM', 'ADD_SPACE_REQUEST', 'ADD_USAGE_SCENARIO']);
     const isValidBriefMutation = (mutation) => {
@@ -324,6 +328,29 @@ class LocalLLMGateway {
         error: error && error.name === 'AbortError'
           ? 'Brief onay isteği zaman aşımına uğradı.'
           : 'Brief onay servisine ulaşılamadı.'
+      };
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  async approveSpatialRelationship(payload, options = {}) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const response = await this.fetchFn(`${this.baseUrl}/api/v1/spatial/relationships/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+      return await this.readResponse(response);
+    } catch (error) {
+      return {
+        success: false,
+        error: error && error.name === 'AbortError'
+          ? 'Mekânsal ilişki onay isteği zaman aşımına uğradı.'
+          : 'Mekânsal ilişki onay servisine ulaşılamadı.'
       };
     } finally {
       clearTimeout(timeoutId);

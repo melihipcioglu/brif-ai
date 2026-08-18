@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import hashlib
 import sys
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from brif_ai.brief.models.common import Priority
+from brif_ai.brief.models.common import ConfirmationStatus, Priority
 from brif_ai.core.models.common import NonEmptyString, ObjectId, SpaceFunction
+
+if TYPE_CHECKING:
+    from brif_ai.brief.models.snapshot import SpaceRequest
 
 if sys.version_info >= (3, 11):  # noqa: UP036
     from enum import StrEnum
@@ -109,6 +112,74 @@ class SpatialNode(_SpatialContract):
     source_space_request_id: ObjectId
     instance_index: int = Field(default=1, ge=1)
     mandatory: bool = True
+
+
+def project_space_requests_to_spatial_nodes(
+    space_requests: Sequence[SpaceRequest],
+    *,
+    include_unconfirmed: bool = False,
+) -> list[SpatialNode]:
+    """Authoritative single projection helper from SpaceRequests to discrete SpatialNodes.
+
+    Guarantees:
+    - Confirmed spaces only (unless include_unconfirmed=True).
+    - Expands minimum_quantity (>= 1) into discrete addressable nodes (1..minimum_quantity).
+    - Deterministically sorted by node ID.
+    """
+    candidate_spaces = space_requests
+    if not include_unconfirmed:
+        candidate_spaces = [
+            req
+            for req in candidate_spaces
+            if req.confirmation_status is ConfirmationStatus.CONFIRMED
+        ]
+
+    nodes: list[SpatialNode] = []
+    for req in sorted(candidate_spaces, key=lambda s: s.id):
+        for idx in range(1, req.minimum_quantity + 1):
+            node_id = generate_spatial_node_id(req.id, idx)
+            display_name = (
+                f"{req.display_name} {idx}" if req.minimum_quantity > 1 else req.display_name
+            )
+            nodes.append(
+                SpatialNode(
+                    id=node_id,
+                    display_name=display_name,
+                    function=req.space_function,
+                    source_space_request_id=req.id,
+                    instance_index=idx,
+                    mandatory=req.mandatory,
+                )
+            )
+
+    return sorted(nodes, key=lambda n: n.id)
+
+
+class ProposedSpatialRelationship(_SpatialContract):
+    """Structured spatial relationship proposed during conversation.
+
+    Must not become authoritative until explicit user approval.
+    """
+
+    source_space_id: ObjectId
+    target_space_id: ObjectId
+    relation_type: SpatialRelationType
+    provenance: RelationshipProvenance
+    priority: Priority = Priority.MUST
+    rationale: str | None = None
+    bidirectional: bool = True
+    requires_user_confirmation: Literal[True] = True
+
+    @model_validator(mode="after")
+    def validate_proposal_invariants(self) -> ProposedSpatialRelationship:
+        if self.source_space_id == self.target_space_id:
+            raise ValueError(f"self-relationship not allowed on space {self.source_space_id!r}")
+        if self.provenance == RelationshipProvenance.USER_CONFIRMED:
+            raise ValueError(
+                "ProposedSpatialRelationship cannot have provenance USER_CONFIRMED; "
+                "proposals must be USER_STATED or AI_INFERRED"
+            )
+        return self
 
 
 class SpatialRelationshipInput(_SpatialContract):

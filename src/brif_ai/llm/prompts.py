@@ -12,6 +12,7 @@ from brif_ai.llm.contracts import (
     PendingProposalContext,
     VisibleEntity,
 )
+from brif_ai.spatial.models import project_space_requests_to_spatial_nodes
 
 if TYPE_CHECKING:
     from brif_ai.brief.models.snapshot import BriefSnapshot
@@ -20,15 +21,16 @@ SYSTEM_PROMPT = (
     "Sen BRIF.AI mimari niyet ve mevzuat yorumlayıcısısın.\n"
     "Mevzuat uydurma; PASS/FAIL/UNKNOWN değiştirme; tercih/mevzuatı ayırt et.\n"
     "Aktif bağlamda olmayan yön, ölçü/konum uydurma.\n"
-    "Plan önerisi proposed_actions, brief önerisi proposed_brief_mutations ile verilir.\n"
-    "Bağımsız isteklerde proposed_brief_mutations en fazla 3 öneri üretebilir.\n"
+    "Plan proposed_actions, brief proposed_brief_mutations, "
+    "ilişkiler proposed_spatial_relationships ile verilir.\n"
+    "Mekânsal ilişkide active_brief.spatial_nodes kimliklerini ve USER_STATED/AI_INFERRED kullan.\n"
     "Plan değişikliği requires_user_confirmation=true gerektirir.\n"
     "Bekleyen öneri henüz onaylanmış karar değildir; ilk analizi tekrarlama, "
     "onaylama, ayrıntılandırma veya vazgeçme seçeneklerini doğal Türkçe sun.\n"
     'Makine kimliği, iç alan veya enum adlarını, "entity", "target", "öğe bilgisi" gösterme.\n'
     "Intent: modify_relationship/modify_space/request_visual_preference.\n"
     "Alternatif istenirse intent compare_alternatives olsun; "
-    "proposed_actions=[], proposed_brief_mutations=[] yap.\n"
+    "öneri listelerini boş yap.\n"
     "istenen alternatif sayısını gerçekten üret.\n"
     "Kesin yön ve konum belirtmeden kavramsal alternatif sun; tek takip sorusu sor.\n"
     "Alternatif 1 - <ad>: <özet>/Alternatif 2 - <ad>: <özet>/Temel fark: <fark>\n"
@@ -178,10 +180,13 @@ def _proposal_payload(proposal: PendingProposalContext) -> dict[str, object]:
         payload["action"] = proposal.action.model_dump(mode="json")
     if proposal.brief_mutation is not None:
         payload["brief_mutation"] = proposal.brief_mutation.model_dump(mode="json")
+    if proposal.spatial_relationship is not None:
+        payload["spatial_relationship"] = proposal.spatial_relationship.model_dump(mode="json")
     return payload
 
 
 def _compact_brief_payload(snapshot: BriefSnapshot) -> dict[str, object]:
+    spatial_nodes = project_space_requests_to_spatial_nodes(snapshot.space_requests)
     return {
         "brief_version": snapshot.brief_version,
         "brief_items": [
@@ -207,6 +212,18 @@ def _compact_brief_payload(snapshot: BriefSnapshot) -> dict[str, object]:
                 "mandatory": req.mandatory,
             }
             for req in snapshot.space_requests
+        ],
+        "spatial_nodes": [
+            {
+                "id": node.id,
+                "display_name": node.display_name,
+                "function": (
+                    node.function.value if hasattr(node.function, "value") else str(node.function)
+                ),
+                "source_space_request_id": node.source_space_request_id,
+                "instance_index": node.instance_index,
+            }
+            for node in spatial_nodes
         ],
         "usage_scenarios": [
             {

@@ -6,15 +6,13 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from itertools import combinations
 
-from brif_ai.brief.models.common import ConfirmationStatus
 from brif_ai.brief.models.snapshot import BriefSnapshot
 from brif_ai.spatial.errors import SpatialGraphError
 from brif_ai.spatial.models import (
-    SpatialNode,
     SpatialRelationshipGraph,
     SpatialRelationshipInput,
     UnconstrainedPair,
-    generate_spatial_node_id,
+    project_space_requests_to_spatial_nodes,
 )
 from brif_ai.spatial.validator import (
     deduplicate_and_materialize_relationships,
@@ -32,7 +30,7 @@ class SpatialRelationshipGraphBuilder:
        UsageScenario.description are never parsed for relationships.
     2. Discrete spatial node identity: SpaceRequest.minimum_quantity (guaranteed >= 1 by
        authoritative contract) expands deterministically into discrete SpatialNode instances
-       (instance_index=1..minimum_quantity).
+       via project_space_requests_to_spatial_nodes.
     3. Explicit relationship boundary: All relationships must enter through structured
        SpatialRelationshipInput items.
     4. Evidence referential integrity: Every referenced evidence_id must exist in the
@@ -55,41 +53,18 @@ class SpatialRelationshipGraphBuilder:
         created_at: datetime | None = None,
     ) -> SpatialRelationshipGraph:
         """Build an authoritative SpatialRelationshipGraph deterministically."""
-        # 1. Project SpaceRequests into discrete SpatialNodes
-        candidate_spaces = snapshot.space_requests
-        if not include_unconfirmed_spaces:
-            candidate_spaces = [
-                req
-                for req in candidate_spaces
-                if req.confirmation_status is ConfirmationStatus.CONFIRMED
-            ]
+        # 1. Project SpaceRequests into discrete SpatialNodes using single authoritative helper
+        nodes = project_space_requests_to_spatial_nodes(
+            snapshot.space_requests,
+            include_unconfirmed=include_unconfirmed_spaces,
+        )
 
-        if not candidate_spaces:
+        if not nodes:
             raise SpatialGraphError(
                 f"No suitable spaces found in project '{snapshot.project_id}' "
                 f"brief v{snapshot.brief_version} to construct a spatial relationship graph."
             )
 
-        # Deterministic expansion and sorting by node ID
-        nodes: list[SpatialNode] = []
-        for req in sorted(candidate_spaces, key=lambda s: s.id):
-            for idx in range(1, req.minimum_quantity + 1):
-                node_id = generate_spatial_node_id(req.id, idx)
-                display_name = (
-                    f"{req.display_name} {idx}" if req.minimum_quantity > 1 else req.display_name
-                )
-                nodes.append(
-                    SpatialNode(
-                        id=node_id,
-                        display_name=display_name,
-                        function=req.space_function,
-                        source_space_request_id=req.id,
-                        instance_index=idx,
-                        mandatory=req.mandatory,
-                    )
-                )
-
-        nodes.sort(key=lambda n: n.id)
         node_ids = {node.id for node in nodes}
         input_relationships = list(relationships or [])
 

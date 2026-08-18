@@ -14,6 +14,7 @@ from brif_ai.brief.mutation import ProposedBriefMutation
 from brif_ai.conversation.elicitation.household import HouseholdComposition
 from brif_ai.conversation.elicitation.models import ElicitationContext, ElicitationTopic
 from brif_ai.regulatory.models import ComplianceFinding, ProjectRegulatoryContext
+from brif_ai.spatial.models import ProposedSpatialRelationship, SpatialRelationshipGraph
 
 if sys.version_info >= (3, 11):  # noqa: UP036
     from enum import StrEnum
@@ -204,14 +205,15 @@ class PendingProposalContext(StrictContract):
     generation_id: int = Field(ge=0)
     action: ProposedAction | None = None
     brief_mutation: ProposedBriefMutation | None = None
+    spatial_relationship: ProposedSpatialRelationship | None = None
 
     @model_validator(mode="after")
     def validate_proposal_content_xor(self) -> PendingProposalContext:
-        if (self.action is None and self.brief_mutation is None) or (
-            self.action is not None and self.brief_mutation is not None
-        ):
+        proposals = [self.action, self.brief_mutation, self.spatial_relationship]
+        non_none_count = sum(1 for p in proposals if p is not None)
+        if non_none_count != 1:
             raise ValueError(
-                "Exactly one of action or brief_mutation must be populated "
+                "Exactly one of action, brief_mutation, or spatial_relationship must be populated "
                 "in PendingProposalContext"
             )
         return self
@@ -227,6 +229,7 @@ class ArchitecturalIntentResult(StrictContract):
     missing_information: list[str]
     proposed_actions: list[ProposedAction]
     proposed_brief_mutations: list[ProposedBriefMutation] = Field(default_factory=list)
+    proposed_spatial_relationships: list[ProposedSpatialRelationship] = Field(default_factory=list)
     household_composition: HouseholdComposition | None = None
     answers_current_open_question: bool = False
     needs_follow_up: bool
@@ -249,12 +252,32 @@ class ArchitecturalIntentResult(StrictContract):
             if self.follow_up_question is not None:
                 raise ValueError("follow_up_question must be None when needs_follow_up is false")
 
-        # Hardening Invariant 4: If result contains proposed brief mutations or actions,
-        # needs_follow_up MUST be False
-        if (self.proposed_brief_mutations or self.proposed_actions) and self.needs_follow_up:
-            raise ValueError(
-                "needs_follow_up must be false when brief mutations or actions are present"
-            )
+        # Invariant: If spatial relationships are present, enforce safety invariants
+        if self.proposed_spatial_relationships:
+            if not self.needs_user_confirmation:
+                raise ValueError("proposed spatial relationships require user confirmation")
+            if self.needs_follow_up:
+                raise ValueError(
+                    "needs_follow_up must be false when spatial relationships are present"
+                )
+            if self.proposed_actions:
+                raise ValueError("cannot mix proposed spatial relationships with proposed actions")
+            if self.proposed_brief_mutations:
+                raise ValueError(
+                    "cannot mix proposed spatial relationships with proposed brief mutations"
+                )
+
+        # Enforce single proposal category in V0 (mutations vs actions)
+        if self.proposed_brief_mutations and self.proposed_actions:
+            raise ValueError("cannot mix proposed brief mutations with proposed actions")
+
+        # Hardening Invariant 4: If result contains proposals, needs_follow_up MUST be False
+        if (
+            self.proposed_brief_mutations
+            or self.proposed_actions
+            or self.proposed_spatial_relationships
+        ) and self.needs_follow_up:
+            raise ValueError("needs_follow_up must be false when proposals are present")
 
         if self.proposed_actions and not self.needs_user_confirmation:
             raise ValueError("proposed actions require user confirmation")
@@ -279,9 +302,10 @@ class ArchitecturalIntentResult(StrictContract):
             raise ValueError("explain_plan cannot contain plan change suggestions")
 
         if self.answers_current_open_question:
-            if not self.proposed_brief_mutations:
+            if not self.proposed_brief_mutations and not self.proposed_spatial_relationships:
                 raise ValueError(
-                    "answers_current_open_question requires at least one proposed_brief_mutation"
+                    "answers_current_open_question requires at least one proposed_brief_mutation "
+                    "or proposed_spatial_relationship"
                 )
             if self.needs_follow_up:
                 raise ValueError(
@@ -379,4 +403,45 @@ class BriefMutationApprovalResponse(StrictContract):
     success: bool
     resulting_snapshot: BriefSnapshot | None = None
     approval_record: BriefMutationApprovalRecord | None = None
+    error: str | None = None
+
+
+class SpatialRelationshipApprovalRecord(StrictContract):
+    proposal_status: Literal["user_approved"] = "user_approved"
+    approved_at: datetime
+    context_fingerprint: NonEmptyString
+    generation_id: int = Field(ge=0)
+    proposed_spatial_relationship: ProposedSpatialRelationship
+    resulting_brief_version: int = Field(ge=1)
+    resulting_evidence_id: NonEmptyString
+
+
+class SpatialRelationshipApprovalRequest(StrictContract):
+    brief_snapshot: BriefSnapshot
+    proposed_relationship: ProposedSpatialRelationship
+    current_project_id: NonEmptyString
+    expected_brief_version: int = Field(ge=1)
+    proposal_fingerprint: NonEmptyString
+    current_fingerprint: NonEmptyString
+    proposal_generation_id: int = Field(ge=0)
+    current_generation_id: int = Field(ge=0)
+    user_message: str
+    source_reference: NonEmptyString
+    answers_current_open_question: bool = False
+
+    @model_validator(mode="after")
+    def validate_project_context(self) -> SpatialRelationshipApprovalRequest:
+        if self.brief_snapshot.project_id != self.current_project_id:
+            raise ValueError(
+                f"brief_snapshot project_id '{self.brief_snapshot.project_id}' "
+                f"does not match current_project_id '{self.current_project_id}'"
+            )
+        return self
+
+
+class SpatialRelationshipApprovalResponse(StrictContract):
+    success: bool
+    resulting_snapshot: BriefSnapshot | None = None
+    resulting_spatial_graph: SpatialRelationshipGraph | None = None
+    approval_record: SpatialRelationshipApprovalRecord | None = None
     error: str | None = None
