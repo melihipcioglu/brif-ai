@@ -32,6 +32,18 @@ from brif_ai.spatial.persistence import (
     SpatialGraphVersionConflictError,
     SpatialRelationshipRepository,
 )
+from brif_ai.spatial.program import (
+    BriefNotReadyError,
+    ProgramSpace,
+    SpatialProgram,
+    SpatialProgramBuilder,
+    SpatialProgramConflictBlockerError,
+    SpatialProgramError,
+    SpatialProgramMissingInputError,
+    SpatialProgramNodeMismatchError,
+    SpatialProgramProjectMismatchError,
+    SpatialProgramVersionMismatchError,
+)
 from brif_ai.spatial.service import PersistentSpatialService
 from brif_ai.spatial.validator import (
     MUTUALLY_EXCLUSIVE_PAIRS,
@@ -42,13 +54,15 @@ from brif_ai.spatial.validator import (
 )
 
 __all__ = [
-    "JSONSpatialRelationshipRepository",
-    "MUTUALLY_EXCLUSIVE_PAIRS",
+    "BriefNotReadyError",
     "DuplicateRelationshipError",
     "InvalidEvidenceReferenceError",
     "InvalidProvenanceError",
+    "JSONSpatialRelationshipRepository",
+    "MUTUALLY_EXCLUSIVE_PAIRS",
     "NonexistentSpaceError",
     "PersistentSpatialService",
+    "ProgramSpace",
     "ProposedSpatialRelationship",
     "RelationshipProvenance",
     "SelfRelationshipError",
@@ -58,6 +72,14 @@ __all__ = [
     "SpatialGraphPersistenceError",
     "SpatialGraphVersionConflictError",
     "SpatialNode",
+    "SpatialProgram",
+    "SpatialProgramBuilder",
+    "SpatialProgramConflictBlockerError",
+    "SpatialProgramError",
+    "SpatialProgramMissingInputError",
+    "SpatialProgramNodeMismatchError",
+    "SpatialProgramProjectMismatchError",
+    "SpatialProgramVersionMismatchError",
     "SpatialRelationship",
     "SpatialRelationshipGraph",
     "SpatialRelationshipGraphBuilder",
