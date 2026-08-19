@@ -11,6 +11,18 @@ from brif_ai.spatial.errors import (
     SelfRelationshipError,
     SpatialGraphError,
 )
+from brif_ai.spatial.floor_plate import (
+    FloorPlate,
+    FloorPlateBuilder,
+    FloorPlateError,
+    FloorPlateInput,
+    FloorPlateMissingInputError,
+    FloorPlateNonAuthoritativeError,
+    FloorPlateOutsideBuildableEnvelopeError,
+    FloorPlateSchemaVersionMismatchError,
+    generate_floor_plate_id,
+    validate_floor_plate_inside_buildable_envelope,
+)
 from brif_ai.spatial.layout import (
     LayoutConstraint,
     LayoutProblemAuthoritativeMismatchError,
@@ -133,6 +145,14 @@ __all__ = [
     "ConstraintEnforcement",
     "DuplicateMetricRequirementError",
     "DuplicateRelationshipError",
+    "FloorPlate",
+    "FloorPlateBuilder",
+    "FloorPlateError",
+    "FloorPlateInput",
+    "FloorPlateMissingInputError",
+    "FloorPlateNonAuthoritativeError",
+    "FloorPlateOutsideBuildableEnvelopeError",
+    "FloorPlateSchemaVersionMismatchError",
     "InvalidEvidenceReferenceError",
     "InvalidProvenanceError",
     "JSONSpatialRelationshipRepository",
@@ -225,6 +245,7 @@ __all__ = [
     "UnconstrainedPair",
     "deduplicate_and_materialize_relationships",
     "detect_spatial_conflicts",
+    "generate_floor_plate_id",
     "generate_metric_requirement_id",
     "generate_relationship_id",
     "generate_site_geometry_id",
@@ -233,5 +254,6 @@ __all__ = [
     "map_relation_type_to_operator",
     "project_space_requests_to_spatial_nodes",
     "validate_evidence_references",
+    "validate_floor_plate_inside_buildable_envelope",
     "validate_spatial_relationship_inputs",
 ]
