@@ -148,6 +148,16 @@ from brif_ai.spatial.solver_policy import (
     map_priority_to_enforcement,
     map_relation_type_to_operator,
 )
+from brif_ai.spatial.svg_plan import (
+    SvgPlanDocument,
+    SvgPlanError,
+    SvgPlanInputMismatchError,
+    SvgPlanInvalidGeometryError,
+    SvgPlanRenderConfig,
+    SvgPlanRenderer,
+    SvgPlanRenderError,
+    SvgPlanUnknownSpaceError,
+)
 from brif_ai.spatial.validator import (
     MUTUALLY_EXCLUSIVE_PAIRS,
     deduplicate_and_materialize_relationships,
@@ -272,6 +282,14 @@ __all__ = [
     "SpatialRelationshipInput",
     "SpatialRelationshipRepository",
     "SpatialRelationType",
+    "SvgPlanDocument",
+    "SvgPlanError",
+    "SvgPlanInputMismatchError",
+    "SvgPlanInvalidGeometryError",
+    "SvgPlanRenderConfig",
+    "SvgPlanRenderError",
+    "SvgPlanRenderer",
+    "SvgPlanUnknownSpaceError",
     "UnconstrainedPair",
     "deduplicate_and_materialize_relationships",
     "detect_spatial_conflicts",
