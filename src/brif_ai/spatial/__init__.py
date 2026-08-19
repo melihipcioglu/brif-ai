@@ -74,6 +74,11 @@ from brif_ai.spatial.persistence import (
     SpatialGraphVersionConflictError,
     SpatialRelationshipRepository,
 )
+from brif_ai.spatial.plan_preview import (
+    PlanPreviewRequest,
+    PlanPreviewResponse,
+    PlanPreviewService,
+)
 from brif_ai.spatial.program import (
     BriefNotReadyError,
     ProgramSpace,
@@ -209,6 +214,9 @@ __all__ = [
     "MetricUnitMismatchError",
     "NonexistentSpaceError",
     "PersistentSpatialService",
+    "PlanPreviewRequest",
+    "PlanPreviewResponse",
+    "PlanPreviewService",
     "ProgramSpace",
     "ProposedSpatialRelationship",
     "RelationshipProvenance",
