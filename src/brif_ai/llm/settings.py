@@ -28,7 +28,7 @@ class LocalLLMSettings:
     temperature: float = 0.0
     think: bool = False
     keep_alive: str = "30m"
-    num_predict: int = 512
+    num_predict: int = 1024
 
     def __post_init__(self) -> None:
         if self.provider != "ollama":
@@ -68,5 +68,5 @@ class LocalLLMSettings:
             temperature=float(values.get("BRIF_AI_LLM_TEMPERATURE", "0")),
             think=_parse_bool(values.get("BRIF_AI_LLM_THINK", "false")),
             keep_alive=values.get("BRIF_AI_LLM_KEEP_ALIVE", "30m").strip(),
-            num_predict=int(values.get("BRIF_AI_LLM_NUM_PREDICT", "512")),
+            num_predict=int(values.get("BRIF_AI_LLM_NUM_PREDICT", "1024")),
         )

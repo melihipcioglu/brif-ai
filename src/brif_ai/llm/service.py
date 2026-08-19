@@ -70,10 +70,16 @@ def _build_provider_output_schema(
         permitted = get_permitted_mutations_for_topic(active_topic)
         permitted_strs = [m.value for m in permitted]
 
-        properties["intent"] = {
-            "type": "string",
-            "enum": [IntentType.GATHER_REQUIREMENT.value],
-        }
+        if active_topic.value == "spatial_relationships":
+            properties["intent"] = {
+                "type": "string",
+                "enum": [IntentType.MODIFY_RELATIONSHIP.value],
+            }
+        else:
+            properties["intent"] = {
+                "type": "string",
+                "enum": [IntentType.GATHER_REQUIREMENT.value],
+            }
         properties["needs_follow_up"] = {
             "type": "boolean",
             "enum": [False],
@@ -109,6 +115,14 @@ def _build_provider_output_schema(
             properties["proposed_brief_mutations"] = {
                 **current_mutations,
                 "maxItems": 1,
+            }
+
+        # Allow spatial relationships to be proposed during elicitation
+        current_spatial = properties.get("proposed_spatial_relationships")
+        if isinstance(current_spatial, dict):
+            properties["proposed_spatial_relationships"] = {
+                **current_spatial,
+                "maxItems": 2,
             }
 
         # Constrain mutation_type in $defs for ProposedBriefMutation
@@ -147,18 +161,6 @@ def _build_provider_output_schema(
                 "notes",
             ]
             properties["household_composition"] = {"$ref": "#/$defs/HouseholdComposition"}
-        elif active_topic.value == "spatial_relationships":
-            current_spatial = properties.get("proposed_spatial_relationships")
-            if isinstance(current_spatial, dict):
-                properties["proposed_spatial_relationships"] = {
-                    **current_spatial,
-                    "maxItems": 2,
-                }
-        else:
-            properties["proposed_spatial_relationships"] = {
-                "type": "array",
-                "maxItems": 0,
-            }
 
         return schema
 
@@ -531,6 +533,63 @@ class LocalLLMConversationService:
                     }
                 )
 
+        # SPATIAL RELATIONSHIP GROUNDING AT SERVICE BOUNDARY
+        if (
+            safe_result.proposed_spatial_relationships
+            and request.brief_snapshot is not None
+            and request.brief_snapshot.space_requests
+        ):
+            from brif_ai.conversation.elicitation.spatial import (
+                format_spatial_relationship_statement,
+                validate_and_ground_spatial_proposals,
+            )
+
+            is_spatial_open = (
+                request.elicitation_context is not None
+                and bool(request.elicitation_context.open_question_topics)
+                and getattr(
+                    request.elicitation_context.open_question_topics[0],
+                    "value",
+                    request.elicitation_context.open_question_topics[0],
+                )
+                == "spatial_relationships"
+            )
+
+            grounded_props = validate_and_ground_spatial_proposals(
+                safe_result.proposed_spatial_relationships,
+                request.brief_snapshot,
+            )
+            if grounded_props:
+                desc_msg = format_spatial_relationship_statement(
+                    grounded_props[0], request.brief_snapshot
+                )
+                safe_result = safe_result.model_copy(
+                    update={
+                        "intent": IntentType.MODIFY_RELATIONSHIP,
+                        "target": EntityTarget(project_id=request.active_context.project_id),
+                        "assistant_message": desc_msg,
+                        "user_requirements": [grounded_props[0].rationale or request.message],
+                        "interpreted_priorities": [],
+                        "constraints_to_check": [],
+                        "missing_information": [],
+                        "proposed_actions": [],
+                        "proposed_brief_mutations": [],
+                        "proposed_spatial_relationships": grounded_props,
+                        "answers_current_open_question": is_spatial_open,
+                        "needs_follow_up": False,
+                        "follow_up_question": None,
+                        "follow_up_topic": None,
+                        "needs_user_confirmation": True,
+                        "warnings": [],
+                    }
+                )
+            else:
+                safe_result = safe_result.model_copy(
+                    update={
+                        "proposed_spatial_relationships": [],
+                    }
+                )
+
         # Server-authoritative follow-up wording:
         # the LLM may classify/interpret, but it cannot author the V1
         # elicitation question that is shown or persisted.
@@ -545,6 +604,20 @@ class LocalLLMConversationService:
                 update={
                     "assistant_message": canonical_question,
                     "follow_up_question": canonical_question,
+                }
+            )
+
+        if (
+            safe_result.proposed_brief_mutations
+            or safe_result.proposed_actions
+            or safe_result.proposed_spatial_relationships
+        ):
+            safe_result = safe_result.model_copy(
+                update={
+                    "needs_user_confirmation": True,
+                    "needs_follow_up": False,
+                    "follow_up_question": None,
+                    "follow_up_topic": None,
                 }
             )
 

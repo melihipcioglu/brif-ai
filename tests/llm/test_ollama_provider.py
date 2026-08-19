@@ -38,7 +38,7 @@ def test_inference_performance_settings_defaults_and_environment() -> None:
 
     assert defaults.think is False
     assert defaults.keep_alive == "30m"
-    assert defaults.num_predict == 512
+    assert defaults.num_predict == 1024
     assert configured.think is False
     assert configured.keep_alive == "15m"
     assert configured.num_predict == 256
@@ -82,7 +82,7 @@ def test_structured_schema_is_sent_in_ollama_format_field() -> None:
     assert requests[0]["stream"] is False
     assert requests[0]["think"] is False
     assert requests[0]["keep_alive"] == "30m"
-    assert requests[0]["options"] == {"temperature": 0.0, "num_predict": 512}
+    assert requests[0]["options"] == {"temperature": 0.0, "num_predict": 1024}
 
 
 def test_performance_metrics_are_calculated_from_ollama_response() -> None:
