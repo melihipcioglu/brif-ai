@@ -35,3 +35,6 @@ Thumbs.db
 
 # Demo diagnostic logs
 .demo_logs/
+
+# Local runtime/test artifacts
+tmp/

@@ -825,6 +825,26 @@ def _message_space_aliases(clause: str) -> set[str]:
 
 def _entity_aliases(request: ConversationRequest) -> dict[str, str]:
     aliases: dict[str, str] = {}
+    if request.brief_snapshot is not None:
+        from brif_ai.spatial.models import project_space_requests_to_spatial_nodes
+
+        for req in request.brief_snapshot.space_requests:
+            norm = _normalize_entity_alias(req.display_name)
+            if norm:
+                aliases[norm] = req.id.casefold()
+                for suffix, pl_suffix in (
+                    ("sı", "ları"),
+                    ("si", "leri"),
+                    ("su", "ları"),
+                    ("sü", "leri"),
+                ):
+                    if norm.endswith(suffix):
+                        aliases[norm[: -len(suffix)] + pl_suffix] = req.id.casefold()
+        for node in project_space_requests_to_spatial_nodes(request.brief_snapshot.space_requests):
+            norm_node = _normalize_entity_alias(node.display_name)
+            if norm_node:
+                aliases[norm_node] = node.source_space_request_id.casefold()
+
     for entity in request.visible_entities:
         normalized = _normalize_entity_alias(entity.name)
         if not normalized:
@@ -876,6 +896,12 @@ def extract_trusted_proximity_pairs(request: ConversationRequest) -> set[frozens
             for i in range(len(entity_list)):
                 for j in range(i + 1, len(entity_list)):
                     trusted_pairs.add(frozenset([entity_list[i], entity_list[j]]))
+            if len(entity_list) == 1 and (
+                "birbir" in clause.casefold()
+                or "yan yana" in clause.casefold()
+                or "bir arada" in clause.casefold()
+            ):
+                trusted_pairs.add(frozenset([entity_list[0]]))
 
     return trusted_pairs
 
@@ -935,6 +961,16 @@ def validate_relative_spatial_claims(
                         break
                     entities = _extract_entity_keys(clause, entity_aliases)
                     entity_list = list(entities)
+                    if (
+                        len(entity_list) == 1
+                        and (
+                            "birbir" in clause.casefold()
+                            or "yan yana" in clause.casefold()
+                            or "bir arada" in clause.casefold()
+                        )
+                        and frozenset([entity_list[0]]) in trusted_prox_pairs
+                    ):
+                        continue
                     if len(entity_list) < 2:
                         model_claims.add(category)
                         break
@@ -1441,7 +1477,7 @@ class ArchitecturalIntentPolicyValidator:
             r.model_copy(
                 update={"rationale": _clean(r.rationale) if r.rationale is not None else None}
             )
-            for r in result.proposed_spatial_relationships
+            for r in result.proposed_spatial_relationships[:2]
         ]
 
         updates: dict[str, Any] = {
@@ -1525,9 +1561,32 @@ class ArchitecturalIntentPolicyValidator:
         if sanitized_mutations or sanitized_spatial_rels or actions:
             updates["needs_user_confirmation"] = True
 
+        if sanitized_spatial_rels:
+            updates["needs_user_confirmation"] = True
+            updates["needs_follow_up"] = False
+            updates["follow_up_question"] = None
+            updates["follow_up_topic"] = None
+            updates["proposed_actions"] = []
+            updates["proposed_brief_mutations"] = []
+            updates["missing_information"] = []
+            updates["interpreted_priorities"] = []
+            updates["constraints_to_check"] = []
+            updates["warnings"] = []
+            if request.brief_snapshot is not None:
+                from brif_ai.conversation.elicitation.spatial import (
+                    format_spatial_relationship_statement,
+                )
+
+                stmt = format_spatial_relationship_statement(
+                    sanitized_spatial_rels[0], request.brief_snapshot
+                )
+                updates["assistant_message"] = f"{stmt} Bu mekânsal ilişkiyi onaylıyor musunuz?"
+
         sanitized = result.model_copy(update=updates)
         if not sanitized.needs_follow_up:
-            return sanitized.model_copy(update={"follow_up_question": None})
+            return sanitized.model_copy(
+                update={"follow_up_question": None, "follow_up_topic": None}
+            )
         return sanitized
 
     def sanitize_compare(

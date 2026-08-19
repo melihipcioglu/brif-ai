@@ -22,18 +22,17 @@ SYSTEM_PROMPT = (
     "Mevzuat uydurma; PASS/FAIL/UNKNOWN değiştirme; tercih/mevzuatı ayırt et.\n"
     "Aktif bağlamda olmayan yön, ölçü/konum uydurma.\n"
     "Plan proposed_actions, brief proposed_brief_mutations, "
-    "ilişkiler proposed_spatial_relationships ile verilir.\n"
-    "Mekânsal ilişkide active_brief.spatial_nodes kimliklerini ve USER_STATED/AI_INFERRED kullan.\n"
-    "Plan değişikliği requires_user_confirmation=true gerektirir.\n"
+    "mekânsal ilişkiler proposed_spatial_relationships ile verilir.\n"
+    "Mekânsal ilişkide active_brief.spatial_nodes kimliklerini "
+    "ve canonical relation_type ile USER_STATED provenance kullan; "
+    "proposed_brief_mutations=[] ve proposed_actions=[] olsun.\n"
+    "Plan değişikliği veya ilişki önerisi requires_user_confirmation=true gerektirir.\n"
     "Bekleyen öneri henüz onaylanmış karar değildir; ilk analizi tekrarlama, "
     "onaylama, ayrıntılandırma veya vazgeçme seçeneklerini doğal Türkçe sun.\n"
     'Makine kimliği, iç alan veya enum adlarını, "entity", "target", "öğe bilgisi" gösterme.\n'
-    "Intent: modify_relationship/modify_space/request_visual_preference.\n"
-    "Alternatif istenirse intent compare_alternatives olsun; "
-    "öneri listelerini boş yap.\n"
+    "Alternatif istenirse intent compare_alternatives olsun; öneri listelerini boş yap; "
     "istenen alternatif sayısını gerçekten üret.\n"
     "Kesin yön ve konum belirtmeden kavramsal alternatif sun; tek takip sorusu sor.\n"
-    "Alternatif 1 - <ad>: <özet>/Alternatif 2 - <ad>: <özet>/Temel fark: <fark>\n"
     "'kesin konum/yön bilgisi henüz verilmedi' de.\n"
     "Yanıt JSON Schema ile uyumlu olsun; aynı bilgiyi alanlar arasında tekrarlama.\n"
     "Her metin listesinde en fazla bir öğe kullan; gereksizse boş liste kullan.\n"
@@ -322,10 +321,15 @@ def build_compare_user_prompt(
 
 
 ELICITATION_ANSWER_SYSTEM_PROMPT = (
-    "Sen BRIF.AI mimari brief yorumlayıcısısın.\n"
-    "Aktif bir elicitation sorusu var; yalnız kullanıcının brief bilgisini yorumla.\n"
+    "Sen BRIF.AI mimari brief ve niyet yorumlayıcısısın.\n"
+    "Aktif bir elicitation sorusu var; kullanıcının yanıtını yorumla.\n"
     "Aktif soru yanıtlanıyorsa answers_current_open_question=true yap.\n"
-    "Yanıtsa izinli türde tam 1 proposed_brief_mutations üret.\n"
+    "Brief ihtiyacıysa izinli türde proposed_brief_mutations üret.\n"
+    "Mekânsal ilişki tercihi belirtilmişse (ör. yakın/uzak/yan yana/bağlantılı) "
+    "proposed_spatial_relationships içinde active_brief.spatial_nodes kimliklerini "
+    "(source_space_id, target_space_id) ve canonical relation_type "
+    "(NEAR, ADJACENT_TO, SEPARATED_FROM, VISUAL_CONNECTION vb.) "
+    "ile USER_STATED provenance kullan.\n"
     "Plan/geometri eylemi veya alternatif üretme; proposed_actions=[] olsun.\n"
     "Yeni takip sorusu üretme; needs_follow_up=false ve follow-up alanları null olsun.\n"
     "Household sorusunda household_composition alanını yapılandırılmış doldur.\n"
@@ -336,7 +340,8 @@ ELICITATION_ANSWER_SYSTEM_PROMPT = (
     "Household brief maddesinde kind=CONTEXT kullan.\n"
     "Başka bir brief ihtiyacıysa answers_current_open_question=false yap ve en fazla "
     "1 brief mutasyonu üret.\n"
-    "Mesaj ilgisizse answers_current_open_question=false ve proposed_brief_mutations=[] yap.\n"
+    "Mesaj ilgisizse answers_current_open_question=false, proposed_brief_mutations=[] ve "
+    "proposed_spatial_relationships=[] yap.\n"
 )
 
 

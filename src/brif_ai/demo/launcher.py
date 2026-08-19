@@ -313,7 +313,7 @@ class DemoProcessManager:
 
 
 DEFAULT_DEMO_LLM_TIMEOUT_SECONDS: float = 300.0
-DEFAULT_DEMO_NUM_PREDICT: int = 768
+DEFAULT_DEMO_NUM_PREDICT: int = 1024
 
 
 def _start_logged_process(

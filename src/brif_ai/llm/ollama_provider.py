@@ -392,8 +392,25 @@ class OllamaProvider:
                         and request.elicitation_context.open_question_topics
                     ):
                         data["proposed_actions"] = []
-                    if data.get("proposed_brief_mutations") or data.get("proposed_actions"):
+                    mutations = data.get("proposed_brief_mutations")
+                    if isinstance(mutations, list):
+                        valid_muts = []
+                        for m in mutations:
+                            if isinstance(m, dict) and any(
+                                m.get(k) is not None
+                                for k in ("brief_item", "space_request", "usage_scenario")
+                            ):
+                                valid_muts.append(m)
+                        data["proposed_brief_mutations"] = valid_muts
+                    if (
+                        data.get("proposed_brief_mutations")
+                        or data.get("proposed_actions")
+                        or data.get("proposed_spatial_relationships")
+                    ):
                         data["needs_user_confirmation"] = True
+                        data["needs_follow_up"] = False
+                        data["follow_up_question"] = None
+                        data["follow_up_topic"] = None
                     parsed_result = ArchitecturalIntentResult.model_validate(data)
                 else:
                     parsed_result = ArchitecturalIntentResult.model_validate_json(content)

@@ -8,9 +8,10 @@ from datetime import UTC, datetime
 import httpx
 import pytest
 
-from brif_ai.brief.models.common import OpenQuestionStatus
-from brif_ai.brief.models.snapshot import BriefSnapshot, OpenQuestion, Stakeholder
+from brif_ai.brief.models.common import ConfirmationStatus, OpenQuestionStatus
+from brif_ai.brief.models.snapshot import BriefSnapshot, OpenQuestion, SpaceRequest, Stakeholder
 from brif_ai.conversation.elicitation.models import ElicitationTopic
+from brif_ai.core.models.common import SpaceFunction
 from brif_ai.llm.contracts import (
     ActiveContextSnapshot,
     ConversationRequest,
@@ -328,3 +329,153 @@ def test_live_scenario_e_adversarial_greeting_keeps_household_open() -> None:
     assert res.needs_follow_up is False
     assert res.proposed_actions == []
     assert res.proposed_brief_mutations == []
+
+
+# ============================================================================
+# SCENARIO F: Natural Spatial Preference ("Yatak odaları birbirine yakın olsun.")
+# ============================================================================
+
+
+def test_live_scenario_f_spatial_relationship_bedroom_near() -> None:
+    service = live_service()
+    snap = sample_snapshot()
+    snap = snap.model_copy(
+        update={
+            "space_requests": [
+                SpaceRequest(
+                    id="sr_bed",
+                    display_name="Yatak Odası",
+                    space_function=SpaceFunction.SLEEPING,
+                    minimum_quantity=2,
+                    mandatory=True,
+                    confirmation_status=ConfirmationStatus.CONFIRMED,
+                    stakeholder_ids=["stk_owner"],
+                    evidence_ids=[],
+                ),
+                SpaceRequest(
+                    id="sr_living",
+                    display_name="Salon",
+                    space_function=SpaceFunction.LIVING,
+                    minimum_quantity=1,
+                    mandatory=True,
+                    confirmation_status=ConfirmationStatus.CONFIRMED,
+                    stakeholder_ids=["stk_owner"],
+                    evidence_ids=[],
+                ),
+            ]
+        }
+    )
+    req = build_request("Yatak odaları birbirine yakın olsun.", snap)
+
+    response = asyncio.run(service.interpret(req))
+
+    assert response.success is True
+    res = response.result
+    assert res is not None
+    assert res.intent == IntentType.MODIFY_RELATIONSHIP
+    assert len(res.proposed_spatial_relationships) == 1
+    assert res.proposed_actions == []
+    assert res.proposed_brief_mutations == []
+    assert res.needs_user_confirmation is True
+    assert res.needs_follow_up is False
+
+    rel = res.proposed_spatial_relationships[0]
+    assert rel.source_space_id == "sn_bed_01"
+    assert rel.target_space_id == "sn_bed_02"
+    assert rel.relation_type.value == "NEAR"
+
+
+# ============================================================================
+# SCENARIO G: Natural Spatial Preference ("Mutfak salona yakın olsun.")
+# ============================================================================
+
+
+def test_live_scenario_g_spatial_relationship_kitchen_living_near() -> None:
+    service = live_service()
+    snap = sample_snapshot()
+    snap = snap.model_copy(
+        update={
+            "space_requests": [
+                SpaceRequest(
+                    id="sr_kitchen",
+                    display_name="Mutfak",
+                    space_function=SpaceFunction.COOKING,
+                    minimum_quantity=1,
+                    mandatory=True,
+                    confirmation_status=ConfirmationStatus.CONFIRMED,
+                    stakeholder_ids=["stk_owner"],
+                    evidence_ids=[],
+                ),
+                SpaceRequest(
+                    id="sr_living",
+                    display_name="Salon",
+                    space_function=SpaceFunction.LIVING,
+                    minimum_quantity=1,
+                    mandatory=True,
+                    confirmation_status=ConfirmationStatus.CONFIRMED,
+                    stakeholder_ids=["stk_owner"],
+                    evidence_ids=[],
+                ),
+            ]
+        }
+    )
+    req = build_request("Mutfak salona yakın olsun.", snap)
+
+    response = asyncio.run(service.interpret(req))
+
+    assert response.success is True
+    res = response.result
+    assert res is not None
+    assert len(res.proposed_spatial_relationships) == 1
+    rel = res.proposed_spatial_relationships[0]
+    assert rel.source_space_id == "sn_kitchen_01"
+    assert rel.target_space_id == "sn_living_01"
+    assert rel.relation_type.value == "NEAR"
+
+
+# ============================================================================
+# SCENARIO H: Negative Spatial Preference ("Misafir bölümü çocuk odalarından uzak olsun.")
+# ============================================================================
+
+
+def test_live_scenario_h_spatial_relationship_guest_child_separated() -> None:
+    service = live_service()
+    snap = sample_snapshot()
+    snap = snap.model_copy(
+        update={
+            "space_requests": [
+                SpaceRequest(
+                    id="sr_guest",
+                    display_name="Misafir Odası",
+                    space_function=SpaceFunction.SLEEPING,
+                    minimum_quantity=1,
+                    mandatory=True,
+                    confirmation_status=ConfirmationStatus.CONFIRMED,
+                    stakeholder_ids=["stk_owner"],
+                    evidence_ids=[],
+                ),
+                SpaceRequest(
+                    id="sr_child",
+                    display_name="Çocuk Odası",
+                    space_function=SpaceFunction.SLEEPING,
+                    minimum_quantity=1,
+                    mandatory=True,
+                    confirmation_status=ConfirmationStatus.CONFIRMED,
+                    stakeholder_ids=["stk_owner"],
+                    evidence_ids=[],
+                ),
+            ]
+        }
+    )
+    req = build_request("Misafir bölümü çocuk odalarından uzak olsun.", snap)
+
+    response = asyncio.run(service.interpret(req))
+
+    assert response.success is True
+    res = response.result
+    assert res is not None
+    assert len(res.proposed_spatial_relationships) == 1
+    rel = res.proposed_spatial_relationships[0]
+    assert rel.source_space_id == "sn_guest_01"
+    assert rel.target_space_id == "sn_child_01"
+    assert rel.relation_type.value == "SEPARATED_FROM"
