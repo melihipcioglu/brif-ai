@@ -56,6 +56,19 @@ from brif_ai.spatial.program import (
     SpatialProgramVersionMismatchError,
 )
 from brif_ai.spatial.service import PersistentSpatialService
+from brif_ai.spatial.solver_policy import (
+    ConstraintEnforcement,
+    SolverDirective,
+    SolverDirectiveSet,
+    SolverPolicyCompiler,
+    SolverPolicyEndpointError,
+    SolverPolicyError,
+    SolverPolicyMissingInputError,
+    SolverPolicySchemaVersionMismatchError,
+    SolverRelationOperator,
+    map_priority_to_enforcement,
+    map_relation_type_to_operator,
+)
 from brif_ai.spatial.validator import (
     MUTUALLY_EXCLUSIVE_PAIRS,
     deduplicate_and_materialize_relationships,
@@ -66,6 +79,7 @@ from brif_ai.spatial.validator import (
 
 __all__ = [
     "BriefNotReadyError",
+    "ConstraintEnforcement",
     "DuplicateRelationshipError",
     "InvalidEvidenceReferenceError",
     "InvalidProvenanceError",
@@ -86,6 +100,14 @@ __all__ = [
     "RelationshipProvenance",
     "SchematicLayoutProblem",
     "SelfRelationshipError",
+    "SolverDirective",
+    "SolverDirectiveSet",
+    "SolverPolicyCompiler",
+    "SolverPolicyEndpointError",
+    "SolverPolicyError",
+    "SolverPolicyMissingInputError",
+    "SolverPolicySchemaVersionMismatchError",
+    "SolverRelationOperator",
     "SpatialConflict",
     "SpatialGraphError",
     "SpatialGraphNotFoundError",
@@ -111,6 +133,8 @@ __all__ = [
     "detect_spatial_conflicts",
     "generate_relationship_id",
     "generate_spatial_node_id",
+    "map_priority_to_enforcement",
+    "map_relation_type_to_operator",
     "project_space_requests_to_spatial_nodes",
     "validate_evidence_references",
     "validate_spatial_relationship_inputs",
