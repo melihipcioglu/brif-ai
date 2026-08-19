@@ -61,7 +61,29 @@ from brif_ai.spatial.persistence import (
     SpatialGraphPersistenceError,
     SpatialRelationshipRepository,
 )
+from brif_ai.spatial.plan_preview import (
+    PlanPreviewRequest,
+    PlanPreviewResponse,
+    PlanPreviewService,
+)
+from brif_ai.spatial.room_solver import (
+    RoomGeometryEngineError,
+    RoomGeometryGridAlignmentError,
+    RoomGeometryInfeasibleError,
+    RoomGeometryInputMismatchError,
+    RoomGeometryUnderconstrainedSpaceError,
+    RoomGeometryUnsupportedDirectiveError,
+    RoomGeometryUnsupportedFloorPlateError,
+    RoomGeometryUnsupportedMetricError,
+    RoomGeometryUnsupportedOptionalSpaceError,
+)
 from brif_ai.spatial.service import PersistentSpatialService
+from brif_ai.spatial.svg_plan import (
+    SvgPlanInputMismatchError,
+    SvgPlanInvalidGeometryError,
+    SvgPlanRenderError,
+    SvgPlanUnknownSpaceError,
+)
 
 ALLOWED_ORIGINS = [
     "http://localhost:8080",
@@ -602,6 +624,77 @@ def create_app(
                     resulting_spatial_graph=None,
                     approval_record=None,
                     error=f"Mekânsal ilişki onayı sırasında sunucu hatası oluştu: {error}",
+                ).model_dump(mode="json"),
+            )
+
+    @application.post(
+        "/api/v1/plan/preview",
+        response_model=PlanPreviewResponse,
+    )
+    async def preview_plan(request: PlanPreviewRequest) -> Any:
+        try:
+            return PlanPreviewService.generate(request)
+        except (
+            RoomGeometryInputMismatchError,
+            SvgPlanInputMismatchError,
+            SvgPlanUnknownSpaceError,
+        ) as error:
+            return JSONResponse(
+                status_code=409,
+                content=PlanPreviewResponse(
+                    success=False,
+                    solution=None,
+                    document=None,
+                    error=str(error),
+                ).model_dump(mode="json"),
+            )
+        except (
+            RoomGeometryUnsupportedFloorPlateError,
+            RoomGeometryUnsupportedOptionalSpaceError,
+            RoomGeometryUnsupportedMetricError,
+            RoomGeometryUnsupportedDirectiveError,
+            RoomGeometryUnderconstrainedSpaceError,
+            RoomGeometryGridAlignmentError,
+            RoomGeometryInfeasibleError,
+            SvgPlanInvalidGeometryError,
+        ) as error:
+            return JSONResponse(
+                status_code=422,
+                content=PlanPreviewResponse(
+                    success=False,
+                    solution=None,
+                    document=None,
+                    error=str(error),
+                ).model_dump(mode="json"),
+            )
+        except RoomGeometryEngineError as error:
+            return JSONResponse(
+                status_code=503,
+                content=PlanPreviewResponse(
+                    success=False,
+                    solution=None,
+                    document=None,
+                    error=str(error),
+                ).model_dump(mode="json"),
+            )
+        except SvgPlanRenderError as error:
+            return JSONResponse(
+                status_code=500,
+                content=PlanPreviewResponse(
+                    success=False,
+                    solution=None,
+                    document=None,
+                    error=str(error),
+                ).model_dump(mode="json"),
+            )
+        except Exception as error:
+            return JSONResponse(
+                status_code=500,
+                content=PlanPreviewResponse(
+                    success=False,
+                    solution=None,
+                    document=None,
+                    error=f"Plan önizlemesi sırasında sunucu hatası oluştu: {error}",
                 ).model_dump(mode="json"),
             )
 
