@@ -1188,6 +1188,285 @@ class ConversationOrchestrator {
     });
     this.renderFilteredChatMessages();
   }
+
+  validateAndSanitizePlanSvg(planDoc) {
+    if (!planDoc || typeof planDoc !== 'object') {
+      return { isValid: false, error: 'Geçersiz SVG plan belgesi.' };
+    }
+    if (planDoc.schema_version !== 'svg_plan_document.v0') {
+      return { isValid: false, error: 'Desteklenmeyen SVG plan belge sürümü.' };
+    }
+    if (typeof planDoc.svg !== 'string' || !planDoc.svg.trim()) {
+      return { isValid: false, error: 'Boş SVG içeriği.' };
+    }
+
+    const trimmedSvg = planDoc.svg.trim();
+    if (!trimmedSvg.includes('<svg')) {
+      return { isValid: false, error: 'SVG kök etiketi bulunamadı.' };
+    }
+
+    const ParserClass = (typeof DOMParser !== 'undefined' ? DOMParser : (typeof window !== 'undefined' ? window.DOMParser : null));
+    if (!ParserClass) {
+      return { isValid: false, error: 'DOMParser ortamda bulunamadı.' };
+    }
+
+    const parser = new ParserClass();
+    const xmlDoc = parser.parseFromString(trimmedSvg, 'image/svg+xml');
+
+    const parserErrors = xmlDoc.getElementsByTagName('parsererror');
+    if (parserErrors && parserErrors.length > 0) {
+      return { isValid: false, error: 'SVG ayrıştırma hatası.' };
+    }
+    if (typeof xmlDoc.querySelector === 'function' && xmlDoc.querySelector('parsererror')) {
+      return { isValid: false, error: 'SVG ayrıştırma hatası.' };
+    }
+
+    const root = xmlDoc.documentElement;
+    if (!root || (root.localName !== 'svg' && (root.tagName || '').toLowerCase() !== 'svg')) {
+      return { isValid: false, error: 'Geçersiz SVG kök etiketi.' };
+    }
+
+    const allElements = xmlDoc.getElementsByTagName('*');
+    for (let i = 0; i < allElements.length; i++) {
+      const el = allElements[i];
+      const tag = (el.localName || el.tagName || '').toLowerCase();
+      if (tag === 'script') {
+        return { isValid: false, error: 'SVG içinde script etiketi reddedildi.' };
+      }
+      if (tag === 'foreignobject') {
+        return { isValid: false, error: 'SVG içinde foreignObject etiketi reddedildi.' };
+      }
+      if (el.attributes) {
+        if (typeof el.attributes.length === 'number') {
+          for (let j = 0; j < el.attributes.length; j++) {
+            const attr = el.attributes[j];
+            const attrName = (attr.name || attr.nodeName || '').toLowerCase();
+            const attrVal = String(attr.value !== undefined ? attr.value : (attr.nodeValue || ''));
+            if (attrName.startsWith('on')) {
+              return { isValid: false, error: 'SVG içinde olay yakalayıcı (on*) öznitelik reddedildi.' };
+            }
+            if (/^\s*javascript\s*:/i.test(attrVal)) {
+              return { isValid: false, error: 'SVG içinde javascript: bağlantısı reddedildi.' };
+            }
+          }
+        } else {
+          for (const attrKey of Object.keys(el.attributes)) {
+            const attrName = attrKey.toLowerCase();
+            const attrVal = String(el.attributes[attrKey] || '');
+            if (attrName.startsWith('on')) {
+              return { isValid: false, error: 'SVG içinde olay yakalayıcı (on*) öznitelik reddedildi.' };
+            }
+            if (/^\s*javascript\s*:/i.test(attrVal)) {
+              return { isValid: false, error: 'SVG içinde javascript: bağlantısı reddedildi.' };
+            }
+          }
+        }
+      }
+    }
+
+    let importedNode = root;
+    if (typeof document !== 'undefined' && typeof document.importNode === 'function') {
+      try {
+        importedNode = document.importNode(root, true);
+      } catch (_e) {
+        importedNode = root.cloneNode ? root.cloneNode(true) : root;
+      }
+    }
+
+    return { isValid: true, node: importedNode, rawSvg: trimmedSvg };
+  }
+
+  async loadDemoPlanPreviewRequest() {
+    try {
+      const resp = await (this.localLLMGateway ? this.localLLMGateway.fetchFn('./data/plan_preview_request.demo.json') : fetch('./data/plan_preview_request.demo.json'));
+      if (resp.ok) {
+        return await resp.json();
+      }
+    } catch (err) {
+      console.warn('Demo plan preview fixture yüklenemedi:', err);
+    }
+    return null;
+  }
+
+  async requestDemoPlanPreview() {
+    const demoPayload = await this.loadDemoPlanPreviewRequest();
+    if (!demoPayload) {
+      this.renderPlanPreviewResult({
+        ok: false,
+        status: 0,
+        error: 'Demo plan girdisi dosyadan yüklenemedi.'
+      });
+      return null;
+    }
+    return await this.requestPlanPreview(demoPayload);
+  }
+
+  async requestPlanPreview(requestPayload) {
+    if (!requestPayload || typeof requestPayload !== 'object') {
+      throw new Error('requestPlanPreview requires an explicit requestPayload');
+    }
+    if (!this.localLLMGateway) {
+      const errRes = { ok: false, status: 0, error: 'Plan servisi ağ geçidi tanımlı değil.' };
+      this.renderPlanPreviewResult(errRes, requestPayload);
+      return errRes;
+    }
+
+    this.renderPlanPreviewLoading();
+
+    try {
+      const result = await this.localLLMGateway.previewPlan(requestPayload);
+      this.renderPlanPreviewResult(result, requestPayload);
+      if (result.ok) {
+        this.appendAssistantMessage(
+          'Taslak plan oluşturuldu. Bu görünüm mevcut doğrulanmış plan girdileri üzerinden oluşturulan şematik yerleşimdir.\n\n📌 Demo önizleme: Bu plan mevcut sohbetinizden otomatik üretilmemiştir; doğrulanmış iki odalı örnek plan girdisi kullanılır.'
+        );
+      }
+      return result;
+    } catch (err) {
+      const errRes = { ok: false, status: 0, error: err.message || 'Plan servisine ulaşılamadı.' };
+      this.renderPlanPreviewResult(errRes, requestPayload);
+      return errRes;
+    }
+  }
+
+  renderPlanPreviewLoading() {
+    if (typeof document === 'undefined') return;
+    const container = document.getElementById('planPreviewContent');
+    if (!container) return;
+    container.replaceChildren();
+
+    const loadingDiv = document.createElement('div');
+    loadingDiv.className = 'plan-preview-loading';
+    const spinner = document.createElement('div');
+    spinner.className = 'plan-preview-spinner';
+    const text = document.createElement('p');
+    text.className = 'loading-text';
+    text.textContent = 'Mekânsal çözücü çalışıyor, plan geometrisi hesaplanıyor...';
+
+    loadingDiv.appendChild(spinner);
+    loadingDiv.appendChild(text);
+    container.appendChild(loadingDiv);
+  }
+
+  renderPlanPreviewResult(result, requestPayload = null) {
+    if (typeof document === 'undefined') return;
+    const container = document.getElementById('planPreviewContent');
+    if (!container) return;
+    container.replaceChildren();
+
+    if (result && result.ok) {
+      const planDoc = result.document;
+      const validation = this.validateAndSanitizePlanSvg(planDoc);
+      if (!validation.isValid) {
+        this.renderPlanPreviewError(validation.error || 'Plan görseli güvenlik kontrolünden geçemedi.', requestPayload);
+        return;
+      }
+
+      const previewCard = document.createElement('div');
+      previewCard.className = 'plan-preview-card-body';
+
+      // Metadata Bar
+      const metaBar = document.createElement('div');
+      metaBar.className = 'plan-preview-meta-bar';
+
+      const statusChip = document.createElement('span');
+      statusChip.className = 'meta-chip chip-status';
+      statusChip.textContent = `Çözücü Durumu: ${result.solution ? result.solution.status : 'FEASIBLE'}`;
+      metaBar.appendChild(statusChip);
+
+      const roomCount = result.solution && Array.isArray(result.solution.rooms)
+        ? result.solution.rooms.length
+        : 0;
+      const roomsChip = document.createElement('span');
+      roomsChip.className = 'meta-chip chip-rooms';
+      roomsChip.textContent = `Mekân Sayısı: ${roomCount}`;
+      metaBar.appendChild(roomsChip);
+
+      const gridStep = (requestPayload && requestPayload.solver_config && requestPayload.solver_config.grid_step_m !== undefined)
+        ? requestPayload.solver_config.grid_step_m
+        : (result.solution && result.solution.grid_step_m !== undefined ? result.solution.grid_step_m : 0.1);
+      const gridChip = document.createElement('span');
+      gridChip.className = 'meta-chip chip-grid';
+      gridChip.textContent = `Grid Adımı: ${gridStep} m`;
+      metaBar.appendChild(gridChip);
+
+      previewCard.appendChild(metaBar);
+
+      // SVG Container
+      const svgWrapper = document.createElement('div');
+      svgWrapper.className = 'plan-preview-svg-wrapper';
+      svgWrapper.appendChild(validation.node);
+      previewCard.appendChild(svgWrapper);
+
+      // Demo provenance notice
+      const demoNotice = document.createElement('div');
+      demoNotice.className = 'plan-preview-demo-notice';
+      demoNotice.textContent = '📌 Demo önizleme: Bu plan mevcut sohbetinizden otomatik üretilmemiştir; doğrulanmış iki odalı örnek plan girdisi kullanılır.';
+      previewCard.appendChild(demoNotice);
+
+      // Disclaimer note
+      const note = document.createElement('div');
+      note.className = 'plan-preview-disclaimer';
+      note.textContent = 'ℹ️ Bu çizim deterministik BRIF.AI mekânsal motoru tarafından üretilmiş şematik yerleşimdir. Resmî mimari uygulama projesi değildir.';
+      previewCard.appendChild(note);
+
+      container.appendChild(previewCard);
+    } else {
+      const rawStatus = result ? result.status : 0;
+      let msg = 'Plan önizlemesi oluşturulamadı.';
+      if (rawStatus === 409) {
+        msg = 'Plan girdileri birbiriyle uyuşmuyor.';
+      } else if (rawStatus === 422) {
+        msg = 'Plan girdileri bu sürümde çözülemiyor.';
+      } else if (rawStatus === 503) {
+        msg = 'Plan çözücü şu anda sonuç üretemedi.';
+      } else if (rawStatus === 500) {
+        msg = 'Plan önizlemesi oluşturulamadı.';
+      } else if (rawStatus === 0) {
+        if (result && result.error && (result.error.includes('iptal') || result.error.includes('zaman aşımına'))) {
+          msg = result.error;
+        } else {
+          msg = 'Plan servisine ulaşılamadı.';
+        }
+      }
+      this.renderPlanPreviewError(msg, requestPayload);
+    }
+  }
+
+  renderPlanPreviewError(errorMessage, requestPayload = null) {
+    if (typeof document === 'undefined') return;
+    const container = document.getElementById('planPreviewContent');
+    if (!container) return;
+    container.replaceChildren();
+
+    const errBox = document.createElement('div');
+    errBox.className = 'plan-preview-error';
+
+    const icon = document.createElement('div');
+    icon.className = 'error-icon';
+    icon.textContent = '⚠️';
+    errBox.appendChild(icon);
+
+    const text = document.createElement('p');
+    text.className = 'error-message';
+    text.textContent = errorMessage;
+    errBox.appendChild(text);
+
+    const retryBtn = document.createElement('button');
+    retryBtn.type = 'button';
+    retryBtn.className = 'retry-btn';
+    retryBtn.textContent = 'Tekrar Dene';
+    retryBtn.onclick = () => {
+      if (requestPayload) {
+        this.requestPlanPreview(requestPayload);
+      } else {
+        this.requestDemoPlanPreview();
+      }
+    };
+    errBox.appendChild(retryBtn);
+
+    container.appendChild(errBox);
+  }
 }
 
 function escapeHtml(str) {
