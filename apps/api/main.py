@@ -61,10 +61,18 @@ from brif_ai.spatial.persistence import (
     SpatialGraphPersistenceError,
     SpatialRelationshipRepository,
 )
+from brif_ai.spatial.plan_input import (
+    JSONPlanInputStateRepository,
+    PlanInputStatePersistenceError,
+    PlanInputStateRepository,
+    PlanInputStateService,
+)
 from brif_ai.spatial.plan_preview import (
     PlanPreviewRequest,
     PlanPreviewResponse,
     PlanPreviewService,
+    ProjectPlanPreviewReadinessResult,
+    ProjectPlanPreviewReadinessService,
 )
 from brif_ai.spatial.room_solver import (
     RoomGeometryEngineError,
@@ -137,6 +145,7 @@ def create_app(
     cors_environ: Mapping[str, str] | None = None,
     brief_repository: BriefRepository | None = None,
     spatial_repository: SpatialRelationshipRepository | None = None,
+    plan_input_repository: PlanInputStateRepository | None = None,
 ) -> FastAPI:
     resolved_settings = settings or LocalLLMSettings.from_env()
     resolved_provider = provider or OllamaProvider(resolved_settings)
@@ -144,6 +153,13 @@ def create_app(
     persistent_brief_service = PersistentBriefService(resolved_brief_repo)
     resolved_spatial_repo = spatial_repository or JSONSpatialRelationshipRepository()
     persistent_spatial_service = PersistentSpatialService(resolved_spatial_repo)
+    resolved_plan_input_repo = plan_input_repository or JSONPlanInputStateRepository()
+    persistent_plan_input_service = PlanInputStateService(resolved_plan_input_repo)
+    project_readiness_service = ProjectPlanPreviewReadinessService(
+        brief_service=persistent_brief_service,
+        spatial_service=persistent_spatial_service,
+        plan_input_service=persistent_plan_input_service,
+    )
     service = LocalLLMConversationService(resolved_settings, resolved_provider)
 
     application = FastAPI(title="BRIF.AI Local LLM API", version="0.1.0")
@@ -696,6 +712,33 @@ def create_app(
                     document=None,
                     error=f"Plan önizlemesi sırasında sunucu hatası oluştu: {error}",
                 ).model_dump(mode="json"),
+            )
+
+    @application.get(
+        "/api/v1/projects/{project_id}/plan/preview/readiness",
+        response_model=ProjectPlanPreviewReadinessResult,
+    )
+    async def get_project_plan_preview_readiness(project_id: str) -> Any:
+        try:
+            return project_readiness_service.evaluate(project_id)
+        except InvalidProjectIdError as error:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": str(error)},
+            )
+        except (
+            BriefPersistenceError,
+            SpatialGraphPersistenceError,
+            PlanInputStatePersistenceError,
+        ) as error:
+            return JSONResponse(
+                status_code=500,
+                content={"detail": f"Kalıcı depolama hatası: {error}"},
+            )
+        except Exception as error:
+            return JSONResponse(
+                status_code=500,
+                content={"detail": f"Sunucu hatası: {error}"},
             )
 
     return application
