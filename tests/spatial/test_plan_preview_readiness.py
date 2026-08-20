@@ -702,9 +702,7 @@ def test_readiness_result_state_invariants_enforced() -> None:
     )
 
     # 1. ready=True with blockers -> ERROR
-    with pytest.raises(
-        ValidationError, match="ready_for_preview=True must have empty blockers"
-    ):
+    with pytest.raises(ValidationError, match="ready_for_preview=True must have empty blockers"):
         PlanPreviewReadinessResult(
             ready_for_preview=True,
             blockers=[sample_blocker],
@@ -712,9 +710,7 @@ def test_readiness_result_state_invariants_enforced() -> None:
         )
 
     # 2. ready=True with request=None -> ERROR
-    with pytest.raises(
-        ValidationError, match="ready_for_preview=True must include request"
-    ):
+    with pytest.raises(ValidationError, match="ready_for_preview=True must include request"):
         PlanPreviewReadinessResult(
             ready_for_preview=True,
             blockers=[],
@@ -732,9 +728,7 @@ def test_readiness_result_state_invariants_enforced() -> None:
         )
 
     # 4. ready=False with request present -> ERROR
-    with pytest.raises(
-        ValidationError, match="ready_for_preview=False cannot include request"
-    ):
+    with pytest.raises(ValidationError, match="ready_for_preview=False cannot include request"):
         PlanPreviewReadinessResult(
             ready_for_preview=False,
             blockers=[sample_blocker],

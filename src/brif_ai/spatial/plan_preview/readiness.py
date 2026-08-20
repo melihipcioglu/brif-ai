@@ -98,8 +98,7 @@ class PlanPreviewReadinessResult(BaseModel):
                 )
             if self.request is None:
                 raise ValueError(
-                    "PlanPreviewReadinessResult with ready_for_preview=True "
-                    "must include request."
+                    "PlanPreviewReadinessResult with ready_for_preview=True must include request."
                 )
         else:
             if not self.blockers:
@@ -135,25 +134,19 @@ class PlanPreviewPreparationService:
 
         # 1. Canonical missing blocker check
         if directive_set is None:
-            missing_blockers.append(
-                _blocker(PlanPreviewReadinessBlockerCode.DIRECTIVE_SET_MISSING)
-            )
+            missing_blockers.append(_blocker(PlanPreviewReadinessBlockerCode.DIRECTIVE_SET_MISSING))
         if metric_requirements is None:
             missing_blockers.append(
                 _blocker(PlanPreviewReadinessBlockerCode.METRIC_REQUIREMENTS_MISSING)
             )
         if site_envelope is None:
-            missing_blockers.append(
-                _blocker(PlanPreviewReadinessBlockerCode.SITE_ENVELOPE_MISSING)
-            )
+            missing_blockers.append(_blocker(PlanPreviewReadinessBlockerCode.SITE_ENVELOPE_MISSING))
         if floor_plate_input is None:
             missing_blockers.append(
                 _blocker(PlanPreviewReadinessBlockerCode.FLOOR_PLATE_INPUT_MISSING)
             )
         if solver_config is None:
-            missing_blockers.append(
-                _blocker(PlanPreviewReadinessBlockerCode.SOLVER_CONFIG_MISSING)
-            )
+            missing_blockers.append(_blocker(PlanPreviewReadinessBlockerCode.SOLVER_CONFIG_MISSING))
 
         if missing_blockers:
             return PlanPreviewReadinessResult(
