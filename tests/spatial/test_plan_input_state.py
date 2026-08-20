@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import json
+import threading
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -758,3 +760,108 @@ def test_30_deterministic_serialization(tmp_path: Path) -> None:
     # Serialize again and compare string content
     serialized_2 = repo._canonical_json(state.model_dump(mode="json"))
     assert content_1 == serialized_2
+
+
+def test_31_exclusive_creation_collision_is_idempotent_for_identical_payload(
+    tmp_path: Path,
+) -> None:
+    """Exclusive creation collision with identical canonical JSON succeeds idempotently."""
+    repo = JSONPlanInputStateRepository(root_dir=tmp_path)
+    state = AuthoritativePlanInputState(
+        project_id="proj_01",
+        state_version=1,
+        source_brief_version=1,
+        created_at=datetime(2026, 8, 20, 12, 0, 0, tzinfo=UTC),
+    )
+
+    # First write creates the file
+    saved_1 = repo.save(state)
+    assert saved_1 == state
+
+    # Second write encounters existing file with identical content
+    saved_2 = repo.save(state)
+    assert saved_2 == state
+
+    # Verify latest.json and versions/000001.json are in sync
+    latest = repo.get_latest("proj_01")
+    v1 = repo.get_version("proj_01", 1)
+    assert latest == state
+    assert v1 == state
+
+
+def test_32_exclusive_creation_collision_rejects_different_payload_without_overwrite(
+    tmp_path: Path,
+) -> None:
+    """Exclusive creation collision with different canonical JSON raises conflict."""
+    repo = JSONPlanInputStateRepository(root_dir=tmp_path)
+    state_a = AuthoritativePlanInputState(
+        project_id="proj_01",
+        state_version=1,
+        source_brief_version=1,
+        created_at=datetime(2026, 8, 20, 12, 0, 0, tzinfo=UTC),
+    )
+    repo.save(state_a)
+
+    metrics, _, _, _ = _build_test_artifacts("proj_01", 1)
+    state_b = AuthoritativePlanInputState(
+        project_id="proj_01",
+        state_version=1,
+        source_brief_version=1,
+        created_at=datetime(2026, 8, 20, 12, 0, 0, tzinfo=UTC),
+        metric_requirements=metrics,
+    )
+
+    with pytest.raises(
+        PlanInputStateVersionConflictError, match="already exists with different content"
+    ):
+        repo.save(state_b)
+
+    # Verify disk content was NOT overwritten with state_b
+    disk_v1 = repo.get_version("proj_01", 1)
+    assert disk_v1 == state_a
+    assert disk_v1 is not None and disk_v1.metric_requirements is None
+
+
+def test_33_concurrent_save_race_allows_single_winner_and_rejects_losers(
+    tmp_path: Path,
+) -> None:
+    """Concurrent save race on the same version allows only 1 winner and rejects others."""
+    repo = JSONPlanInputStateRepository(root_dir=tmp_path)
+    concurrency = 8
+    barrier = threading.Barrier(concurrency)
+
+    def _save_candidate(idx: int) -> tuple[int, bool, str | None]:
+        # Construct distinct state payloads
+        cfg = RoomGeometrySolverConfig(grid_step_m=round(0.05 + idx * 0.05, 3))
+        candidate_state = AuthoritativePlanInputState(
+            project_id="proj_race",
+            state_version=1,
+            source_brief_version=1,
+            created_at=datetime(2026, 8, 20, 12, 0, 0, tzinfo=UTC),
+            solver_config=cfg,
+        )
+        # Synchronize all threads right before attempting save
+        barrier.wait()
+        try:
+            repo.save(candidate_state)
+            return (idx, True, None)
+        except PlanInputStateVersionConflictError as err:
+            return (idx, False, str(err))
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as executor:
+        futures = [executor.submit(_save_candidate, i) for i in range(concurrency)]
+        results = [f.result() for f in futures]
+
+    successes = [r for r in results if r[1] is True]
+    conflicts = [r for r in results if r[1] is False]
+
+    # Exactly one thread succeeds in exclusively creating the version file
+    assert len(successes) == 1
+    assert len(conflicts) == concurrency - 1
+
+    # On-disk state matches the winning thread's payload
+    winning_idx = successes[0][0]
+    winning_state = repo.get_version("proj_race", 1)
+    assert winning_state is not None
+    assert winning_state.solver_config is not None
+    assert winning_state.solver_config.grid_step_m == round(0.05 + winning_idx * 0.05, 3)

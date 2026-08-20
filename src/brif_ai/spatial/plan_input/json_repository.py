@@ -81,11 +81,43 @@ class JSONPlanInputStateRepository:
                 f"Failed to atomically write {target_path}: {err}"
             ) from err
 
+    def _write_version_file_excl(self, version_path: Path, canonical_str: str) -> None:
+        """Write canonical_str to version_path with exclusive creation (O_CREAT | O_EXCL).
+
+        Raises FileExistsError if version_path already exists.
+        Cleans up partially written file if write fails midway.
+        """
+        parent_dir = version_path.parent
+        parent_dir.mkdir(parents=True, exist_ok=True)
+        created = False
+        try:
+            fd = os.open(
+                str(version_path),
+                os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                0o644,
+            )
+            created = True
+            with open(fd, "w", encoding="utf-8") as f:
+                f.write(canonical_str)
+                f.flush()
+                os.fsync(f.fileno())
+        except FileExistsError:
+            raise
+        except Exception as err:
+            if created and version_path.exists():
+                with contextlib.suppress(OSError):
+                    version_path.unlink()
+            raise PlanInputStatePersistenceError(
+                f"Failed to exclusively write version file '{version_path}': {err}"
+            ) from err
+
     def save(self, state: AuthoritativePlanInputState) -> AuthoritativePlanInputState:
         """Persist an AuthoritativePlanInputState deterministically.
 
         Version file key is derived from state.state_version.
-        Writes version file and latest file atomically via temp-file + replace.
+        Uses atomic exclusive creation (O_CREAT | O_EXCL) for the immutable version file to
+        eliminate check-then-replace TOCTOU races.
+        Updates latest.json pointer atomically via temp-file + replace.
         Rejects attempts to overwrite an existing version file with different content.
         """
         state_copy = state.model_copy(deep=True)
@@ -97,12 +129,17 @@ class JSONPlanInputStateRepository:
         latest_path = plan_input_dir / "latest.json"
 
         new_data = state_copy.model_dump(mode="json")
+        canonical_str = self._canonical_json(new_data)
 
-        if version_path.exists():
+        # 1. Exclusively create immutable version file (fails atomically if already present)
+        try:
+            self._write_version_file_excl(version_path, canonical_str)
+        except FileExistsError:
+            # File already exists: check if content is identical (idempotent) or conflict
             try:
                 with open(version_path, encoding="utf-8") as f:
                     existing_data = json.load(f)
-                if self._canonical_json(existing_data) != self._canonical_json(new_data):
+                if self._canonical_json(existing_data) != canonical_str:
                     raise PlanInputStateVersionConflictError(
                         f"Plan input state version {state_copy.state_version} for project '{pid}' "
                         f"already exists with different content and cannot be overwritten."
@@ -111,11 +148,10 @@ class JSONPlanInputStateRepository:
                 raise
             except Exception as err:
                 raise PlanInputStatePersistenceError(
-                    f"Failed to verify existing version file: {err}"
+                    f"Failed to verify existing version file '{version_path}': {err}"
                 ) from err
 
-        # Atomically write version file and latest file
-        self._atomic_write_json(version_path, new_data)
+        # 2. Atomically update latest.json mutable pointer
         self._atomic_write_json(latest_path, new_data)
 
         return state_copy
