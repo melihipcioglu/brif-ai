@@ -1,0 +1,163 @@
+{
+  "solver_input": {
+    "schema_version": "layout_solver_input_set.v0",
+    "project_id": "proj_living_kitchen_01",
+    "source_brief_version": 1,
+    "source_directive_set_schema_version": "solver_directive_set.v0",
+    "source_metric_requirements_schema_version": "metric_spatial_requirements.v0",
+    "source_site_envelope_schema_version": "site_buildable_envelope.v0",
+    "created_at": "2026-08-19T12:15:00Z",
+    "coordinate_system": "LOCAL_CARTESIAN_METRES",
+    "spaces": [
+      {
+        "id": "sn_kitchen_01",
+        "source_program_space_id": "sn_kitchen_01",
+        "display_name": "Kitchen",
+        "function": "COOKING",
+        "instance_index": 1,
+        "mandatory": true,
+        "stakeholder_ids": [
+          "stk_01"
+        ],
+        "evidence_ids": [
+          "ev_01"
+        ]
+      },
+      {
+        "id": "sn_living_01",
+        "source_program_space_id": "sn_living_01",
+        "display_name": "Living Room",
+        "function": "LIVING",
+        "instance_index": 1,
+        "mandatory": true,
+        "stakeholder_ids": [
+          "stk_01"
+        ],
+        "evidence_ids": [
+          "ev_01"
+        ]
+      }
+    ],
+    "directives": [
+      {
+        "id": "srel_6d395f63db1ea24f",
+        "source_constraint_id": "srel_6d395f63db1ea24f",
+        "source_space_id": "sn_kitchen_01",
+        "target_space_id": "sn_living_01",
+        "source_relation_type": "ADJACENT_TO",
+        "operator": "ADJACENCY",
+        "enforcement": "REQUIRED",
+        "priority": "MUST",
+        "provenance": "USER_CONFIRMED",
+        "evidence_ids": [
+          "ev_01"
+        ],
+        "rationale": "Open-plan connection between living and kitchen",
+        "bidirectional": true
+      }
+    ],
+    "space_metric_requirements": [
+      {
+        "space_id": "sn_kitchen_01",
+        "requirements": [
+          {
+            "id": "mreq_9e92458dce33eb1b",
+            "space_id": "sn_kitchen_01",
+            "requirement_type": "MIN_AREA",
+            "value": 10.0,
+            "unit": "SQUARE_METRE",
+            "provenance": "USER_CONFIRMED",
+            "priority": "MUST",
+            "evidence_ids": [
+              "ev_01"
+            ],
+            "rationale": null
+          }
+        ]
+      },
+      {
+        "space_id": "sn_living_01",
+        "requirements": [
+          {
+            "id": "mreq_0a5143fad59bf7b9",
+            "space_id": "sn_living_01",
+            "requirement_type": "MIN_AREA",
+            "value": 20.0,
+            "unit": "SQUARE_METRE",
+            "provenance": "USER_CONFIRMED",
+            "priority": "MUST",
+            "evidence_ids": [
+              "ev_01"
+            ],
+            "rationale": null
+          }
+        ]
+      }
+    ],
+    "buildable_envelope": {
+      "id": "sgeom_c1b0028b148ce594",
+      "role": "BUILDABLE_ENVELOPE",
+      "vertices": [
+        {
+          "x_m": -8.0,
+          "y_m": -8.0
+        },
+        {
+          "x_m": 58.0,
+          "y_m": -8.0
+        },
+        {
+          "x_m": 58.0,
+          "y_m": 58.0
+        },
+        {
+          "x_m": -8.0,
+          "y_m": 58.0
+        }
+      ],
+      "provenance": "USER_CONFIRMED",
+      "evidence_ids": [
+        "ev_01"
+      ],
+      "rationale": null
+    },
+    "unconstrained_pairs": []
+  },
+  "floor_plate": {
+    "schema_version": "floor_plate.v0",
+    "id": "fplate_a2ab8e0ec7fd4b44",
+    "project_id": "proj_living_kitchen_01",
+    "source_brief_version": 1,
+    "source_solver_input_schema_version": "layout_solver_input_set.v0",
+    "created_at": "2026-08-19T12:15:00Z",
+    "coordinate_system": "LOCAL_CARTESIAN_METRES",
+    "vertices": [
+      {
+        "x_m": 4.0,
+        "y_m": 4.0
+      },
+      {
+        "x_m": 10.0,
+        "y_m": 4.0
+      },
+      {
+        "x_m": 10.0,
+        "y_m": 10.0
+      },
+      {
+        "x_m": 4.0,
+        "y_m": 10.0
+      }
+    ],
+    "provenance": "USER_CONFIRMED",
+    "evidence_ids": [
+      "ev_01"
+    ],
+    "rationale": "Rectangular FloorPlate"
+  },
+  "solver_config": {
+    "grid_step_m": 0.1,
+    "max_time_seconds": 10.0
+  },
+  "render_config": null
+}

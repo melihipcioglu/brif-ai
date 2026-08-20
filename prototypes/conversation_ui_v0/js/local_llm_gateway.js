@@ -369,6 +369,67 @@ class LocalLLMGateway {
       };
     }
   }
+
+  async previewPlan(requestPayload, options = {}) {
+    if (!requestPayload || typeof requestPayload !== 'object') {
+      return { ok: false, status: 400, error: 'Geçersiz plan önizleme isteği.' };
+    }
+    const signal = options.signal;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
+
+    if (signal) {
+      if (signal.aborted) {
+        clearTimeout(timeoutId);
+        return { ok: false, status: 0, error: 'Plan isteği iptal edildi.' };
+      }
+      signal.addEventListener('abort', () => controller.abort(), { once: true });
+    }
+
+    try {
+      const response = await this.fetchFn(`${this.baseUrl}/api/v1/plan/preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestPayload),
+        signal: controller.signal
+      });
+      const payload = await this.readResponse(response);
+
+      if (response.ok && payload && payload.success === true) {
+        return {
+          ok: true,
+          status: response.status,
+          solution: payload.solution,
+          document: payload.document
+        };
+      }
+
+      const mappedErrorText = response.status === 409
+        ? 'Plan girdileri birbiriyle uyuşmuyor.'
+        : response.status === 422
+        ? 'Plan girdileri bu sürümde çözülemiyor.'
+        : response.status === 503
+        ? 'Plan çözücü şu anda sonuç üretemedi.'
+        : 'Plan önizlemesi oluşturulamadı.';
+
+      return {
+        ok: false,
+        status: response.status,
+        error: mappedErrorText,
+        payload
+      };
+    } catch (error) {
+      if (signal && signal.aborted) {
+        return { ok: false, status: 0, error: 'Plan isteği iptal edildi.' };
+      }
+      if (error && error.name === 'AbortError') {
+        return { ok: false, status: 0, error: 'Plan isteği zaman aşımına uğradı.' };
+      }
+      return { ok: false, status: 0, error: 'Plan servisine ulaşılamadı.' };
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
 }
 
 if (typeof module !== 'undefined' && module.exports) {

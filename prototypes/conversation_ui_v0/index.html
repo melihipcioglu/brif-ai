@@ -185,6 +185,29 @@
         <div class="stage-view hidden" id="stageView4">
           <div class="plan-scroll-area">
             
+            <!-- REAL DETERMINISTIC PLAN PREVIEW V0 CARD -->
+            <div class="plan-preview-card" id="planPreviewSurface">
+              <div class="plan-preview-card-header">
+                <div class="plan-preview-header-left">
+                  <span class="plan-preview-badge">v0 Mekânsal Çözücü</span>
+                  <h3 class="plan-preview-header-title">📐 Deterministik Taslak Plan Önizlemesi (FastAPI)</h3>
+                </div>
+                <button type="button" class="plan-preview-btn-action" id="btnShowPlanPreview">
+                  <span>Taslak Planı Göster</span>
+                </button>
+              </div>
+              <div class="plan-preview-content" id="planPreviewContent">
+                <div class="plan-preview-empty-state">
+                  <div class="empty-icon">🏛️</div>
+                  <div class="empty-info">
+                    <h4>Doğrulanmış İki Mekânlı Demo Senaryosu</h4>
+                    <p>Salon (≥ 20 m²) ve Mutfak (≥ 10 m²) bitişiklik kuralıyla gerçek FastAPI mekânsal çözücüsünde hesaplanır ve deterministik SVG olarak gösterilir.</p>
+                  </div>
+                  <button type="button" class="plan-preview-btn-action" id="btnShowPlanPreviewEmpty">Taslak Planı Göster</button>
+                </div>
+              </div>
+            </div>
+
             <div class="plan-assumptions-compact-card">
               <div class="compact-card-left">
                 <span class="card-icon">📐</span>

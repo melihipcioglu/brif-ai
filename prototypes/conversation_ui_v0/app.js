@@ -205,6 +205,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  // Plan Preview UI V0 Trigger Buttons (Deterministic FastAPI Solver Demo)
+  const btnShowPlanPreview = document.getElementById('btnShowPlanPreview');
+  const btnShowPlanPreviewEmpty = document.getElementById('btnShowPlanPreviewEmpty');
+  const handlePlanPreviewClick = () => {
+    orchestrator.requestDemoPlanPreview();
+  };
+  if (btnShowPlanPreview) {
+    btnShowPlanPreview.addEventListener('click', handlePlanPreviewClick);
+  }
+  if (btnShowPlanPreviewEmpty) {
+    btnShowPlanPreviewEmpty.addEventListener('click', handlePlanPreviewClick);
+  }
+
   // Stage Stepper Navigation
   const stepNodes = document.querySelectorAll('.step-node');
   const stageViews = document.querySelectorAll('.stage-view');
