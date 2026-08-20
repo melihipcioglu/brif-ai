@@ -8,6 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
 from brif_ai.brief.persistence import (
+    BriefPersistenceError,
     BriefRepository,
     InvalidProjectIdError,
     JSONBriefRepository,
@@ -19,10 +20,12 @@ from brif_ai.spatial.layout.compiler import LayoutProblemCompiler
 from brif_ai.spatial.layout.errors import LayoutProblemError
 from brif_ai.spatial.persistence import (
     JSONSpatialRelationshipRepository,
+    SpatialGraphPersistenceError,
     SpatialRelationshipRepository,
 )
 from brif_ai.spatial.plan_input import (
     JSONPlanInputStateRepository,
+    PlanInputStatePersistenceError,
     PlanInputStateRepository,
     PlanInputStateService,
 )
@@ -119,19 +122,34 @@ class ProjectPlanPreviewReadinessResult(BaseModel):
         if self.ready_for_preview:
             if self.project_blockers:
                 raise ValueError("ready_for_preview=True must have empty project_blockers.")
-            if self.preparation is None or not self.preparation.ready_for_preview:
+            if self.preparation is None:
+                raise ValueError(
+                    "ready_for_preview=True requires a successful preparation result "
+                    "(preparation cannot be None)."
+                )
+            if not self.preparation.ready_for_preview:
                 raise ValueError(
                     "ready_for_preview=True requires a successful preparation result "
                     "(preparation.ready_for_preview=True)."
                 )
         else:
-            if not self.project_blockers and (
-                self.preparation is None or self.preparation.ready_for_preview
-            ):
-                raise ValueError(
-                    "ready_for_preview=False must contain project_blockers or a "
-                    "blocked preparation result."
-                )
+            if self.project_blockers:
+                if self.preparation is not None:
+                    raise ValueError(
+                        "Project-blocked state (project_blockers non-empty) "
+                        "must have preparation=None."
+                    )
+            else:
+                if self.preparation is None:
+                    raise ValueError(
+                        "ready_for_preview=False with empty project_blockers "
+                        "requires a blocked preparation result."
+                    )
+                if self.preparation.ready_for_preview:
+                    raise ValueError(
+                        "ready_for_preview=False cannot have a successful preparation result "
+                        "(preparation.ready_for_preview=True)."
+                    )
         return self
 
 
@@ -186,6 +204,11 @@ class ProjectPlanPreviewReadinessService:
                 project_blockers=[_project_blocker(ProjectPlanPreviewBlockerCode.BRIEF_MISSING)],
                 preparation=None,
             )
+        if latest_brief.project_id != validated_pid:
+            raise BriefPersistenceError(
+                f"Persisted brief project_id mismatch: expected '{validated_pid}', "
+                f"found '{latest_brief.project_id}'"
+            )
 
         # 2. Fetch latest SpatialRelationshipGraph
         latest_graph = self.spatial_service.get_latest_graph(validated_pid)
@@ -200,6 +223,11 @@ class ProjectPlanPreviewReadinessService:
                 ],
                 preparation=None,
             )
+        if latest_graph.project_id != validated_pid:
+            raise SpatialGraphPersistenceError(
+                f"Persisted spatial relationship graph project_id mismatch: "
+                f"expected '{validated_pid}', found '{latest_graph.project_id}'"
+            )
 
         # 3. Fetch latest AuthoritativePlanInputState
         latest_plan_input = self.plan_input_service.get_latest_state(validated_pid)
@@ -213,6 +241,11 @@ class ProjectPlanPreviewReadinessService:
                     _project_blocker(ProjectPlanPreviewBlockerCode.PLAN_INPUT_STATE_MISSING)
                 ],
                 preparation=None,
+            )
+        if latest_plan_input.project_id != validated_pid:
+            raise PlanInputStatePersistenceError(
+                f"Persisted plan input state project_id mismatch: "
+                f"expected '{validated_pid}', found '{latest_plan_input.project_id}'"
             )
 
         # 4. Source version consistency checks

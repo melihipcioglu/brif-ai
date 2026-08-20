@@ -33,6 +33,7 @@ from brif_ai.conversation.elicitation.models import ElicitationTopic
 from brif_ai.core.models.common import SpaceFunction
 from brif_ai.spatial.builder import SpatialRelationshipGraphBuilder
 from brif_ai.spatial.floor_plate.models import FloorPlateInput
+from brif_ai.spatial.layout.compiler import LayoutProblemCompiler
 from brif_ai.spatial.metrics.builder import MetricSpatialRequirementsBuilder
 from brif_ai.spatial.metrics.models import (
     MetricRequirementInput,
@@ -46,27 +47,37 @@ from brif_ai.spatial.models import (
     SpatialRelationshipInput,
     SpatialRelationType,
 )
-from brif_ai.spatial.persistence import JSONSpatialRelationshipRepository
+from brif_ai.spatial.persistence import (
+    JSONSpatialRelationshipRepository,
+    SpatialGraphPersistenceError,
+)
 from brif_ai.spatial.plan_input import (
     AuthoritativePlanInputState,
     JSONPlanInputStateRepository,
+    PlanInputStatePersistenceError,
+    PlanInputStateService,
 )
 from brif_ai.spatial.plan_preview import (
+    PlanPreviewReadinessBlocker,
     PlanPreviewReadinessBlockerCode,
+    PlanPreviewReadinessResult,
     ProjectPlanPreviewBlocker,
     ProjectPlanPreviewBlockerCode,
     ProjectPlanPreviewReadinessResult,
     ProjectPlanPreviewReadinessService,
 )
+from brif_ai.spatial.plan_preview.readiness import PlanPreviewPreparationService
 from brif_ai.spatial.program.builder import SpatialProgramBuilder
 from brif_ai.spatial.room_solver.models import RoomGeometrySolverConfig
 from brif_ai.spatial.room_solver.solver import RoomGeometrySolver
+from brif_ai.spatial.service import PersistentSpatialService
 from brif_ai.spatial.site.builder import SiteBuildableEnvelopeBuilder
 from brif_ai.spatial.site.models import (
     SiteBuildableEnvelope,
     SitePoint,
     SitePolygonInput,
 )
+from brif_ai.spatial.solver_policy.compiler import SolverPolicyCompiler
 from brif_ai.spatial.svg_plan.renderer import SvgPlanRenderer
 
 
@@ -1000,23 +1011,221 @@ def test_25_directive_derivation_failure_returns_directive_derivation_failed(
     )
 
 
-def test_project_readiness_result_model_invariants() -> None:
-    """Enforce strict mutual exclusion and validation rules on ProjectPlanPreviewReadinessResult."""
-    # ready=True with blockers must fail
+def test_26_wrong_project_brief_snapshot_raises_persistence_error(tmp_path: Path) -> None:
+    """BriefSnapshot with mismatched project_id raises BriefPersistenceError."""
+    brief_repo = JSONBriefRepository(root_dir=tmp_path)
+    spatial_repo = JSONSpatialRelationshipRepository(root_dir=tmp_path)
+    plan_input_repo = JSONPlanInputStateRepository(root_dir=tmp_path)
+
+    service = ProjectPlanPreviewReadinessService(
+        brief_repository=brief_repo,
+        spatial_repository=spatial_repo,
+        plan_input_repository=plan_input_repo,
+    )
+
+    snapshot, _, _, _, _, _ = _build_test_data("proj_other", 1)
+    with (
+        patch.object(PersistentBriefService, "get_latest_brief", return_value=snapshot),
+        pytest.raises(BriefPersistenceError, match="Persisted brief project_id mismatch"),
+    ):
+        service.evaluate("proj_01")
+
+
+def test_27_wrong_project_spatial_graph_raises_persistence_error(tmp_path: Path) -> None:
+    """SpatialRelationshipGraph with mismatched project_id raises error."""
+    brief_repo = JSONBriefRepository(root_dir=tmp_path)
+    spatial_repo = JSONSpatialRelationshipRepository(root_dir=tmp_path)
+    plan_input_repo = JSONPlanInputStateRepository(root_dir=tmp_path)
+
+    snapshot, _, _, _, _, _ = _build_test_data("proj_01", 1)
+    brief_repo.save(snapshot)
+
+    _, graph_other, _, _, _, _ = _build_test_data("proj_other", 1)
+
+    service = ProjectPlanPreviewReadinessService(
+        brief_repository=brief_repo,
+        spatial_repository=spatial_repo,
+        plan_input_repository=plan_input_repo,
+    )
+
+    with (
+        patch.object(
+            PersistentSpatialService,
+            "get_latest_graph",
+            return_value=graph_other,
+        ),
+        pytest.raises(
+            SpatialGraphPersistenceError,
+            match="Persisted spatial relationship graph project_id mismatch",
+        ),
+    ):
+        service.evaluate("proj_01")
+
+
+def test_28_wrong_project_plan_input_state_raises_persistence_error(tmp_path: Path) -> None:
+    """AuthoritativePlanInputState with mismatched project_id raises error."""
+    brief_repo = JSONBriefRepository(root_dir=tmp_path)
+    spatial_repo = JSONSpatialRelationshipRepository(root_dir=tmp_path)
+    plan_input_repo = JSONPlanInputStateRepository(root_dir=tmp_path)
+
+    snapshot, graph, _, _, _, _ = _build_test_data("proj_01", 1)
+    brief_repo.save(snapshot)
+    spatial_repo.save(graph)
+
+    _, _, metrics_other, site_other, fp_other, cfg_other = _build_test_data("proj_other", 1)
+    state_other = AuthoritativePlanInputState(
+        project_id="proj_other",
+        state_version=1,
+        source_brief_version=1,
+        created_at=datetime(2026, 8, 20, 12, 0, 0, tzinfo=UTC),
+        metric_requirements=metrics_other,
+        site_envelope=site_other,
+        floor_plate_input=fp_other,
+        solver_config=cfg_other,
+    )
+
+    service = ProjectPlanPreviewReadinessService(
+        brief_repository=brief_repo,
+        spatial_repository=spatial_repo,
+        plan_input_repository=plan_input_repo,
+    )
+
+    with (
+        patch.object(
+            PlanInputStateService,
+            "get_latest_state",
+            return_value=state_other,
+        ),
+        pytest.raises(
+            PlanInputStatePersistenceError,
+            match="Persisted plan input state project_id mismatch",
+        ),
+    ):
+        service.evaluate("proj_01")
+
+
+def test_29_wrong_project_artifacts_map_to_500_in_api(tmp_path: Path) -> None:
+    """Mismatched project artifacts are mapped to HTTP 500 by the API layer."""
+    app = create_app(
+        brief_repository=JSONBriefRepository(root_dir=tmp_path),
+        spatial_repository=JSONSpatialRelationshipRepository(root_dir=tmp_path),
+        plan_input_repository=JSONPlanInputStateRepository(root_dir=tmp_path),
+    )
+    client = TestClient(app)
+
+    snapshot, _, _, _, _, _ = _build_test_data("proj_other", 1)
+    with patch.object(PersistentBriefService, "get_latest_brief", return_value=snapshot):
+        response = client.get("/api/v1/projects/proj_01/plan/preview/readiness")
+        assert response.status_code == 500
+        assert "Kalıcı depolama hatası" in response.json()["detail"]
+
+
+def test_30_project_readiness_result_strict_invariants() -> None:
+    """Enforce exact valid states (A, B, C) and rejection of every invalid combination."""
+    dummy_blocker = ProjectPlanPreviewBlocker(
+        code=ProjectPlanPreviewBlockerCode.BRIEF_MISSING,
+        message="Missing brief",
+    )
+    prep_blocker = PlanPreviewReadinessBlocker(
+        code=PlanPreviewReadinessBlockerCode.SOLVER_CONFIG_MISSING,
+        message="Missing config",
+    )
+    snap, graph, metrics, site, fp, cfg = _build_test_data("proj_01", 1)
+    program = SpatialProgramBuilder().build(snap, graph)
+    problem = LayoutProblemCompiler().compile(program)
+    directives = SolverPolicyCompiler().compile(problem)
+    prep_ready = PlanPreviewPreparationService.prepare(
+        directive_set=directives,
+        metric_requirements=metrics,
+        site_envelope=site,
+        floor_plate_input=fp,
+        solver_config=cfg,
+    )
+    assert prep_ready.ready_for_preview is True
+
+    prep_blocked = PlanPreviewReadinessResult(
+        ready_for_preview=False,
+        blockers=[prep_blocker],
+        request=None,
+    )
+
+    # State A (READY): ready=True, project_blockers=[], prep is not None and prep.ready=True
+    result_a = ProjectPlanPreviewReadinessResult(
+        project_id="proj_01",
+        ready_for_preview=True,
+        project_blockers=[],
+        preparation=prep_ready,
+    )
+    assert result_a.ready_for_preview is True
+
+    # State B (PROJECT-BLOCKED): ready=False, project_blockers non-empty, prep is None
+    result_b = ProjectPlanPreviewReadinessResult(
+        project_id="proj_01",
+        ready_for_preview=False,
+        project_blockers=[dummy_blocker],
+        preparation=None,
+    )
+    assert result_b.ready_for_preview is False
+    assert len(result_b.project_blockers) == 1
+
+    # State C (PREPARATION-BLOCKED): ready=False, project_blockers=[], prep blocked
+    result_c = ProjectPlanPreviewReadinessResult(
+        project_id="proj_01",
+        ready_for_preview=False,
+        project_blockers=[],
+        preparation=prep_blocked,
+    )
+    assert result_c.ready_for_preview is False
+    assert result_c.preparation is not None
+    assert result_c.preparation.ready_for_preview is False
+
+    # REJECTIONS:
+    # 1. ready=False + project blockers + successful preparation
+    with pytest.raises(ValueError, match="Project-blocked state .* must have preparation=None"):
+        ProjectPlanPreviewReadinessResult(
+            project_id="proj_01",
+            ready_for_preview=False,
+            project_blockers=[dummy_blocker],
+            preparation=prep_ready,
+        )
+
+    # 2. ready=False + project blockers + blocked preparation
+    with pytest.raises(ValueError, match="Project-blocked state .* must have preparation=None"):
+        ProjectPlanPreviewReadinessResult(
+            project_id="proj_01",
+            ready_for_preview=False,
+            project_blockers=[dummy_blocker],
+            preparation=prep_blocked,
+        )
+
+    # 3. ready=False + no blockers + no preparation
+    with pytest.raises(ValueError, match="requires a blocked preparation result"):
+        ProjectPlanPreviewReadinessResult(
+            project_id="proj_01",
+            ready_for_preview=False,
+            project_blockers=[],
+            preparation=None,
+        )
+
+    # 4. ready=False + no project blockers + successful preparation
+    with pytest.raises(ValueError, match="cannot have a successful preparation result"):
+        ProjectPlanPreviewReadinessResult(
+            project_id="proj_01",
+            ready_for_preview=False,
+            project_blockers=[],
+            preparation=prep_ready,
+        )
+
+    # 5. ready=True + project blockers
     with pytest.raises(ValueError, match="ready_for_preview=True must have empty project_blockers"):
         ProjectPlanPreviewReadinessResult(
             project_id="proj_01",
             ready_for_preview=True,
-            project_blockers=[
-                ProjectPlanPreviewBlocker(
-                    code=ProjectPlanPreviewBlockerCode.BRIEF_MISSING,
-                    message="Missing",
-                )
-            ],
-            preparation=None,
+            project_blockers=[dummy_blocker],
+            preparation=prep_ready,
         )
 
-    # ready=True without preparation must fail
+    # 6. ready=True + missing preparation (None)
     with pytest.raises(ValueError, match="requires a successful preparation result"):
         ProjectPlanPreviewReadinessResult(
             project_id="proj_01",
@@ -1025,11 +1234,11 @@ def test_project_readiness_result_model_invariants() -> None:
             preparation=None,
         )
 
-    # ready=False with no blockers and no preparation must fail
-    with pytest.raises(ValueError, match="ready_for_preview=False must contain project_blockers"):
+    # 7. ready=True + blocked preparation
+    with pytest.raises(ValueError, match="requires a successful preparation result"):
         ProjectPlanPreviewReadinessResult(
             project_id="proj_01",
-            ready_for_preview=False,
+            ready_for_preview=True,
             project_blockers=[],
-            preparation=None,
+            preparation=prep_blocked,
         )
