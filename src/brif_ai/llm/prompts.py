@@ -9,6 +9,7 @@ from brif_ai.llm.compare_engine import CompareFailureCategory, CompareRequestAna
 from brif_ai.llm.contracts import (
     ActiveContextSnapshot,
     ConversationRequest,
+    MetricConversationContext,
     PendingProposalContext,
     VisibleEntity,
 )
@@ -22,11 +23,17 @@ SYSTEM_PROMPT = (
     "Mevzuat uydurma; PASS/FAIL/UNKNOWN değiştirme; tercih/mevzuatı ayırt et.\n"
     "Aktif bağlamda olmayan yön, ölçü/konum uydurma.\n"
     "Plan proposed_actions, brief proposed_brief_mutations, "
-    "mekânsal ilişkiler proposed_spatial_relationships ile verilir.\n"
+    "mekânsal ilişkiler proposed_spatial_relationships, "
+    "alan/ölçü gereksinimleri proposed_metric_requirements ile verilir.\n"
     "Mekânsal ilişkide active_brief.spatial_nodes kimliklerini "
     "ve canonical relation_type ile USER_STATED provenance kullan; "
-    "proposed_brief_mutations=[] ve proposed_actions=[] olsun.\n"
-    "Plan değişikliği veya ilişki önerisi requires_user_confirmation=true gerektirir.\n"
+    "proposed_brief_mutations=[], proposed_metric_requirements=[] ve proposed_actions=[] olsun.\n"
+    "Metrik gereksiniminde (MIN_AREA, MAX_AREA, MIN_CLEAR_WIDTH) metric_context.spaces "
+    "içindeki space_id kimliğini kullan; kesin min/max "
+    "('en az 30 m²', 'en fazla 20 m²', 'en az 1.20 m') dışında metrik önerme; "
+    "yaklaşık/belirsiz ifadelerde açıklama iste; TARGET_AREA kullanma; "
+    "proposed_brief_mutations=[], proposed_spatial_relationships=[] ve proposed_actions=[] olsun.\n"
+    "Plan değişikliği, ilişki veya metrik önerisi requires_user_confirmation=true gerektirir.\n"
     "Bekleyen öneri henüz onaylanmış karar değildir; ilk analizi tekrarlama, "
     "onaylama, ayrıntılandırma veya vazgeçme seçeneklerini doğal Türkçe sun.\n"
     'Makine kimliği, iç alan veya enum adlarını, "entity", "target", "öğe bilgisi" gösterme.\n'
@@ -48,7 +55,7 @@ Aşağıdaki kurallara KESİNLİKLE UY:
   terimlerini kullanma.
 - İngilizce kelime kullanma; tüm anlatım öz Türkçe ve doğal olsun.
 - Karşılaştırmada intent=compare_alternatives, target tüm alanları null,
-  proposed_actions=[], proposed_brief_mutations=[],
+  proposed_actions=[], proposed_brief_mutations=[], proposed_metric_requirements=[],
   needs_user_confirmation=false, needs_follow_up=false, follow_up_question=null yap.
 - assistant_message içinde kesin yön ve konum belirtmeden şu 3 bölümü eksiksiz üret:
   Alternatif 1 - <Türkçe kısa ad>: <tek veya iki kısa cümle>
@@ -61,15 +68,17 @@ Aşağıdaki kurallara KESİNLİKLE UY:
 - Verilmeyen yön (kuzey/güney/doğu/batı), cephe, ölçü veya konum bilgisini uydurma.
 - target her zaman bir JSON nesnesi olsun; bilinmeyen alt alanlarda null kullan.
 - user_requirements, interpreted_priorities, constraints_to_check,
-  missing_information, proposed_actions, proposed_brief_mutations ve warnings
+  missing_information, proposed_actions, proposed_brief_mutations,
+  proposed_spatial_relationships, proposed_metric_requirements ve warnings
   her zaman JSON dizisi olsun; null veya metin kullanma.
 - needs_follow_up=true ise follow_up_question dolu bir metin olsun ve follow_up_topic
   girdideki elicitation.allowed_follow_up_topic ile birebir aynı olsun.
 - needs_follow_up=false ise follow_up_question=null ve follow_up_topic=null olsun.
 - elicitation.allowed_follow_up_topic=null ise needs_follow_up=false olsun.
-- proposed_actions veya proposed_brief_mutations boş değilse needs_follow_up=false olsun.
-- proposed_actions boş değilse needs_user_confirmation=true olsun ve her eylemde
-  requires_user_confirmation=true kullan.
+- proposed_actions, proposed_brief_mutations, proposed_spatial_relationships veya
+  proposed_metric_requirements boş değilse needs_follow_up=false olsun.
+- proposed_actions, proposed_brief_mutations, proposed_spatial_relationships veya
+  proposed_metric_requirements boş değilse needs_user_confirmation=true olsun.
 - Plan değişikliği eyleminde yalnız görünür kapsamdaki gerçek target_entity_id değerini kullan;
   hedef bilinmiyorsa eylem üretme, takip sorusu sor.
 - confidence 0 ile 1 arasında bir sayı olsun; şema dışı hiçbir alan ekleme.
@@ -181,6 +190,8 @@ def _proposal_payload(proposal: PendingProposalContext) -> dict[str, object]:
         payload["brief_mutation"] = proposal.brief_mutation.model_dump(mode="json")
     if proposal.spatial_relationship is not None:
         payload["spatial_relationship"] = proposal.spatial_relationship.model_dump(mode="json")
+    if proposal.metric_requirement is not None:
+        payload["metric_requirement"] = proposal.metric_requirement.model_dump(mode="json")
     return payload
 
 
@@ -234,7 +245,11 @@ def _compact_brief_payload(snapshot: BriefSnapshot) -> dict[str, object]:
     }
 
 
-def build_user_prompt(request: ConversationRequest) -> str:
+def build_user_prompt(
+    request: ConversationRequest,
+    *,
+    metric_context: MetricConversationContext | None = None,
+) -> str:
     """Serialize validated context once, without repeating inherited scope."""
 
     active = request.active_context
@@ -284,6 +299,30 @@ def build_user_prompt(request: ConversationRequest) -> str:
             "pending_proposals_exist": el.pending_proposals_exist,
             "open_question_topics": [t.value for t in el.open_question_topics],
             "answered_question_topics": [t.value for t in el.answered_question_topics],
+        }
+    if metric_context is not None:
+        payload["metric_context"] = {
+            "spaces": [
+                {
+                    "space_id": s.space_id,
+                    "display_name": s.display_name,
+                    "function": s.function,
+                    "existing_requirements": [
+                        {
+                            "requirement_type": (
+                                r.requirement_type.value
+                                if hasattr(r.requirement_type, "value")
+                                else str(r.requirement_type)
+                            ),
+                            "value": r.value,
+                            "unit": (r.unit.value if hasattr(r.unit, "value") else str(r.unit)),
+                        }
+                        for r in s.existing_requirements
+                    ],
+                }
+                for s in metric_context.spaces
+            ],
+            "source_brief_version": metric_context.source_brief_version,
         }
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 

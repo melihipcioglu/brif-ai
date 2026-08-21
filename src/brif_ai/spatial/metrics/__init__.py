@@ -20,6 +20,7 @@ from brif_ai.spatial.metrics.models import (
     MetricRequirementType,
     MetricSpatialRequirements,
     MetricUnit,
+    ProposedMetricRequirement,
     SpaceMetricRequirements,
     generate_metric_requirement_id,
 )
@@ -40,6 +41,7 @@ __all__ = [
     "MetricSpatialRequirementsBuilder",
     "MetricUnit",
     "MetricUnitMismatchError",
+    "ProposedMetricRequirement",
     "SpaceMetricRequirements",
     "generate_metric_requirement_id",
 ]

@@ -462,7 +462,7 @@ def test_malformed_freetext_proposed_action_cannot_become_brief_mutation() -> No
 def test_proposed_action_and_brief_mutation_remain_separate() -> None:
     with pytest.raises(
         ValidationError,
-        match="Exactly one of action, brief_mutation, or spatial_relationship",
+        match="Exactly one of action, brief_mutation, spatial_relationship, or metric_requirement",
     ):
         PendingProposalContext(
             context_fingerprint="fp_123",

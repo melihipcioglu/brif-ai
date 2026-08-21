@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from typing import Any
 
@@ -16,7 +17,12 @@ from brif_ai.llm.contracts import (
     ConversationRequest,
     EntityTarget,
     IntentType,
+    MetricConversationContext,
     VisibleEntity,
+)
+from brif_ai.spatial.metrics.models import (
+    MetricRequirementType,
+    MetricUnit,
 )
 from brif_ai.spatial.models import project_space_requests_to_spatial_nodes
 
@@ -1383,6 +1389,8 @@ class ArchitecturalIntentPolicyValidator:
         self,
         result: ArchitecturalIntentResult,
         request: ConversationRequest,
+        *,
+        metric_context: MetricConversationContext | None = None,
     ) -> ArchitecturalIntentResult:
         """Sanitize machine IDs, internal terms, and neutralize unsupported spatial directions."""
         trusted_evidence = extract_trusted_direction_evidence(request)
@@ -1480,6 +1488,13 @@ class ArchitecturalIntentPolicyValidator:
             for r in result.proposed_spatial_relationships[:2]
         ]
 
+        sanitized_metric_reqs = [
+            m.model_copy(
+                update={"rationale": _clean(m.rationale) if m.rationale is not None else None}
+            )
+            for m in result.proposed_metric_requirements[:3]
+        ]
+
         updates: dict[str, Any] = {
             "assistant_message": _clean(result.assistant_message),
             "follow_up_question": (
@@ -1492,9 +1507,10 @@ class ArchitecturalIntentPolicyValidator:
             "proposed_actions": actions,
             "proposed_brief_mutations": sanitized_mutations,
             "proposed_spatial_relationships": sanitized_spatial_rels,
+            "proposed_metric_requirements": sanitized_metric_reqs,
             "warnings": [_clean(text) for text in result.warnings],
         }
-        if sanitized_mutations or sanitized_spatial_rels or actions:
+        if sanitized_mutations or sanitized_spatial_rels or sanitized_metric_reqs or actions:
             updates["needs_user_confirmation"] = True
 
         if (
@@ -1558,7 +1574,7 @@ class ArchitecturalIntentPolicyValidator:
                 if not has_spatial_match and not has_matching:
                     updates["answers_current_open_question"] = False
 
-        if sanitized_mutations or sanitized_spatial_rels or actions:
+        if sanitized_mutations or sanitized_spatial_rels or sanitized_metric_reqs or actions:
             updates["needs_user_confirmation"] = True
 
         if sanitized_spatial_rels:
@@ -1568,6 +1584,7 @@ class ArchitecturalIntentPolicyValidator:
             updates["follow_up_topic"] = None
             updates["proposed_actions"] = []
             updates["proposed_brief_mutations"] = []
+            updates["proposed_metric_requirements"] = []
             updates["missing_information"] = []
             updates["interpreted_priorities"] = []
             updates["constraints_to_check"] = []
@@ -1581,6 +1598,19 @@ class ArchitecturalIntentPolicyValidator:
                     sanitized_spatial_rels[0], request.brief_snapshot
                 )
                 updates["assistant_message"] = f"{stmt} Bu mekânsal ilişkiyi onaylıyor musunuz?"
+
+        if sanitized_metric_reqs:
+            updates["needs_user_confirmation"] = True
+            updates["needs_follow_up"] = False
+            updates["follow_up_question"] = None
+            updates["follow_up_topic"] = None
+            updates["proposed_actions"] = []
+            updates["proposed_brief_mutations"] = []
+            updates["proposed_spatial_relationships"] = []
+            updates["missing_information"] = []
+            updates["interpreted_priorities"] = []
+            updates["constraints_to_check"] = []
+            updates["warnings"] = []
 
         sanitized = result.model_copy(update=updates)
         if not sanitized.needs_follow_up:
@@ -1622,6 +1652,7 @@ class ArchitecturalIntentPolicyValidator:
                 "proposed_actions": actions,
                 "proposed_brief_mutations": [],
                 "proposed_spatial_relationships": [],
+                "proposed_metric_requirements": [],
                 "warnings": [_clean(text) for text in result.warnings],
             }
         )
@@ -1633,6 +1664,8 @@ class ArchitecturalIntentPolicyValidator:
         self,
         result: ArchitecturalIntentResult,
         request: ConversationRequest,
+        *,
+        metric_context: MetricConversationContext | None = None,
     ) -> None:
         """Validate post-schema semantic rules and forbid internal system jargon."""
 
@@ -1667,6 +1700,73 @@ class ArchitecturalIntentPolicyValidator:
             raise PolicyValidationError(
                 "Bir mesajda en fazla 3 mekânsal ilişki önerisi sunulabilir."
             )
+
+        if len(result.proposed_metric_requirements) > 3:
+            raise PolicyValidationError(
+                "Bir mesajda en fazla 3 metrik gereksinim önerisi sunulabilir."
+            )
+
+        # Validate metric proposal scope, type, unit, and value integrity
+        if result.proposed_metric_requirements:
+            if metric_context is None or not metric_context.spaces:
+                raise PolicyValidationError(
+                    "Metrik bağlamı (SpatialProgram) bulunamadığı için "
+                    "metrik gereksinim önerilemez."
+                )
+            valid_space_ids = {s.space_id for s in metric_context.spaces}
+            for m_req in result.proposed_metric_requirements:
+                if m_req.space_id not in valid_space_ids:
+                    raise PolicyValidationError(
+                        f"Bilinmeyen mekân kimliği {m_req.space_id!r} önerildi. "
+                        f"Yalnızca geçerli SpatialProgram mekânları kullanılabilir."
+                    )
+                if m_req.requirement_type == MetricRequirementType.TARGET_AREA:
+                    raise PolicyValidationError(
+                        "TARGET_AREA metrik önerisi V0 kapsamında desteklenmemektedir."
+                    )
+                if m_req.requirement_type not in (
+                    MetricRequirementType.MIN_AREA,
+                    MetricRequirementType.MAX_AREA,
+                    MetricRequirementType.MIN_CLEAR_WIDTH,
+                ):
+                    raise PolicyValidationError(
+                        f"Desteklenmeyen metrik öneri türü {m_req.requirement_type}."
+                    )
+                if (
+                    m_req.requirement_type
+                    in (MetricRequirementType.MIN_AREA, MetricRequirementType.MAX_AREA)
+                    and m_req.unit != MetricUnit.SQUARE_METRE
+                ):
+                    raise PolicyValidationError(
+                        f"Gereksinim {m_req.requirement_type.value!r} için "
+                        "SQUARE_METRE birimi gereklidir."
+                    )
+                if (
+                    m_req.requirement_type == MetricRequirementType.MIN_CLEAR_WIDTH
+                    and m_req.unit != MetricUnit.METRE
+                ):
+                    raise PolicyValidationError(
+                        f"Gereksinim {m_req.requirement_type.value!r} için METRE birimi gereklidir."
+                    )
+                if not math.isfinite(m_req.value) or m_req.value <= 0:
+                    raise PolicyValidationError(
+                        f"Metrik gereksinim değeri pozitif ve sonlu bir sayı olmalıdır, "
+                        f"got {m_req.value!r}."
+                    )
+            if result.proposed_actions:
+                raise PolicyValidationError("Metrik önerileri plan eylemleri ile karıştırılamaz.")
+            if result.proposed_brief_mutations:
+                raise PolicyValidationError(
+                    "Metrik önerileri brief mutasyonları ile karıştırılamaz."
+                )
+            if result.proposed_spatial_relationships:
+                raise PolicyValidationError(
+                    "Metrik önerileri mekânsal ilişkiler ile karıştırılamaz."
+                )
+            if not result.needs_user_confirmation:
+                raise PolicyValidationError("Metrik önerileri kullanıcı onayı gerektirir.")
+            if result.needs_follow_up:
+                raise PolicyValidationError("Metrik önerileri varken takip sorusu üretilemez.")
 
         # Validate spatial relationship endpoints and node authority
         if result.proposed_spatial_relationships:
@@ -1715,6 +1815,10 @@ class ArchitecturalIntentPolicyValidator:
                     raise PolicyValidationError(
                         "Aktif elicitation sırasında plan eylemi üretilemez."
                     )
+                if result.proposed_metric_requirements:
+                    raise PolicyValidationError(
+                        "Aktif elicitation sırasında metrik önerisi sunulamaz."
+                    )
                 if result.answers_current_open_question:
                     if (
                         not result.proposed_brief_mutations
@@ -1755,6 +1859,7 @@ class ArchitecturalIntentPolicyValidator:
                     result.proposed_actions
                     or result.proposed_brief_mutations
                     or result.proposed_spatial_relationships
+                    or result.proposed_metric_requirements
                 ):
                     raise PolicyValidationError(
                         "neutral elicitation starter cannot produce proposals"
@@ -1798,6 +1903,7 @@ class ArchitecturalIntentPolicyValidator:
             *result.warnings,
             *(action.description for action in result.proposed_actions),
             *mutation_texts,
+            *(m.rationale for m in result.proposed_metric_requirements if m.rationale),
         ]
         combined = " ".join(public_texts).casefold()
         for pattern in _FORBIDDEN_SYSTEM_PATTERNS:
@@ -1811,6 +1917,8 @@ class ArchitecturalIntentPolicyValidator:
         self,
         result: ArchitecturalIntentResult,
         request: ConversationRequest,
+        *,
+        metric_context: MetricConversationContext | None = None,
     ) -> ArchitecturalIntentResult:
         result = self._normalize_intent(result, request)
         result = (
@@ -1818,7 +1926,7 @@ class ArchitecturalIntentPolicyValidator:
             if is_compare_request(request)
             else self.sanitize(result, request)
         )
-        self.validate_semantic_integrity(result, request)
+        self.validate_semantic_integrity(result, request, metric_context=metric_context)
         active = request.active_context
         target = result.target
 
@@ -1905,6 +2013,8 @@ class ArchitecturalIntentPolicyValidator:
         self,
         result: ArchitecturalIntentResult,
         request: ConversationRequest,
+        *,
+        metric_context: MetricConversationContext | None = None,
     ) -> ArchitecturalIntentResult:
         """Turn a recoverable scope mismatch into a safe clarification result."""
 

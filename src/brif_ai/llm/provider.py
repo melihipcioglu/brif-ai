@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Any, Protocol
 
 from brif_ai.llm.contracts import (
     ArchitecturalIntentResult,
@@ -47,4 +47,6 @@ class LocalLLMProvider(Protocol):
         self,
         request: ConversationRequest,
         output_schema: dict[str, object],
+        *args: Any,
+        **kwargs: Any,
     ) -> ArchitecturalIntentResult: ...

@@ -12,7 +12,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from brif_ai.brief.models.common import Priority
-from brif_ai.core.models.common import ObjectId
+from brif_ai.core.models.common import NonEmptyString, ObjectId
 from brif_ai.spatial.models import RelationshipProvenance
 
 if sys.version_info >= (3, 11):  # noqa: UP036
@@ -86,6 +86,33 @@ def _validate_unit_compatibility(
 
 class _MetricContract(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class ProposedMetricRequirement(_MetricContract):
+    """Structured metric requirement proposed during conversation.
+
+    Must not become authoritative until explicit user approval.
+    """
+
+    proposal_id: NonEmptyString
+    space_id: ObjectId
+    requirement_type: MetricRequirementType
+    value: float
+    unit: MetricUnit
+    rationale: str | None = None
+    requires_user_confirmation: Literal[True] = True
+
+    @field_validator("value")
+    @classmethod
+    def require_finite_positive_value(cls, v: float) -> float:
+        return _validate_numeric_value(v)
+
+    @model_validator(mode="after")
+    def validate_proposal_invariants(self) -> ProposedMetricRequirement:
+        if self.requirement_type == MetricRequirementType.TARGET_AREA:
+            raise ValueError("TARGET_AREA is not supported for conversational proposals in V0")
+        _validate_unit_compatibility(self.requirement_type, self.unit)
+        return self
 
 
 class MetricRequirementInput(_MetricContract):

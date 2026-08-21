@@ -31,6 +31,7 @@ from brif_ai.llm.contracts import (
     HealthResponse,
     IntentType,
     LocalModelInfo,
+    MetricConversationContext,
     ProposalApprovalRecord,
     ProposedAction,
 )
@@ -52,6 +53,8 @@ LLM_DISABLED_MESSAGE = "Yerel yapay zekâ bağlantısı devre dışı. Demo konu
 
 def _build_provider_output_schema(
     request: ConversationRequest,
+    *,
+    metric_context: MetricConversationContext | None = None,
 ) -> dict[str, object]:
     """Constrain neutral elicitation turns before provider inference."""
 
@@ -125,6 +128,12 @@ def _build_provider_output_schema(
                 "maxItems": 2,
             }
 
+        # Do not allow metric proposals during active brief elicitation
+        properties["proposed_metric_requirements"] = {
+            "type": "array",
+            "maxItems": 0,
+        }
+
         # Constrain mutation_type in $defs for ProposedBriefMutation
         defs = schema.get("$defs", {})
         if isinstance(defs, dict) and "ProposedBriefMutation" in defs:
@@ -135,6 +144,16 @@ def _build_provider_output_schema(
                     mut_props["mutation_type"] = {
                         "type": "string",
                         "enum": permitted_strs,
+                    }
+
+        if isinstance(defs, dict) and "ProposedMetricRequirement" in defs:
+            metric_def = defs["ProposedMetricRequirement"]
+            if isinstance(metric_def, dict) and "properties" in metric_def:
+                m_props = metric_def["properties"]
+                if isinstance(m_props, dict) and "requirement_type" in m_props:
+                    m_props["requirement_type"] = {
+                        "type": "string",
+                        "enum": ["MIN_AREA", "MAX_AREA", "MIN_CLEAR_WIDTH"],
                     }
 
         if active_topic.value == "household":
@@ -163,6 +182,18 @@ def _build_provider_output_schema(
             properties["household_composition"] = {"$ref": "#/$defs/HouseholdComposition"}
 
         return schema
+
+    # General defs constraint for ProposedMetricRequirement
+    defs = schema.get("$defs", {})
+    if isinstance(defs, dict) and "ProposedMetricRequirement" in defs:
+        metric_def = defs["ProposedMetricRequirement"]
+        if isinstance(metric_def, dict) and "properties" in metric_def:
+            m_props = metric_def["properties"]
+            if isinstance(m_props, dict) and "requirement_type" in m_props:
+                m_props["requirement_type"] = {
+                    "type": "string",
+                    "enum": ["MIN_AREA", "MAX_AREA", "MIN_CLEAR_WIDTH"],
+                }
 
     if (
         elicitation is None
@@ -209,6 +240,8 @@ def _build_provider_output_schema(
         "constraints_to_check",
         "proposed_actions",
         "proposed_brief_mutations",
+        "proposed_spatial_relationships",
+        "proposed_metric_requirements",
         "warnings",
     ):
         current = properties.get(field)
@@ -323,6 +356,9 @@ class LocalLLMConversationService:
     async def interpret(
         self,
         request: ConversationRequest,
+        *,
+        metric_context: MetricConversationContext | None = None,
+        plan_input_state_version: int | None = None,
     ) -> ConversationInterpretationResponse:
         # Server-authoritative computation of elicitation context (Hardening Requirement 2)
         has_pending = len(request.pending_proposals) > 0
@@ -434,14 +470,28 @@ class LocalLLMConversationService:
                 error=None,
             )
 
-        result = await self.provider.interpret(
-            request,
-            _build_provider_output_schema(request),
-        )
+        output_schema = _build_provider_output_schema(request, metric_context=metric_context)
+        import inspect
+
+        sig = inspect.signature(self.provider.interpret)
+        if "metric_context" in sig.parameters or any(
+            p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+        ):
+            result = await self.provider.interpret(
+                request,
+                output_schema,
+                metric_context=metric_context,
+            )
+        else:
+            result = await self.provider.interpret(request, output_schema)
         try:
-            safe_result = self.policy_validator.validate(result, request)
+            safe_result = self.policy_validator.validate(
+                result, request, metric_context=metric_context
+            )
         except ScopeMismatchError:
-            safe_result = self.policy_validator.recover_scope_mismatch(result, request)
+            safe_result = self.policy_validator.recover_scope_mismatch(
+                result, request, metric_context=metric_context
+            )
 
         # FINAL HOUSEHOLD NORMALIZATION AT SERVICE BOUNDARY
         is_household_open = (
@@ -611,6 +661,7 @@ class LocalLLMConversationService:
             safe_result.proposed_brief_mutations
             or safe_result.proposed_actions
             or safe_result.proposed_spatial_relationships
+            or safe_result.proposed_metric_requirements
         ):
             safe_result = safe_result.model_copy(
                 update={
@@ -621,6 +672,16 @@ class LocalLLMConversationService:
                 }
             )
 
+        state_version = (
+            plan_input_state_version
+            if plan_input_state_version is not None
+            else (
+                metric_context.source_plan_input_state_version
+                if metric_context is not None
+                else None
+            )
+        )
+
         return ConversationInterpretationResponse(
             success=True,
             llm_enabled=True,
@@ -630,6 +691,7 @@ class LocalLLMConversationService:
             generation_id=request.active_context.generation_id,
             result=safe_result,
             error=None,
+            authoritative_plan_input_state_version=state_version,
         )
 
     @staticmethod
