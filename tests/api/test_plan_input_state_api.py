@@ -46,6 +46,7 @@ from brif_ai.spatial.plan_input import (
     AuthoritativePlanInputState,
     JSONPlanInputStateRepository,
     PlanInputStatePersistenceError,
+    PlanInputStateService,
 )
 from brif_ai.spatial.plan_preview import PlanPreviewService
 from brif_ai.spatial.program.builder import SpatialProgramBuilder
@@ -433,7 +434,7 @@ def test_11_patch_before_initialization_returns_404(tmp_path: Path) -> None:
         json={"expected_state_version": 1},
     )
     assert resp.status_code == 404
-    assert "no existing plan input state found" in resp.json()["detail"].lower()
+    assert "not found" in resp.json()["detail"].lower()
 
 
 def test_12_patch_omitted_field_preserves_old_value(tmp_path: Path) -> None:
@@ -1083,3 +1084,86 @@ def test_41_api_optimistic_concurrency_race(tmp_path: Path) -> None:
     assert status_codes.count(200) == 1
     assert status_codes.count(409) == 3
     assert plan_input_repo.list_versions("proj_test_01") == [1, 2]
+
+
+def test_42_persisted_latest_plan_input_wrong_project_id_during_post_returns_500(
+    tmp_path: Path,
+) -> None:
+    client, brief_repo, _, plan_input_repo = _setup_app(tmp_path)
+    snap = _build_test_snapshot("proj_test_01", brief_version=1)
+    brief_repo.save(snap)
+
+    bad_state = AuthoritativePlanInputState(
+        schema_version="authoritative_plan_input_state.v0",
+        project_id="proj_test_02",
+        state_version=1,
+        source_brief_version=1,
+        created_at=datetime.now(UTC),
+    )
+    with patch.object(plan_input_repo, "get_latest", return_value=bad_state):
+        resp = client.post("/api/v1/projects/proj_test_01/plan/input", json={})
+        assert resp.status_code == 500
+        assert "mismatch" in resp.json()["detail"].lower()
+
+
+def test_43_persisted_latest_plan_input_wrong_project_id_during_patch_returns_500(
+    tmp_path: Path,
+) -> None:
+    client, brief_repo, _, plan_input_repo = _setup_app(tmp_path)
+    snap = _build_test_snapshot("proj_test_01", brief_version=1)
+    brief_repo.save(snap)
+
+    bad_state = AuthoritativePlanInputState(
+        schema_version="authoritative_plan_input_state.v0",
+        project_id="proj_test_02",
+        state_version=1,
+        source_brief_version=1,
+        created_at=datetime.now(UTC),
+    )
+    with patch.object(plan_input_repo, "get_latest", return_value=bad_state):
+        resp = client.patch(
+            "/api/v1/projects/proj_test_01/plan/input",
+            json={"expected_state_version": 1},
+        )
+        assert resp.status_code == 500
+        assert "mismatch" in resp.json()["detail"].lower()
+        # No version created
+        assert plan_input_repo.list_versions("proj_test_01") == []
+
+
+def test_44_unexpected_value_error_from_initialize_state_returns_500(
+    tmp_path: Path,
+) -> None:
+    client, brief_repo, _, _ = _setup_app(tmp_path)
+    snap = _build_test_snapshot("proj_test_01", brief_version=1)
+    brief_repo.save(snap)
+
+    with patch.object(
+        PlanInputStateService,
+        "initialize_state",
+        side_effect=ValueError("Unexpected internal ValueError"),
+    ):
+        resp = client.post("/api/v1/projects/proj_test_01/plan/input", json={})
+        assert resp.status_code == 500
+        assert "sunucu hatas" in resp.json()["detail"].lower()
+
+
+def test_45_unexpected_value_error_from_update_state_returns_500(
+    tmp_path: Path,
+) -> None:
+    client, brief_repo, _, _ = _setup_app(tmp_path)
+    snap = _build_test_snapshot("proj_test_01", brief_version=1)
+    brief_repo.save(snap)
+    client.post("/api/v1/projects/proj_test_01/plan/input", json={})
+
+    with patch.object(
+        PlanInputStateService,
+        "update_state",
+        side_effect=ValueError("Unexpected internal ValueError"),
+    ):
+        resp = client.patch(
+            "/api/v1/projects/proj_test_01/plan/input",
+            json={"expected_state_version": 1},
+        )
+        assert resp.status_code == 500
+        assert "sunucu hatas" in resp.json()["detail"].lower()

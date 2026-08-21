@@ -847,6 +847,23 @@ def create_app(
                     f"found '{latest_brief.project_id}'"
                 )
 
+            existing_state = persistent_plan_input_service.get_latest_state(validated_pid)
+            if existing_state is not None:
+                if existing_state.project_id != validated_pid:
+                    raise PlanInputStatePersistenceError(
+                        f"Persisted plan input state project_id mismatch: "
+                        f"expected '{validated_pid}', found '{existing_state.project_id}'"
+                    )
+                return JSONResponse(
+                    status_code=409,
+                    content={
+                        "detail": (
+                            f"Plan input state for project '{project_id}' is already initialized "
+                            f"(version {existing_state.state_version})."
+                        )
+                    },
+                )
+
             return persistent_plan_input_service.initialize_state(
                 project_id=validated_pid,
                 source_brief_version=latest_brief.brief_version,
@@ -869,7 +886,6 @@ def create_app(
             PlanInputStateProjectMismatchError,
             PlanInputStateBriefVersionMismatchError,
             PlanInputStateValidationError,
-            ValueError,
         ) as error:
             return JSONResponse(
                 status_code=422,
@@ -911,6 +927,18 @@ def create_app(
                 raise BriefPersistenceError(
                     f"Persisted brief project_id mismatch: expected '{validated_pid}', "
                     f"found '{latest_brief.project_id}'"
+                )
+
+            current_state = persistent_plan_input_service.get_latest_state(validated_pid)
+            if current_state is None:
+                return JSONResponse(
+                    status_code=404,
+                    content={"detail": f"Plan input state for project '{project_id}' not found."},
+                )
+            if current_state.project_id != validated_pid:
+                raise PlanInputStatePersistenceError(
+                    f"Persisted plan input state project_id mismatch: expected '{validated_pid}', "
+                    f"found '{current_state.project_id}'"
                 )
 
             metrics_arg = (
@@ -958,7 +986,6 @@ def create_app(
             PlanInputStateProjectMismatchError,
             PlanInputStateBriefVersionMismatchError,
             PlanInputStateValidationError,
-            ValueError,
         ) as error:
             return JSONResponse(
                 status_code=422,
