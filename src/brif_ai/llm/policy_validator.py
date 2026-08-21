@@ -1402,26 +1402,16 @@ _MAX_METRIC_QUALIFIERS: tuple[str, ...] = (
     "maksimum",
     "azami",
 )
-_AREA_METRIC_UNITS: tuple[str, ...] = (
-    "m²",
-    "m2",
-    "metrekare",
-    "metre kare",
-    "sqm",
-)
+_AREA_METRIC_UNITS_PATTERN = re.compile(r"(?:\b|\d\s*)(?:m²|m2|metrekare|metre\s+kare|sqm)(?!\w)")
 _CLEAR_WIDTH_KEYWORDS: tuple[str, ...] = (
     "genişlik",
     "genişliği",
     "net genişlik",
     "net genişliği",
-    "en",
 )
-_LENGTH_METRIC_UNITS: tuple[str, ...] = (
-    "metre",
-    "meter",
-    "m",
-)
+_LENGTH_METRIC_UNITS_PATTERN = re.compile(r"(?:\b|\d\s*)(?:metre|meter|m)(?!\w)")
 _METRIC_NUMBER_PATTERN = re.compile(r"(\d+(?:[.,]\d+)?)")
+_CLAUSE_SPLIT_PATTERN = re.compile(r"(?<!\d)[.,;:\n!?]+|[;:\n!?]+|,(?!\d)")
 
 
 def _normalize_metric_text(text: str) -> str:
@@ -1429,23 +1419,27 @@ def _normalize_metric_text(text: str) -> str:
     return " ".join(t.split())
 
 
-def _validate_explicit_metric_language(
-    user_message: str,
+def _split_clauses(text: str) -> list[str]:
+    raw = _CLAUSE_SPLIT_PATTERN.split(text)
+    clauses = [_normalize_metric_text(c) for c in raw if c.strip()]
+    return clauses or [_normalize_metric_text(text)]
+
+
+def _validate_clause_for_metric(
+    clause: str,
     m_req: ProposedMetricRequirement,
 ) -> None:
-    norm = _normalize_metric_text(user_message)
-
-    # 1. Reject approximate language for hard metrics
+    # 1. Reject approximate language in the clause
     for aw in _APPROXIMATE_METRIC_KEYWORDS:
-        if aw in norm:
+        if aw in clause:
             raise PolicyValidationError(
                 f"Kullanıcı mesajındaki yaklaşık/belirsiz ifade ({aw!r}) "
                 "kesin metrik gereksinimi olarak önerilemez."
             )
 
-    # 2. Extract numeric values (supporting both 1,20 and 1.20)
+    # 2. Extract numeric values (supporting decimal comma 1,20 and dot 1.20)
     numbers: list[float] = []
-    for match in _METRIC_NUMBER_PATTERN.finditer(norm):
+    for match in _METRIC_NUMBER_PATTERN.finditer(clause):
         num_str = match.group(1).replace(",", ".")
         with contextlib.suppress(ValueError):
             numbers.append(float(num_str))
@@ -1453,15 +1447,14 @@ def _validate_explicit_metric_language(
     if not numbers:
         raise PolicyValidationError("Kullanıcı mesajında açık bir sayısal değer bulunamadı.")
 
-    # 3. Match proposed value with stated numbers
     if not any(abs(n_val - m_req.value) < 1e-4 for n_val in numbers):
         raise PolicyValidationError(
             f"Önerilen metrik değeri ({m_req.value}) kullanıcı mesajında belirtilen "
             f"sayısal değerler ({numbers}) ile eşleşmiyor."
         )
 
-    has_min = any(q in norm for q in _MIN_METRIC_QUALIFIERS)
-    has_max = any(q in norm for q in _MAX_METRIC_QUALIFIERS)
+    has_min = any(q in clause for q in _MIN_METRIC_QUALIFIERS)
+    has_max = any(q in clause for q in _MAX_METRIC_QUALIFIERS)
 
     if m_req.requirement_type == MetricRequirementType.MIN_AREA:
         if not has_min:
@@ -1469,7 +1462,7 @@ def _validate_explicit_metric_language(
                 "MIN_AREA önerisi için kullanıcı mesajında açık asgari niteleyici "
                 "('en az', 'minimum', 'asgari') bulunmalıdır."
             )
-        if not any(u in norm for u in _AREA_METRIC_UNITS):
+        if not _AREA_METRIC_UNITS_PATTERN.search(clause):
             raise PolicyValidationError(
                 "MIN_AREA önerisi için kullanıcı mesajında alan birimi "
                 "('m²', 'm2', 'metrekare') bulunmalıdır."
@@ -1481,7 +1474,7 @@ def _validate_explicit_metric_language(
                 "MAX_AREA önerisi için kullanıcı mesajında açık azami niteleyici "
                 "('en fazla', 'maksimum', 'azami') bulunmalıdır."
             )
-        if not any(u in norm for u in _AREA_METRIC_UNITS):
+        if not _AREA_METRIC_UNITS_PATTERN.search(clause):
             raise PolicyValidationError(
                 "MAX_AREA önerisi için kullanıcı mesajında alan birimi "
                 "('m²', 'm2', 'metrekare') bulunmalıdır."
@@ -1493,16 +1486,45 @@ def _validate_explicit_metric_language(
                 "MIN_CLEAR_WIDTH önerisi için kullanıcı mesajında açık asgari niteleyici "
                 "('en az', 'minimum', 'asgari') bulunmalıdır."
             )
-        if not any(w in norm for w in _CLEAR_WIDTH_KEYWORDS):
+        if not any(w in clause for w in _CLEAR_WIDTH_KEYWORDS):
             raise PolicyValidationError(
                 "MIN_CLEAR_WIDTH önerisi için kullanıcı mesajında net genişlik ifadesi "
                 "('genişlik', 'net genişlik') bulunmalıdır."
             )
-        if not any(u in norm for u in _LENGTH_METRIC_UNITS):
+        if not _LENGTH_METRIC_UNITS_PATTERN.search(clause):
             raise PolicyValidationError(
                 "MIN_CLEAR_WIDTH önerisi için kullanıcı mesajında uzunluk birimi "
                 "('metre', 'm') bulunmalıdır."
             )
+
+
+def _validate_explicit_metric_language(
+    user_message: str,
+    m_req: ProposedMetricRequirement,
+    target_display_name: str = "",
+) -> None:
+    norm_msg = _normalize_metric_text(user_message)
+    norm_target = _normalize_metric_text(target_display_name) if target_display_name else ""
+
+    clauses = _split_clauses(user_message)
+
+    candidate_clauses = clauses
+    if norm_target and norm_target in norm_msg:
+        matching = [c for c in clauses if norm_target in c]
+        if matching:
+            candidate_clauses = matching
+
+    last_error: PolicyValidationError | None = None
+    for c in candidate_clauses:
+        try:
+            _validate_clause_for_metric(c, m_req)
+            return
+        except PolicyValidationError as err:
+            last_error = err
+
+    if last_error is not None:
+        raise last_error
+    raise PolicyValidationError("Geçerli metrik ifadesi bulunamadı.")
 
 
 class ArchitecturalIntentPolicyValidator:
@@ -1958,7 +1980,16 @@ class ArchitecturalIntentPolicyValidator:
                         f"Metrik gereksinim değeri pozitif ve sonlu bir sayı olmalıdır, "
                         f"got {m_req.value!r}."
                     )
-                _validate_explicit_metric_language(request.message, m_req)
+                target_space = next(
+                    (s for s in metric_context.spaces if s.space_id == m_req.space_id),
+                    None,
+                )
+                target_display_name = target_space.display_name if target_space is not None else ""
+                _validate_explicit_metric_language(
+                    request.message,
+                    m_req,
+                    target_display_name=target_display_name,
+                )
             if result.proposed_actions:
                 raise PolicyValidationError("Metrik önerileri plan eylemleri ile karıştırılamaz.")
             if result.proposed_brief_mutations:

@@ -643,3 +643,89 @@ def test_metric_language_safety_no_numeric_value_rejected() -> None:
     res = _make_metric_result(prop)
     with pytest.raises(PolicyValidationError, match="sayısal değer bulunamadı"):
         validator.validate(res, req, metric_context=ctx)
+
+
+def test_metric_language_cross_clause_qualifier_rejected() -> None:
+    # A: "Mutfak en az 10 m² olsun, salon 30 m² olsun." -> Salon MIN_AREA 30 => REJECT
+    validator = ArchitecturalIntentPolicyValidator()
+    ctx = _make_metric_context()
+    req = _make_request("Mutfak en az 10 m² olsun, salon 30 m² olsun.")
+    prop = ProposedMetricRequirement(
+        proposal_id="p1",
+        space_id="sn_living_01",
+        requirement_type=MetricRequirementType.MIN_AREA,
+        value=30.0,
+        unit=MetricUnit.SQUARE_METRE,
+    )
+    res = _make_metric_result(prop)
+    with pytest.raises(PolicyValidationError, match="açık asgari niteleyici"):
+        validator.validate(res, req, metric_context=ctx)
+
+
+def test_metric_language_cross_clause_value_rejected() -> None:
+    # B: "Mutfak en az 20 m² olsun, salon en az 30 m² olsun." -> Mutfak MIN_AREA 30 => REJECT
+    validator = ArchitecturalIntentPolicyValidator()
+    ctx = _make_metric_context()
+    req = _make_request("Mutfak en az 20 m² olsun, salon en az 30 m² olsun.")
+    prop = ProposedMetricRequirement(
+        proposal_id="p1",
+        space_id="sn_kitchen_01",
+        requirement_type=MetricRequirementType.MIN_AREA,
+        value=30.0,
+        unit=MetricUnit.SQUARE_METRE,
+    )
+    res = _make_metric_result(prop)
+    with pytest.raises(PolicyValidationError, match="eşleşmiyor"):
+        validator.validate(res, req, metric_context=ctx)
+
+
+def test_metric_language_min_clear_width_missing_width_word_rejected() -> None:
+    # C: "Koridor en az 1.20 metre olsun." -> MIN_CLEAR_WIDTH 1.20 => REJECT (no width wording)
+    validator = ArchitecturalIntentPolicyValidator()
+    ctx = _make_metric_context()
+    req = _make_request("Koridor en az 1.20 metre olsun.")
+    prop = ProposedMetricRequirement(
+        proposal_id="p1",
+        space_id="sn_corridor_01",
+        requirement_type=MetricRequirementType.MIN_CLEAR_WIDTH,
+        value=1.20,
+        unit=MetricUnit.METRE,
+    )
+    res = _make_metric_result(prop)
+    with pytest.raises(PolicyValidationError, match="net genişlik ifadesi"):
+        validator.validate(res, req, metric_context=ctx)
+
+
+def test_metric_language_min_clear_width_missing_metre_unit_rejected() -> None:
+    # D: "Koridor net genişliği minimum 1.20 olsun." -> MIN_CLEAR_WIDTH 1.20 => REJECT
+    validator = ArchitecturalIntentPolicyValidator()
+    ctx = _make_metric_context()
+    req = _make_request("Koridor net genişliği minimum 1.20 olsun.")
+    prop = ProposedMetricRequirement(
+        proposal_id="p1",
+        space_id="sn_corridor_01",
+        requirement_type=MetricRequirementType.MIN_CLEAR_WIDTH,
+        value=1.20,
+        unit=MetricUnit.METRE,
+    )
+    res = _make_metric_result(prop)
+    with pytest.raises(PolicyValidationError, match="uzunluk birimi"):
+        validator.validate(res, req, metric_context=ctx)
+
+
+def test_metric_language_min_clear_width_standalone_m_accepted() -> None:
+    # E: "Koridor net genişliği minimum 1.20 m olsun." -> MIN_CLEAR_WIDTH 1.20 => ACCEPT
+    validator = ArchitecturalIntentPolicyValidator()
+    ctx = _make_metric_context()
+    req = _make_request("Koridor net genişliği minimum 1.20 m olsun.")
+    prop = ProposedMetricRequirement(
+        proposal_id="p1",
+        space_id="sn_corridor_01",
+        requirement_type=MetricRequirementType.MIN_CLEAR_WIDTH,
+        value=1.20,
+        unit=MetricUnit.METRE,
+    )
+    res = _make_metric_result(prop)
+    validated = validator.validate(res, req, metric_context=ctx)
+    assert len(validated.proposed_metric_requirements) == 1
+    assert validated.proposed_metric_requirements[0].value == 1.20
