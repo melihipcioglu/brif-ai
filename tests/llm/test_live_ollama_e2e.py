@@ -48,7 +48,7 @@ def get_live_model_name() -> str:
                     return str(first_model["name"])
     except Exception:
         pass
-    return "qwen2.5-coder:1.5b"
+    return "qwen3:4b-instruct"
 
 
 pytestmark = pytest.mark.skipif(

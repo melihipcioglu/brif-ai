@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import math
 import re
 from typing import Any
@@ -23,6 +24,7 @@ from brif_ai.llm.contracts import (
 from brif_ai.spatial.metrics.models import (
     MetricRequirementType,
     MetricUnit,
+    ProposedMetricRequirement,
 )
 from brif_ai.spatial.models import project_space_requests_to_spatial_nodes
 
@@ -1382,6 +1384,127 @@ def sanitize_compare_text(text: str, visible_entities: list[VisibleEntity]) -> s
     return sanitized or text
 
 
+_APPROXIMATE_METRIC_KEYWORDS: tuple[str, ...] = (
+    "yaklaşık",
+    "civarında",
+    "tahminen",
+    "tahmini",
+    "dolaylarında",
+    "ortalama",
+)
+_MIN_METRIC_QUALIFIERS: tuple[str, ...] = (
+    "en az",
+    "minimum",
+    "asgari",
+)
+_MAX_METRIC_QUALIFIERS: tuple[str, ...] = (
+    "en fazla",
+    "maksimum",
+    "azami",
+)
+_AREA_METRIC_UNITS: tuple[str, ...] = (
+    "m²",
+    "m2",
+    "metrekare",
+    "metre kare",
+    "sqm",
+)
+_CLEAR_WIDTH_KEYWORDS: tuple[str, ...] = (
+    "genişlik",
+    "genişliği",
+    "net genişlik",
+    "net genişliği",
+    "en",
+)
+_LENGTH_METRIC_UNITS: tuple[str, ...] = (
+    "metre",
+    "meter",
+    "m",
+)
+_METRIC_NUMBER_PATTERN = re.compile(r"(\d+(?:[.,]\d+)?)")
+
+
+def _normalize_metric_text(text: str) -> str:
+    t = text.replace("İ", "i").replace("I", "ı").lower()
+    return " ".join(t.split())
+
+
+def _validate_explicit_metric_language(
+    user_message: str,
+    m_req: ProposedMetricRequirement,
+) -> None:
+    norm = _normalize_metric_text(user_message)
+
+    # 1. Reject approximate language for hard metrics
+    for aw in _APPROXIMATE_METRIC_KEYWORDS:
+        if aw in norm:
+            raise PolicyValidationError(
+                f"Kullanıcı mesajındaki yaklaşık/belirsiz ifade ({aw!r}) "
+                "kesin metrik gereksinimi olarak önerilemez."
+            )
+
+    # 2. Extract numeric values (supporting both 1,20 and 1.20)
+    numbers: list[float] = []
+    for match in _METRIC_NUMBER_PATTERN.finditer(norm):
+        num_str = match.group(1).replace(",", ".")
+        with contextlib.suppress(ValueError):
+            numbers.append(float(num_str))
+
+    if not numbers:
+        raise PolicyValidationError("Kullanıcı mesajında açık bir sayısal değer bulunamadı.")
+
+    # 3. Match proposed value with stated numbers
+    if not any(abs(n_val - m_req.value) < 1e-4 for n_val in numbers):
+        raise PolicyValidationError(
+            f"Önerilen metrik değeri ({m_req.value}) kullanıcı mesajında belirtilen "
+            f"sayısal değerler ({numbers}) ile eşleşmiyor."
+        )
+
+    has_min = any(q in norm for q in _MIN_METRIC_QUALIFIERS)
+    has_max = any(q in norm for q in _MAX_METRIC_QUALIFIERS)
+
+    if m_req.requirement_type == MetricRequirementType.MIN_AREA:
+        if not has_min:
+            raise PolicyValidationError(
+                "MIN_AREA önerisi için kullanıcı mesajında açık asgari niteleyici "
+                "('en az', 'minimum', 'asgari') bulunmalıdır."
+            )
+        if not any(u in norm for u in _AREA_METRIC_UNITS):
+            raise PolicyValidationError(
+                "MIN_AREA önerisi için kullanıcı mesajında alan birimi "
+                "('m²', 'm2', 'metrekare') bulunmalıdır."
+            )
+
+    elif m_req.requirement_type == MetricRequirementType.MAX_AREA:
+        if not has_max:
+            raise PolicyValidationError(
+                "MAX_AREA önerisi için kullanıcı mesajında açık azami niteleyici "
+                "('en fazla', 'maksimum', 'azami') bulunmalıdır."
+            )
+        if not any(u in norm for u in _AREA_METRIC_UNITS):
+            raise PolicyValidationError(
+                "MAX_AREA önerisi için kullanıcı mesajında alan birimi "
+                "('m²', 'm2', 'metrekare') bulunmalıdır."
+            )
+
+    elif m_req.requirement_type == MetricRequirementType.MIN_CLEAR_WIDTH:
+        if not has_min:
+            raise PolicyValidationError(
+                "MIN_CLEAR_WIDTH önerisi için kullanıcı mesajında açık asgari niteleyici "
+                "('en az', 'minimum', 'asgari') bulunmalıdır."
+            )
+        if not any(w in norm for w in _CLEAR_WIDTH_KEYWORDS):
+            raise PolicyValidationError(
+                "MIN_CLEAR_WIDTH önerisi için kullanıcı mesajında net genişlik ifadesi "
+                "('genişlik', 'net genişlik') bulunmalıdır."
+            )
+        if not any(u in norm for u in _LENGTH_METRIC_UNITS):
+            raise PolicyValidationError(
+                "MIN_CLEAR_WIDTH önerisi için kullanıcı mesajında uzunluk birimi "
+                "('metre', 'm') bulunmalıdır."
+            )
+
+
 class ArchitecturalIntentPolicyValidator:
     """Treat model output as untrusted suggestions constrained by active context."""
 
@@ -1691,113 +1814,6 @@ class ArchitecturalIntentPolicyValidator:
                     "(needs_follow_up=false olmalı)."
                 )
 
-        if len(result.proposed_brief_mutations) > 3:
-            raise PolicyValidationError(
-                "Bir mesajda en fazla 3 brief değişiklik önerisi sunulabilir."
-            )
-
-        if len(result.proposed_spatial_relationships) > 3:
-            raise PolicyValidationError(
-                "Bir mesajda en fazla 3 mekânsal ilişki önerisi sunulabilir."
-            )
-
-        if len(result.proposed_metric_requirements) > 3:
-            raise PolicyValidationError(
-                "Bir mesajda en fazla 3 metrik gereksinim önerisi sunulabilir."
-            )
-
-        # Validate metric proposal scope, type, unit, and value integrity
-        if result.proposed_metric_requirements:
-            if metric_context is None or not metric_context.spaces:
-                raise PolicyValidationError(
-                    "Metrik bağlamı (SpatialProgram) bulunamadığı için "
-                    "metrik gereksinim önerilemez."
-                )
-            valid_space_ids = {s.space_id for s in metric_context.spaces}
-            for m_req in result.proposed_metric_requirements:
-                if m_req.space_id not in valid_space_ids:
-                    raise PolicyValidationError(
-                        f"Bilinmeyen mekân kimliği {m_req.space_id!r} önerildi. "
-                        f"Yalnızca geçerli SpatialProgram mekânları kullanılabilir."
-                    )
-                if m_req.requirement_type == MetricRequirementType.TARGET_AREA:
-                    raise PolicyValidationError(
-                        "TARGET_AREA metrik önerisi V0 kapsamında desteklenmemektedir."
-                    )
-                if m_req.requirement_type not in (
-                    MetricRequirementType.MIN_AREA,
-                    MetricRequirementType.MAX_AREA,
-                    MetricRequirementType.MIN_CLEAR_WIDTH,
-                ):
-                    raise PolicyValidationError(
-                        f"Desteklenmeyen metrik öneri türü {m_req.requirement_type}."
-                    )
-                if (
-                    m_req.requirement_type
-                    in (MetricRequirementType.MIN_AREA, MetricRequirementType.MAX_AREA)
-                    and m_req.unit != MetricUnit.SQUARE_METRE
-                ):
-                    raise PolicyValidationError(
-                        f"Gereksinim {m_req.requirement_type.value!r} için "
-                        "SQUARE_METRE birimi gereklidir."
-                    )
-                if (
-                    m_req.requirement_type == MetricRequirementType.MIN_CLEAR_WIDTH
-                    and m_req.unit != MetricUnit.METRE
-                ):
-                    raise PolicyValidationError(
-                        f"Gereksinim {m_req.requirement_type.value!r} için METRE birimi gereklidir."
-                    )
-                if not math.isfinite(m_req.value) or m_req.value <= 0:
-                    raise PolicyValidationError(
-                        f"Metrik gereksinim değeri pozitif ve sonlu bir sayı olmalıdır, "
-                        f"got {m_req.value!r}."
-                    )
-            if result.proposed_actions:
-                raise PolicyValidationError("Metrik önerileri plan eylemleri ile karıştırılamaz.")
-            if result.proposed_brief_mutations:
-                raise PolicyValidationError(
-                    "Metrik önerileri brief mutasyonları ile karıştırılamaz."
-                )
-            if result.proposed_spatial_relationships:
-                raise PolicyValidationError(
-                    "Metrik önerileri mekânsal ilişkiler ile karıştırılamaz."
-                )
-            if not result.needs_user_confirmation:
-                raise PolicyValidationError("Metrik önerileri kullanıcı onayı gerektirir.")
-            if result.needs_follow_up:
-                raise PolicyValidationError("Metrik önerileri varken takip sorusu üretilemez.")
-
-        # Validate spatial relationship endpoints and node authority
-        if result.proposed_spatial_relationships:
-            if request.brief_snapshot is None:
-                raise PolicyValidationError(
-                    "Mekânsal ilişki önerisi için aktif brief snapshot gereklidir."
-                )
-            valid_nodes = project_space_requests_to_spatial_nodes(
-                request.brief_snapshot.space_requests
-            )
-            valid_node_ids = {node.id for node in valid_nodes}
-            if not valid_node_ids:
-                raise PolicyValidationError(
-                    "Projeye ait onaylanmış mekân bulunamadığı için mekânsal ilişki önerilemez."
-                )
-            for rel in result.proposed_spatial_relationships:
-                if rel.source_space_id not in valid_node_ids:
-                    raise PolicyValidationError(
-                        f"Bilinmeyen kaynak mekân kimliği {rel.source_space_id!r} önerildi. "
-                        f"Yalnızca geçerli spatial node kimlikleri kullanılabilir."
-                    )
-                if rel.target_space_id not in valid_node_ids:
-                    raise PolicyValidationError(
-                        f"Bilinmeyen hedef mekân kimliği {rel.target_space_id!r} önerildi. "
-                        f"Yalnızca geçerli spatial node kimlikleri kullanılabilir."
-                    )
-                if rel.source_space_id == rel.target_space_id:
-                    raise PolicyValidationError(
-                        f"Bir mekânın kendisiyle ilişkisi önerilemez ({rel.source_space_id})."
-                    )
-
         if request.elicitation_context is not None:
             active_topic = (
                 request.elicitation_context.open_question_topics[0]
@@ -1878,6 +1894,114 @@ class ArchitecturalIntentPolicyValidator:
                     raise PolicyValidationError(
                         f"Takip sorusu konusu '{result.follow_up_topic}' "
                         f"izin verilen konu '{allowed_topic}' ile uyuşmuyor."
+                    )
+
+        if len(result.proposed_brief_mutations) > 3:
+            raise PolicyValidationError(
+                "Bir mesajda en fazla 3 brief değişiklik önerisi sunulabilir."
+            )
+
+        if len(result.proposed_spatial_relationships) > 3:
+            raise PolicyValidationError(
+                "Bir mesajda en fazla 3 mekânsal ilişki önerisi sunulabilir."
+            )
+
+        if len(result.proposed_metric_requirements) > 3:
+            raise PolicyValidationError(
+                "Bir mesajda en fazla 3 metrik gereksinim önerisi sunulabilir."
+            )
+
+        # Validate metric proposal scope, type, unit, and value integrity
+        if result.proposed_metric_requirements:
+            if metric_context is None or not metric_context.spaces:
+                raise PolicyValidationError(
+                    "Metrik bağlamı (SpatialProgram) bulunamadığı için "
+                    "metrik gereksinim önerilemez."
+                )
+            valid_space_ids = {s.space_id for s in metric_context.spaces}
+            for m_req in result.proposed_metric_requirements:
+                if m_req.space_id not in valid_space_ids:
+                    raise PolicyValidationError(
+                        f"Bilinmeyen mekân kimliği {m_req.space_id!r} önerildi. "
+                        f"Yalnızca geçerli SpatialProgram mekânları kullanılabilir."
+                    )
+                if m_req.requirement_type == MetricRequirementType.TARGET_AREA:
+                    raise PolicyValidationError(
+                        "TARGET_AREA metrik önerisi V0 kapsamında desteklenmemektedir."
+                    )
+                if m_req.requirement_type not in (
+                    MetricRequirementType.MIN_AREA,
+                    MetricRequirementType.MAX_AREA,
+                    MetricRequirementType.MIN_CLEAR_WIDTH,
+                ):
+                    raise PolicyValidationError(
+                        f"Desteklenmeyen metrik öneri türü {m_req.requirement_type}."
+                    )
+                if (
+                    m_req.requirement_type
+                    in (MetricRequirementType.MIN_AREA, MetricRequirementType.MAX_AREA)
+                    and m_req.unit != MetricUnit.SQUARE_METRE
+                ):
+                    raise PolicyValidationError(
+                        f"Gereksinim {m_req.requirement_type.value!r} için "
+                        "SQUARE_METRE birimi gereklidir."
+                    )
+                if (
+                    m_req.requirement_type == MetricRequirementType.MIN_CLEAR_WIDTH
+                    and m_req.unit != MetricUnit.METRE
+                ):
+                    raise PolicyValidationError(
+                        f"Gereksinim {m_req.requirement_type.value!r} için METRE birimi gereklidir."
+                    )
+                if not math.isfinite(m_req.value) or m_req.value <= 0:
+                    raise PolicyValidationError(
+                        f"Metrik gereksinim değeri pozitif ve sonlu bir sayı olmalıdır, "
+                        f"got {m_req.value!r}."
+                    )
+                _validate_explicit_metric_language(request.message, m_req)
+            if result.proposed_actions:
+                raise PolicyValidationError("Metrik önerileri plan eylemleri ile karıştırılamaz.")
+            if result.proposed_brief_mutations:
+                raise PolicyValidationError(
+                    "Metrik önerileri brief mutasyonları ile karıştırılamaz."
+                )
+            if result.proposed_spatial_relationships:
+                raise PolicyValidationError(
+                    "Metrik önerileri mekânsal ilişkiler ile karıştırılamaz."
+                )
+            if not result.needs_user_confirmation:
+                raise PolicyValidationError("Metrik önerileri kullanıcı onayı gerektirir.")
+            if result.needs_follow_up:
+                raise PolicyValidationError("Metrik önerileri varken takip sorusu üretilemez.")
+
+        # Validate spatial relationship endpoints and node authority
+        if result.proposed_spatial_relationships:
+            if request.brief_snapshot is None:
+                raise PolicyValidationError(
+                    "Mekânsal ilişki önerisi için aktif brief snapshot gereklidir."
+                )
+            valid_nodes = project_space_requests_to_spatial_nodes(
+                request.brief_snapshot.space_requests
+            )
+            valid_node_ids = {node.id for node in valid_nodes}
+            if not valid_node_ids:
+                raise PolicyValidationError(
+                    "Projeye ait onaylanmış mekân bulunamadığı için mekânsal ilişki önerilemez."
+                )
+            for rel in result.proposed_spatial_relationships:
+                if rel.source_space_id not in valid_node_ids:
+                    raise PolicyValidationError(
+                        f"Bilinmeyen kaynak mekân kimliği {rel.source_space_id!r} önerildi. "
+                        f"Yalnızca geçerli spatial node kimlikleri kullanılabilir."
+                    )
+                if rel.target_space_id not in valid_node_ids:
+                    raise PolicyValidationError(
+                        f"Bilinmeyen hedef mekân kimliği {rel.target_space_id!r} önerildi. "
+                        f"Yalnızca geçerli spatial node kimlikleri kullanılabilir."
+                    )
+                if rel.source_space_id == rel.target_space_id:
+                    raise PolicyValidationError(
+                        f"Bir mekânın kendisiyle ilişkisi önerilemez ({rel.source_space_id})."
                     )
 
         validate_spatial_direction_claims(result, request)

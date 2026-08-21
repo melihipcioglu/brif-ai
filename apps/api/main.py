@@ -200,7 +200,14 @@ def build_metric_conversation_context(
         return None
     try:
         program = SpatialProgramBuilder().build(snapshot, graph)
-    except Exception:
+    except (
+        BriefNotReadyError,
+        SpatialProgramConflictBlockerError,
+        SpatialProgramMissingInputError,
+        SpatialProgramNodeMismatchError,
+        SpatialProgramProjectMismatchError,
+        SpatialProgramVersionMismatchError,
+    ):
         return None
 
     existing_reqs_by_space: dict[str, list[ExistingMetricRequirementContext]] = {}

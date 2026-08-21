@@ -455,3 +455,191 @@ def test_build_metric_conversation_context_none_when_uninitialized() -> None:
     assert build_metric_conversation_context(None, None, None) is None
     snapshot = _make_brief_snapshot()
     assert build_metric_conversation_context(snapshot, None, None) is None
+
+
+def _make_metric_context() -> MetricConversationContext:
+    return MetricConversationContext(
+        spaces=[
+            SpaceMetricContext(
+                space_id="sn_living_01",
+                display_name="Salon",
+                function="LIVING",
+                existing_requirements=[],
+            ),
+            SpaceMetricContext(
+                space_id="sn_kitchen_01",
+                display_name="Mutfak",
+                function="COOKING",
+                existing_requirements=[],
+            ),
+            SpaceMetricContext(
+                space_id="sn_corridor_01",
+                display_name="Koridor",
+                function="CIRCULATION",
+                existing_requirements=[],
+            ),
+        ],
+        source_brief_version=1,
+    )
+
+
+def _make_metric_result(
+    prop: ProposedMetricRequirement,
+    assistant_msg: str = "Öneri",
+) -> ArchitecturalIntentResult:
+    return ArchitecturalIntentResult(
+        assistant_message=assistant_msg,
+        intent=IntentType.GATHER_REQUIREMENT,
+        target=EntityTarget(project_id="proj_metric_test"),
+        user_requirements=[],
+        interpreted_priorities=[],
+        constraints_to_check=[],
+        missing_information=[],
+        proposed_actions=[],
+        proposed_brief_mutations=[],
+        proposed_spatial_relationships=[],
+        proposed_metric_requirements=[prop],
+        needs_follow_up=False,
+        needs_user_confirmation=True,
+        confidence=0.9,
+        warnings=[],
+    )
+
+
+def test_metric_language_safety_min_area_explicit_accepted() -> None:
+    # Case A: "Salon en az 30 m² olsun." MIN_AREA 30 => accepted
+    validator = ArchitecturalIntentPolicyValidator()
+    ctx = _make_metric_context()
+    req = _make_request("Salon en az 30 m² olsun.")
+    prop = ProposedMetricRequirement(
+        proposal_id="p1",
+        space_id="sn_living_01",
+        requirement_type=MetricRequirementType.MIN_AREA,
+        value=30.0,
+        unit=MetricUnit.SQUARE_METRE,
+    )
+    res = _make_metric_result(prop)
+    validated = validator.validate(res, req, metric_context=ctx)
+    assert len(validated.proposed_metric_requirements) == 1
+    assert validated.proposed_metric_requirements[0].value == 30.0
+
+
+def test_metric_language_safety_min_area_unqualified_rejected() -> None:
+    # Case B: "Salon 30 m² olsun." MIN_AREA 30 => PolicyValidationError
+    validator = ArchitecturalIntentPolicyValidator()
+    ctx = _make_metric_context()
+    req = _make_request("Salon 30 m² olsun.")
+    prop = ProposedMetricRequirement(
+        proposal_id="p1",
+        space_id="sn_living_01",
+        requirement_type=MetricRequirementType.MIN_AREA,
+        value=30.0,
+        unit=MetricUnit.SQUARE_METRE,
+    )
+    res = _make_metric_result(prop)
+    with pytest.raises(PolicyValidationError, match="açık asgari niteleyici"):
+        validator.validate(res, req, metric_context=ctx)
+
+
+def test_metric_language_safety_min_area_approximate_rejected() -> None:
+    # Case C: "Salon yaklaşık 30 m² olsun." MIN_AREA 30 => PolicyValidationError
+    validator = ArchitecturalIntentPolicyValidator()
+    ctx = _make_metric_context()
+    req = _make_request("Salon yaklaşık 30 m² olsun.")
+    prop = ProposedMetricRequirement(
+        proposal_id="p1",
+        space_id="sn_living_01",
+        requirement_type=MetricRequirementType.MIN_AREA,
+        value=30.0,
+        unit=MetricUnit.SQUARE_METRE,
+    )
+    res = _make_metric_result(prop)
+    with pytest.raises(PolicyValidationError, match="yaklaşık/belirsiz ifade"):
+        validator.validate(res, req, metric_context=ctx)
+
+
+def test_metric_language_safety_min_area_invented_value_rejected() -> None:
+    # Case D: "Salon en az 30 m² olsun." MIN_AREA 40 => PolicyValidationError
+    validator = ArchitecturalIntentPolicyValidator()
+    ctx = _make_metric_context()
+    req = _make_request("Salon en az 30 m² olsun.")
+    prop = ProposedMetricRequirement(
+        proposal_id="p1",
+        space_id="sn_living_01",
+        requirement_type=MetricRequirementType.MIN_AREA,
+        value=40.0,
+        unit=MetricUnit.SQUARE_METRE,
+    )
+    res = _make_metric_result(prop)
+    with pytest.raises(PolicyValidationError, match="eşleşmiyor"):
+        validator.validate(res, req, metric_context=ctx)
+
+
+def test_metric_language_safety_max_area_explicit_accepted() -> None:
+    # Case E: "Mutfak en fazla 20 m2 olsun." MAX_AREA 20 => accepted
+    validator = ArchitecturalIntentPolicyValidator()
+    ctx = _make_metric_context()
+    req = _make_request("Mutfak en fazla 20 m2 olsun.")
+    prop = ProposedMetricRequirement(
+        proposal_id="p1",
+        space_id="sn_kitchen_01",
+        requirement_type=MetricRequirementType.MAX_AREA,
+        value=20.0,
+        unit=MetricUnit.SQUARE_METRE,
+    )
+    res = _make_metric_result(prop)
+    validated = validator.validate(res, req, metric_context=ctx)
+    assert len(validated.proposed_metric_requirements) == 1
+    assert validated.proposed_metric_requirements[0].value == 20.0
+
+
+def test_metric_language_safety_min_clear_width_decimal_comma_accepted() -> None:
+    # Case F: "Koridor net genişliği en az 1,20 metre olsun." MIN_CLEAR_WIDTH 1.20 => accepted
+    validator = ArchitecturalIntentPolicyValidator()
+    ctx = _make_metric_context()
+    req = _make_request("Koridor net genişliği en az 1,20 metre olsun.")
+    prop = ProposedMetricRequirement(
+        proposal_id="p1",
+        space_id="sn_corridor_01",
+        requirement_type=MetricRequirementType.MIN_CLEAR_WIDTH,
+        value=1.20,
+        unit=MetricUnit.METRE,
+    )
+    res = _make_metric_result(prop)
+    validated = validator.validate(res, req, metric_context=ctx)
+    assert len(validated.proposed_metric_requirements) == 1
+    assert validated.proposed_metric_requirements[0].value == 1.20
+
+
+def test_metric_language_safety_min_clear_width_unqualified_rejected() -> None:
+    # Case G: "Koridor 1.20 metre olsun." MIN_CLEAR_WIDTH 1.20 => rejected
+    validator = ArchitecturalIntentPolicyValidator()
+    ctx = _make_metric_context()
+    req = _make_request("Koridor 1.20 metre olsun.")
+    prop = ProposedMetricRequirement(
+        proposal_id="p1",
+        space_id="sn_corridor_01",
+        requirement_type=MetricRequirementType.MIN_CLEAR_WIDTH,
+        value=1.20,
+        unit=MetricUnit.METRE,
+    )
+    res = _make_metric_result(prop)
+    with pytest.raises(PolicyValidationError, match="açık asgari niteleyici"):
+        validator.validate(res, req, metric_context=ctx)
+
+
+def test_metric_language_safety_no_numeric_value_rejected() -> None:
+    # Case H: "Salon büyük olsun." MIN_AREA 30 => rejected
+    validator = ArchitecturalIntentPolicyValidator()
+    ctx = _make_metric_context()
+    req = _make_request("Salon büyük olsun.")
+    prop = ProposedMetricRequirement(
+        proposal_id="p1",
+        space_id="sn_living_01",
+        requirement_type=MetricRequirementType.MIN_AREA,
+        value=30.0,
+        unit=MetricUnit.SQUARE_METRE,
+    )
+    res = _make_metric_result(prop)
+    with pytest.raises(PolicyValidationError, match="sayısal değer bulunamadı"):
+        validator.validate(res, req, metric_context=ctx)

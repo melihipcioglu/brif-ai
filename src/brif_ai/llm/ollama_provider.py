@@ -421,11 +421,6 @@ class OllamaProvider:
                         data["needs_follow_up"] = False
                         data["follow_up_question"] = None
                         data["follow_up_topic"] = None
-                    elif data.get("needs_follow_up"):
-                        if not data.get("follow_up_question") or not data.get("follow_up_topic"):
-                            data["needs_follow_up"] = False
-                            data["follow_up_question"] = None
-                            data["follow_up_topic"] = None
                     parsed_result = ArchitecturalIntentResult.model_validate(data)
                 else:
                     parsed_result = ArchitecturalIntentResult.model_validate_json(content)
