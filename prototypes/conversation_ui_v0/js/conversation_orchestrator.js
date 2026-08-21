@@ -1276,55 +1276,56 @@ class ConversationOrchestrator {
     return { isValid: true, node: importedNode, rawSvg: trimmedSvg };
   }
 
-  async loadDemoPlanPreviewRequest() {
-    try {
-      const resp = await (this.localLLMGateway ? this.localLLMGateway.fetchFn('./data/plan_preview_request.demo.json') : fetch('./data/plan_preview_request.demo.json'));
-      if (resp.ok) {
-        return await resp.json();
-      }
-    } catch (err) {
-      console.warn('Demo plan preview fixture yüklenemedi:', err);
-    }
-    return null;
-  }
+  async requestProjectPlanPreview() {
+    const snapshot = this.stateMachine ? this.stateMachine.getSnapshot() : null;
+    const projectId = snapshot ? snapshot.projectId : null;
 
-  async requestDemoPlanPreview() {
-    const demoPayload = await this.loadDemoPlanPreviewRequest();
-    if (!demoPayload) {
-      this.renderPlanPreviewResult({
-        ok: false,
-        status: 0,
-        error: 'Demo plan girdisi dosyadan yüklenemedi.'
-      });
-      return null;
+    if (!projectId || typeof projectId !== 'string' || !projectId.trim()) {
+      const errRes = { ok: false, status: 0, error: 'Aktif proje seçili değil.' };
+      this.renderPlanPreviewResult(errRes);
+      return errRes;
     }
-    return await this.requestPlanPreview(demoPayload);
-  }
 
-  async requestPlanPreview(requestPayload) {
-    if (!requestPayload || typeof requestPayload !== 'object') {
-      throw new Error('requestPlanPreview requires an explicit requestPayload');
-    }
     if (!this.localLLMGateway) {
       const errRes = { ok: false, status: 0, error: 'Plan servisi ağ geçidi tanımlı değil.' };
-      this.renderPlanPreviewResult(errRes, requestPayload);
+      this.renderPlanPreviewResult(errRes);
       return errRes;
     }
 
     this.renderPlanPreviewLoading();
 
     try {
-      const result = await this.localLLMGateway.previewPlan(requestPayload);
-      this.renderPlanPreviewResult(result, requestPayload);
-      if (result.ok) {
+      const result = await this.localLLMGateway.previewProjectPlan(projectId);
+
+      // Protect against cross-project stale response
+      const currentSnapshot = this.stateMachine ? this.stateMachine.getSnapshot() : null;
+      const currentProjectId = currentSnapshot ? currentSnapshot.projectId : null;
+      if (currentProjectId !== projectId || (result && result.kind === 'stale')) {
+        if (typeof document !== 'undefined') {
+          const container = document.getElementById('planPreviewContent');
+          if (container) {
+            container.replaceChildren();
+          }
+        }
+        return {
+          ok: false,
+          status: 0,
+          kind: 'stale',
+          projectId,
+          error: 'Proje bağlamı değiştiği için önceki plan sonucu kullanılmadı.'
+        };
+      }
+
+      this.renderPlanPreviewResult(result);
+      if (result && result.ok && result.kind === 'success') {
         this.appendAssistantMessage(
-          'Taslak plan oluşturuldu. Bu görünüm mevcut doğrulanmış plan girdileri üzerinden oluşturulan şematik yerleşimdir.\n\n📌 Demo önizleme: Bu plan mevcut sohbetinizden otomatik üretilmemiştir; doğrulanmış iki odalı örnek plan girdisi kullanılır.'
+          'Taslak plan oluşturuldu. Bu görünüm sunucuda doğrulanmış proje girdileri üzerinden oluşturulan şematik yerleşimdir.'
         );
       }
       return result;
     } catch (err) {
       const errRes = { ok: false, status: 0, error: err.message || 'Plan servisine ulaşılamadı.' };
-      this.renderPlanPreviewResult(errRes, requestPayload);
+      this.renderPlanPreviewResult(errRes);
       return errRes;
     }
   }
@@ -1348,17 +1349,17 @@ class ConversationOrchestrator {
     container.appendChild(loadingDiv);
   }
 
-  renderPlanPreviewResult(result, requestPayload = null) {
+  renderPlanPreviewResult(result) {
     if (typeof document === 'undefined') return;
     const container = document.getElementById('planPreviewContent');
     if (!container) return;
     container.replaceChildren();
 
-    if (result && result.ok) {
+    if (result && result.ok && result.kind === 'success') {
       const planDoc = result.document;
       const validation = this.validateAndSanitizePlanSvg(planDoc);
       if (!validation.isValid) {
-        this.renderPlanPreviewError(validation.error || 'Plan görseli güvenlik kontrolünden geçemedi.', requestPayload);
+        this.renderPlanPreviewError(validation.error || 'Plan görseli güvenlik kontrolünden geçemedi.');
         return;
       }
 
@@ -1382,9 +1383,9 @@ class ConversationOrchestrator {
       roomsChip.textContent = `Mekân Sayısı: ${roomCount}`;
       metaBar.appendChild(roomsChip);
 
-      const gridStep = (requestPayload && requestPayload.solver_config && requestPayload.solver_config.grid_step_m !== undefined)
-        ? requestPayload.solver_config.grid_step_m
-        : (result.solution && result.solution.grid_step_m !== undefined ? result.solution.grid_step_m : 0.1);
+      const gridStep = result.solution && result.solution.grid_step_m !== undefined
+        ? result.solution.grid_step_m
+        : 0.1;
       const gridChip = document.createElement('span');
       gridChip.className = 'meta-chip chip-grid';
       gridChip.textContent = `Grid Adımı: ${gridStep} m`;
@@ -1398,12 +1399,6 @@ class ConversationOrchestrator {
       svgWrapper.appendChild(validation.node);
       previewCard.appendChild(svgWrapper);
 
-      // Demo provenance notice
-      const demoNotice = document.createElement('div');
-      demoNotice.className = 'plan-preview-demo-notice';
-      demoNotice.textContent = '📌 Demo önizleme: Bu plan mevcut sohbetinizden otomatik üretilmemiştir; doğrulanmış iki odalı örnek plan girdisi kullanılır.';
-      previewCard.appendChild(demoNotice);
-
       // Disclaimer note
       const note = document.createElement('div');
       note.className = 'plan-preview-disclaimer';
@@ -1411,29 +1406,51 @@ class ConversationOrchestrator {
       previewCard.appendChild(note);
 
       container.appendChild(previewCard);
-    } else {
-      const rawStatus = result ? result.status : 0;
-      let msg = 'Plan önizlemesi oluşturulamadı.';
-      if (rawStatus === 409) {
-        msg = 'Plan girdileri birbiriyle uyuşmuyor.';
-      } else if (rawStatus === 422) {
-        msg = 'Plan girdileri bu sürümde çözülemiyor.';
-      } else if (rawStatus === 503) {
-        msg = 'Plan çözücü şu anda sonuç üretemedi.';
-      } else if (rawStatus === 500) {
-        msg = 'Plan önizlemesi oluşturulamadı.';
-      } else if (rawStatus === 0) {
-        if (result && result.error && (result.error.includes('iptal') || result.error.includes('zaman aşımına'))) {
-          msg = result.error;
-        } else {
-          msg = 'Plan servisine ulaşılamadı.';
-        }
+    } else if (result && result.kind === 'not_ready') {
+      const blockedBox = document.createElement('div');
+      blockedBox.className = 'plan-preview-blocked';
+
+      const title = document.createElement('h4');
+      title.className = 'blocked-title';
+      title.textContent = 'Taslak plan henüz oluşturulamıyor';
+      blockedBox.appendChild(title);
+
+      if (Array.isArray(result.blockers) && result.blockers.length > 0) {
+        const list = document.createElement('ul');
+        list.className = 'blocked-list';
+        result.blockers.forEach(msg => {
+          const item = document.createElement('li');
+          item.className = 'blocked-item';
+          item.textContent = msg;
+          list.appendChild(item);
+        });
+        blockedBox.appendChild(list);
+      } else {
+        const fallbackText = document.createElement('p');
+        fallbackText.className = 'blocked-text';
+        fallbackText.textContent = 'Proje henüz plan önizlemesi için hazır değil.';
+        blockedBox.appendChild(fallbackText);
       }
-      this.renderPlanPreviewError(msg, requestPayload);
+
+      const retryBtn = document.createElement('button');
+      retryBtn.type = 'button';
+      retryBtn.className = 'retry-btn';
+      retryBtn.textContent = 'Tekrar Dene';
+      retryBtn.onclick = () => {
+        this.requestProjectPlanPreview();
+      };
+      blockedBox.appendChild(retryBtn);
+
+      container.appendChild(blockedBox);
+    } else {
+      const msg = (result && typeof result.error === 'string' && result.error.trim())
+        ? result.error.trim()
+        : 'Plan önizlemesi oluşturulamadı.';
+      this.renderPlanPreviewError(msg);
     }
   }
 
-  renderPlanPreviewError(errorMessage, requestPayload = null) {
+  renderPlanPreviewError(errorMessage) {
     if (typeof document === 'undefined') return;
     const container = document.getElementById('planPreviewContent');
     if (!container) return;
@@ -1457,11 +1474,7 @@ class ConversationOrchestrator {
     retryBtn.className = 'retry-btn';
     retryBtn.textContent = 'Tekrar Dene';
     retryBtn.onclick = () => {
-      if (requestPayload) {
-        this.requestPlanPreview(requestPayload);
-      } else {
-        this.requestDemoPlanPreview();
-      }
+      this.requestProjectPlanPreview();
     };
     errBox.appendChild(retryBtn);
 

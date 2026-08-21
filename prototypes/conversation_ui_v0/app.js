@@ -205,11 +205,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // Plan Preview UI V0 Trigger Buttons (Deterministic FastAPI Solver Demo)
+  // Plan Preview UI Trigger Buttons (Server-Authoritative Project Plan Preview)
   const btnShowPlanPreview = document.getElementById('btnShowPlanPreview');
   const btnShowPlanPreviewEmpty = document.getElementById('btnShowPlanPreviewEmpty');
   const handlePlanPreviewClick = () => {
-    orchestrator.requestDemoPlanPreview();
+    orchestrator.requestProjectPlanPreview();
   };
   if (btnShowPlanPreview) {
     btnShowPlanPreview.addEventListener('click', handlePlanPreviewClick);
