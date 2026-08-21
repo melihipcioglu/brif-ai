@@ -1029,6 +1029,117 @@ def create_app(
                 content={"detail": f"Sunucu hatası: {error}"},
             )
 
+    @application.post(
+        "/api/v1/projects/{project_id}/plan/preview",
+        response_model=PlanPreviewResponse,
+        responses={
+            409: {"model": ProjectPlanPreviewReadinessResult},
+        },
+    )
+    async def execute_project_plan_preview(project_id: str) -> Any:
+        try:
+            readiness = project_readiness_service.evaluate(project_id)
+            if not readiness.ready_for_preview:
+                return JSONResponse(
+                    status_code=409,
+                    content=readiness.model_dump(mode="json"),
+                )
+
+            if readiness.preparation is None or readiness.preparation.request is None:
+                return JSONResponse(
+                    status_code=500,
+                    content={
+                        "detail": "Sunucu hatası: Hazır durum için hazırlık isteği bulunamadı."
+                    },
+                )
+
+            preview_request = readiness.preparation.request
+        except InvalidProjectIdError as error:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": str(error)},
+            )
+        except (
+            BriefPersistenceError,
+            SpatialGraphPersistenceError,
+            PlanInputStatePersistenceError,
+        ) as error:
+            return JSONResponse(
+                status_code=500,
+                content={"detail": f"Kalıcı depolama hatası: {error}"},
+            )
+        except Exception as error:
+            return JSONResponse(
+                status_code=500,
+                content={"detail": f"Sunucu hatası: {error}"},
+            )
+
+        try:
+            return PlanPreviewService.generate(preview_request)
+        except (
+            RoomGeometryInputMismatchError,
+            SvgPlanInputMismatchError,
+            SvgPlanUnknownSpaceError,
+        ) as error:
+            return JSONResponse(
+                status_code=409,
+                content=PlanPreviewResponse(
+                    success=False,
+                    solution=None,
+                    document=None,
+                    error=str(error),
+                ).model_dump(mode="json"),
+            )
+        except (
+            RoomGeometryUnsupportedFloorPlateError,
+            RoomGeometryUnsupportedOptionalSpaceError,
+            RoomGeometryUnsupportedMetricError,
+            RoomGeometryUnsupportedDirectiveError,
+            RoomGeometryUnderconstrainedSpaceError,
+            RoomGeometryGridAlignmentError,
+            RoomGeometryInfeasibleError,
+            SvgPlanInvalidGeometryError,
+        ) as error:
+            return JSONResponse(
+                status_code=422,
+                content=PlanPreviewResponse(
+                    success=False,
+                    solution=None,
+                    document=None,
+                    error=str(error),
+                ).model_dump(mode="json"),
+            )
+        except RoomGeometryEngineError as error:
+            return JSONResponse(
+                status_code=503,
+                content=PlanPreviewResponse(
+                    success=False,
+                    solution=None,
+                    document=None,
+                    error=str(error),
+                ).model_dump(mode="json"),
+            )
+        except SvgPlanRenderError as error:
+            return JSONResponse(
+                status_code=500,
+                content=PlanPreviewResponse(
+                    success=False,
+                    solution=None,
+                    document=None,
+                    error=str(error),
+                ).model_dump(mode="json"),
+            )
+        except Exception as error:
+            return JSONResponse(
+                status_code=500,
+                content=PlanPreviewResponse(
+                    success=False,
+                    solution=None,
+                    document=None,
+                    error=f"Plan önizlemesi sırasında sunucu hatası oluştu: {error}",
+                ).model_dump(mode="json"),
+            )
+
     return application
 
 
