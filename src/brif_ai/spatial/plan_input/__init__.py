@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from brif_ai.spatial.plan_input.api_models import (
+    PlanInputStateInitializeRequest,
+    PlanInputStateUpdateRequest,
+)
 from brif_ai.spatial.plan_input.errors import (
     PlanInputStateBriefVersionMismatchError,
     PlanInputStateError,
@@ -21,11 +25,13 @@ __all__ = [
     "JSONPlanInputStateRepository",
     "PlanInputStateBriefVersionMismatchError",
     "PlanInputStateError",
+    "PlanInputStateInitializeRequest",
     "PlanInputStateNotFoundError",
     "PlanInputStatePersistenceError",
     "PlanInputStateProjectMismatchError",
     "PlanInputStateRepository",
     "PlanInputStateService",
+    "PlanInputStateUpdateRequest",
     "PlanInputStateValidationError",
     "PlanInputStateVersionConflictError",
     "UNCHANGED",

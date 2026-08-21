@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import TypeAdapter
 
 from brif_ai.brief.models.snapshot import BriefSnapshot
 from brif_ai.brief.mutation import (
@@ -26,6 +27,7 @@ from brif_ai.brief.persistence import (
     JSONBriefRepository,
 )
 from brif_ai.brief.service import PersistentBriefService
+from brif_ai.core.models.common import ObjectId
 from brif_ai.llm.contracts import (
     BriefMutationApprovalRecord,
     BriefMutationApprovalRequest,
@@ -62,10 +64,19 @@ from brif_ai.spatial.persistence import (
     SpatialRelationshipRepository,
 )
 from brif_ai.spatial.plan_input import (
+    UNCHANGED,
+    AuthoritativePlanInputState,
     JSONPlanInputStateRepository,
+    PlanInputStateBriefVersionMismatchError,
+    PlanInputStateInitializeRequest,
+    PlanInputStateNotFoundError,
     PlanInputStatePersistenceError,
+    PlanInputStateProjectMismatchError,
     PlanInputStateRepository,
     PlanInputStateService,
+    PlanInputStateUpdateRequest,
+    PlanInputStateValidationError,
+    PlanInputStateVersionConflictError,
 )
 from brif_ai.spatial.plan_preview import (
     PlanPreviewRequest,
@@ -139,6 +150,16 @@ def resolve_allowed_origins(environ: Mapping[str, str] | None = None) -> list[st
     return origins
 
 
+def _validate_project_id_param(project_id: str) -> str:
+    """Validate project ID parameter strictly against ObjectId contract."""
+    if not isinstance(project_id, str) or not project_id.strip():
+        raise InvalidProjectIdError("Project ID must be a non-empty string.")
+    try:
+        return str(TypeAdapter(ObjectId).validate_python(project_id.strip()))
+    except Exception as err:
+        raise InvalidProjectIdError(f"Invalid project ID format: {project_id!r}") from err
+
+
 def create_app(
     settings: LocalLLMSettings | None = None,
     provider: LocalLLMProvider | None = None,
@@ -167,7 +188,7 @@ def create_app(
         CORSMiddleware,
         allow_origins=resolve_allowed_origins(cors_environ),
         allow_credentials=False,
-        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
         allow_headers=["Content-Type"],
     )
 
@@ -712,6 +733,246 @@ def create_app(
                     document=None,
                     error=f"Plan önizlemesi sırasında sunucu hatası oluştu: {error}",
                 ).model_dump(mode="json"),
+            )
+
+    @application.get(
+        "/api/v1/projects/{project_id}/plan/input",
+        response_model=AuthoritativePlanInputState,
+    )
+    async def get_project_plan_input_state(project_id: str) -> Any:
+        try:
+            validated_pid = _validate_project_id_param(project_id)
+            state = persistent_plan_input_service.get_latest_state(validated_pid)
+            if state is None:
+                return JSONResponse(
+                    status_code=404,
+                    content={"detail": f"Plan input state for project '{project_id}' not found."},
+                )
+            if state.project_id != validated_pid:
+                raise PlanInputStatePersistenceError(
+                    f"Persisted plan input state project_id mismatch: expected '{validated_pid}', "
+                    f"found '{state.project_id}'"
+                )
+            return state
+        except InvalidProjectIdError as error:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": str(error)},
+            )
+        except PlanInputStatePersistenceError as error:
+            return JSONResponse(
+                status_code=500,
+                content={"detail": str(error)},
+            )
+        except Exception as error:
+            return JSONResponse(
+                status_code=500,
+                content={"detail": f"Sunucu hatası: {error}"},
+            )
+
+    @application.get(
+        "/api/v1/projects/{project_id}/plan/input/versions/{state_version}",
+        response_model=AuthoritativePlanInputState,
+    )
+    async def get_project_plan_input_state_version(
+        project_id: str,
+        state_version: int,
+    ) -> Any:
+        try:
+            validated_pid = _validate_project_id_param(project_id)
+            if state_version < 1:
+                return JSONResponse(
+                    status_code=422,
+                    content={"detail": f"Invalid state version {state_version}: must be >= 1."},
+                )
+            state = persistent_plan_input_service.get_state_version(validated_pid, state_version)
+            if state is None:
+                return JSONResponse(
+                    status_code=404,
+                    content={
+                        "detail": (
+                            f"Plan input state version {state_version} "
+                            f"for project '{project_id}' not found."
+                        )
+                    },
+                )
+            if state.project_id != validated_pid or state.state_version != state_version:
+                raise PlanInputStatePersistenceError(
+                    f"Persisted plan input state mismatch: expected project '{validated_pid}' "
+                    f"version {state_version}, found project '{state.project_id}' "
+                    f"version {state.state_version}"
+                )
+            return state
+        except InvalidProjectIdError as error:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": str(error)},
+            )
+        except PlanInputStatePersistenceError as error:
+            return JSONResponse(
+                status_code=500,
+                content={"detail": str(error)},
+            )
+        except Exception as error:
+            return JSONResponse(
+                status_code=500,
+                content={"detail": f"Sunucu hatası: {error}"},
+            )
+
+    @application.post(
+        "/api/v1/projects/{project_id}/plan/input",
+        response_model=AuthoritativePlanInputState,
+        status_code=201,
+    )
+    async def initialize_project_plan_input_state(
+        project_id: str,
+        request: PlanInputStateInitializeRequest,
+    ) -> Any:
+        try:
+            validated_pid = _validate_project_id_param(project_id)
+            latest_brief = persistent_brief_service.get_latest_brief(validated_pid)
+            if latest_brief is None:
+                return JSONResponse(
+                    status_code=409,
+                    content={
+                        "detail": (
+                            f"Cannot initialize plan input state: "
+                            f"BriefSnapshot for project '{project_id}' does not exist."
+                        )
+                    },
+                )
+            if latest_brief.project_id != validated_pid:
+                raise BriefPersistenceError(
+                    f"Persisted brief project_id mismatch: expected '{validated_pid}', "
+                    f"found '{latest_brief.project_id}'"
+                )
+
+            return persistent_plan_input_service.initialize_state(
+                project_id=validated_pid,
+                source_brief_version=latest_brief.brief_version,
+                metric_requirements=request.metric_requirements,
+                site_envelope=request.site_envelope,
+                floor_plate_input=request.floor_plate_input,
+                solver_config=request.solver_config,
+            )
+        except InvalidProjectIdError as error:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": str(error)},
+            )
+        except PlanInputStateVersionConflictError as error:
+            return JSONResponse(
+                status_code=409,
+                content={"detail": str(error)},
+            )
+        except (
+            PlanInputStateProjectMismatchError,
+            PlanInputStateBriefVersionMismatchError,
+            PlanInputStateValidationError,
+            ValueError,
+        ) as error:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": str(error)},
+            )
+        except (BriefPersistenceError, PlanInputStatePersistenceError) as error:
+            return JSONResponse(
+                status_code=500,
+                content={"detail": str(error)},
+            )
+        except Exception as error:
+            return JSONResponse(
+                status_code=500,
+                content={"detail": f"Sunucu hatası: {error}"},
+            )
+
+    @application.patch(
+        "/api/v1/projects/{project_id}/plan/input",
+        response_model=AuthoritativePlanInputState,
+    )
+    async def update_project_plan_input_state(
+        project_id: str,
+        request: PlanInputStateUpdateRequest,
+    ) -> Any:
+        try:
+            validated_pid = _validate_project_id_param(project_id)
+            latest_brief = persistent_brief_service.get_latest_brief(validated_pid)
+            if latest_brief is None:
+                return JSONResponse(
+                    status_code=409,
+                    content={
+                        "detail": (
+                            f"Cannot update plan input state: "
+                            f"BriefSnapshot for project '{project_id}' does not exist."
+                        )
+                    },
+                )
+            if latest_brief.project_id != validated_pid:
+                raise BriefPersistenceError(
+                    f"Persisted brief project_id mismatch: expected '{validated_pid}', "
+                    f"found '{latest_brief.project_id}'"
+                )
+
+            metrics_arg = (
+                request.metric_requirements
+                if "metric_requirements" in request.model_fields_set
+                else UNCHANGED
+            )
+            site_arg = (
+                request.site_envelope if "site_envelope" in request.model_fields_set else UNCHANGED
+            )
+            fp_arg = (
+                request.floor_plate_input
+                if "floor_plate_input" in request.model_fields_set
+                else UNCHANGED
+            )
+            solver_cfg_arg = (
+                request.solver_config if "solver_config" in request.model_fields_set else UNCHANGED
+            )
+
+            return persistent_plan_input_service.update_state(
+                project_id=validated_pid,
+                expected_state_version=request.expected_state_version,
+                source_brief_version=latest_brief.brief_version,
+                metric_requirements=metrics_arg,
+                site_envelope=site_arg,
+                floor_plate_input=fp_arg,
+                solver_config=solver_cfg_arg,
+            )
+        except InvalidProjectIdError as error:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": str(error)},
+            )
+        except PlanInputStateNotFoundError as error:
+            return JSONResponse(
+                status_code=404,
+                content={"detail": str(error)},
+            )
+        except PlanInputStateVersionConflictError as error:
+            return JSONResponse(
+                status_code=409,
+                content={"detail": str(error)},
+            )
+        except (
+            PlanInputStateProjectMismatchError,
+            PlanInputStateBriefVersionMismatchError,
+            PlanInputStateValidationError,
+            ValueError,
+        ) as error:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": str(error)},
+            )
+        except (BriefPersistenceError, PlanInputStatePersistenceError) as error:
+            return JSONResponse(
+                status_code=500,
+                content={"detail": str(error)},
+            )
+        except Exception as error:
+            return JSONResponse(
+                status_code=500,
+                content={"detail": f"Sunucu hatası: {error}"},
             )
 
     @application.get(
