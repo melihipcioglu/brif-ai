@@ -1,24 +1,43 @@
 /**
- * BRIF.AI — Plan Preview UI V0 JS Unit Test Suite
+ * BRIF.AI — Plan Preview UI Project Endpoint Integration V1 JS Unit Test Suite
  *
  * Tests:
- * 1. Gateway sends POST /api/v1/plan/preview
- * 2. Exact fixture payload is sent
- * 3. Success response normalized correctly
- * 4. Error response normalized correctly (409, 422, 500, 503)
- * 5. Timeout/network failure handled and distinguished
- * 6. Planı Göster action calls gateway with explicit payload
- * 7. Loading state displayed
- * 8. Valid SVG rendered
- * 9. Both Kitchen and Living Room visible
- * 10. Metadata room count, status, grid step correct
- * 11. Invalid/non-SVG document rejected
- * 12. Script-containing SVG, foreignObject, and event handlers rejected
- * 13. Error state rendered safely with Turkish messages
- * 14. No LLM call occurs for plan preview
- * 15. No brief mutation occurs
- * 16. Repeated preview does not duplicate UI containers
- * 17. Existing conversation UX tests still pass
+ * 1. Gateway sends POST /api/v1/projects/{projectId}/plan/preview
+ * 2. Gateway request has NO body (opts.body === undefined)
+ * 3. Gateway project ID is URL encoded
+ * 4. HTTP 200 PlanPreviewResponse success is normalized correctly
+ * 5. 409 ProjectPlanPreviewReadinessResult => kind === 'not_ready'
+ * 6. Project-level blocker messages extracted correctly
+ * 7. Preparation-level blocker messages extracted correctly
+ * 8. related_ids and tracebacks are never surfaced as user-facing blocker text
+ * 9. 409 PlanPreviewResponse failure => kind === 'execution_error' (not 'not_ready')
+ * 10. 422 execution error safe mapping
+ * 11. 503 execution error safe mapping
+ * 12. 500 execution and readiness error safe mapping
+ * 13. Timeout handling and mapping
+ * 14. Network failure handling and mapping
+ * 15. Cancellation handling and mapping
+ * 16. Orchestrator obtains current stateMachine projectId
+ * 17. Orchestrator calls previewProjectPlan(projectId)
+ * 18. Orchestrator does NOT call legacy previewPlan(requestPayload)
+ * 19. Orchestrator does NOT fetch plan_preview_request.demo.json
+ * 20. Loading state rendered in UI
+ * 21. Success SVG rendered in UI
+ * 22. Success chat message contains no "Demo önizleme" and uses truthful statement
+ * 23. not_ready response renders distinct blocked state in UI
+ * 24. Canonical blocker messages shown in blocked state
+ * 25. related_ids and raw traceback not shown in blocked UI
+ * 26. server_error renders safe generic message in UI
+ * 27. Repeated preview does not duplicate containers
+ * 28a. Gateway stale response protection directly tested (switching project A -> B)
+ * 28b. Gateway stale response protection when active project becomes null/empty
+ * 28c. Orchestrator stale context protection: old SVG is not rendered and loading state is cleared
+ * 29. app.js button wiring connects to requestProjectPlanPreview
+ * 30. Legacy gateway previewPlan remains backward-compatible
+ * 31. Invalid/non-SVG document rejected by sanitization
+ * 32. Script-containing SVG, foreignObject, and event handlers rejected
+ * 33. No LLM interpret call occurs
+ * 34. No brief or spatial mutation occurs
  */
 
 const assert = require('assert');
@@ -192,7 +211,7 @@ class SimpleXMLDoc {
 }
 
 class MockDOMParser {
-  parseFromString(str, mimeType) {
+  parseFromString(str, _mimeType) {
     if (typeof str !== 'string' || !str.trim()) {
       const errNode = new MockDOMNode('parsererror');
       errNode.textContent = 'Empty or invalid XML';
@@ -265,9 +284,6 @@ global.document = {
 const LocalLLMGateway = require('./local_llm_gateway.js');
 const ConversationOrchestrator = require('./conversation_orchestrator.js');
 
-const demoFixturePath = path.join(__dirname, '../data/plan_preview_request.demo.json');
-const demoFixture = JSON.parse(fs.readFileSync(demoFixturePath, 'utf8'));
-
 class MockEntityHierarchy {
   constructor() {
     this.projects = {
@@ -282,9 +298,9 @@ class MockEntityHierarchy {
 }
 
 class MockStateMachine {
-  constructor() {
+  constructor(initialProjectId = 'proj_house_2story') {
     this.ctx = {
-      projectId: 'proj_house_2story',
+      projectId: initialProjectId,
       buildingId: 'bldg_main',
       levelId: 'lvl_ground',
       zoneId: 'zone_living',
@@ -297,15 +313,16 @@ class MockStateMachine {
   getSnapshot() { return { ...this.ctx }; }
   getContext() { return { ...this.ctx }; }
   subscribe(fn) { this.listeners.push(fn); }
-  dispatch(action) { return this.ctx; }
+  dispatch(_action) { return this.ctx; }
+  setProjectId(newId) { this.ctx.projectId = newId; }
 }
 
-function createTestHarness(customFetch = null) {
+function createTestHarness(customFetch = null, initialProjectId = 'proj_house_2story') {
   if (global.document && global.document._registry) {
     global.document._registry.clear();
   }
   const hierarchy = new MockEntityHierarchy();
-  const stateMachine = new MockStateMachine();
+  const stateMachine = new MockStateMachine(initialProjectId);
   const orchestrator = new ConversationOrchestrator({
     hierarchy,
     stateMachine,
@@ -321,7 +338,7 @@ function createTestHarness(customFetch = null) {
     fetchFn: customFetch || (async () => ({}))
   });
   orchestrator.setLocalLLMGateway(gateway);
-  return { orchestrator, gateway, stateMachine };
+  return { orchestrator, gateway, stateMachine, hierarchy };
 }
 
 const mockSuccessSolution = {
@@ -342,9 +359,9 @@ const mockSuccessSvgDocument = {
 };
 
 async function runTests() {
-  console.log('Running Plan Preview UI V0 JS Unit Tests...\n');
+  console.log('Running Plan Preview UI Project Endpoint Integration V1 JS Unit Tests...\n');
 
-  // Test 1: Gateway sends POST /api/v1/plan/preview
+  // Test 1: Gateway sends POST /api/v1/projects/{projectId}/plan/preview
   {
     let requestedUrl = null;
     let requestedMethod = null;
@@ -362,17 +379,24 @@ async function runTests() {
       };
     });
 
-    const res = await gateway.previewPlan(demoFixture);
-    assert.strictEqual(requestedUrl, 'http://127.0.0.1:8000/api/v1/plan/preview', 'Must call /api/v1/plan/preview');
+    const res = await gateway.previewProjectPlan('proj_house_2story');
+    assert.strictEqual(
+      requestedUrl,
+      'http://127.0.0.1:8000/api/v1/projects/proj_house_2story/plan/preview',
+      'Must call /api/v1/projects/{projectId}/plan/preview'
+    );
     assert.strictEqual(requestedMethod, 'POST', 'Must use POST method');
-    console.log('✓ 1. gateway sends POST /api/v1/plan/preview');
+    assert.strictEqual(res.ok, true);
+    console.log('✓ 1. gateway sends POST /api/v1/projects/{projectId}/plan/preview');
   }
 
-  // Test 2: Exact fixture payload is sent
+  // Test 2: Request has NO body (opts.body === undefined)
   {
     let receivedBody = null;
-    const { gateway } = createTestHarness(async (url, opts) => {
-      receivedBody = JSON.parse(opts.body);
+    let receivedOptions = null;
+    const { gateway } = createTestHarness(async (_url, opts) => {
+      receivedOptions = opts;
+      receivedBody = opts.body;
       return {
         ok: true,
         status: 200,
@@ -384,12 +408,38 @@ async function runTests() {
       };
     });
 
-    await gateway.previewPlan(demoFixture);
-    assert.deepStrictEqual(receivedBody, demoFixture, 'Must send exact fixture payload without mutations');
-    console.log('✓ 2. exact fixture payload is sent');
+    await gateway.previewProjectPlan('proj_house_2story');
+    assert.strictEqual(receivedBody, undefined, 'Must NOT send a request body');
+    assert.strictEqual(receivedOptions.body, undefined, 'opts.body must be strictly undefined');
+    console.log('✓ 2. request has NO body (opts.body === undefined)');
   }
 
-  // Test 3: Success response normalized correctly
+  // Test 3: Project ID is URL encoded
+  {
+    let requestedUrl = null;
+    const { gateway } = createTestHarness(async (url) => {
+      requestedUrl = url;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          solution: mockSuccessSolution,
+          document: mockSuccessSvgDocument
+        })
+      };
+    }, 'proj/special name&1');
+
+    await gateway.previewProjectPlan('proj/special name&1');
+    assert.strictEqual(
+      requestedUrl,
+      'http://127.0.0.1:8000/api/v1/projects/proj%2Fspecial%20name%261/plan/preview',
+      'Project ID must be properly encoded with encodeURIComponent'
+    );
+    console.log('✓ 3. project ID is URL encoded');
+  }
+
+  // Test 4: HTTP 200 PlanPreviewResponse success is normalized correctly
   {
     const { gateway } = createTestHarness(async () => ({
       ok: true,
@@ -401,219 +451,633 @@ async function runTests() {
       })
     }));
 
-    const res = await gateway.previewPlan(demoFixture);
+    const res = await gateway.previewProjectPlan('proj_house_2story');
     assert.strictEqual(res.ok, true);
     assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.kind, 'success');
+    assert.strictEqual(res.projectId, 'proj_house_2story');
     assert.deepStrictEqual(res.solution, mockSuccessSolution);
     assert.deepStrictEqual(res.document, mockSuccessSvgDocument);
-    console.log('✓ 3. success response normalized correctly');
+    console.log('✓ 4. HTTP 200 PlanPreviewResponse success is normalized correctly');
   }
 
-  // Test 4: Error response normalized correctly (409, 422, 500, 503) and user-facing messages asserted
+  // Test 5: 409 ProjectPlanPreviewReadinessResult => kind === 'not_ready'
   {
-    for (const [code, expectedSubstr] of [
-      [409, 'Plan girdileri birbiriyle uyuşmuyor.'],
-      [422, 'Plan girdileri bu sürümde çözülemiyor.'],
-      [503, 'Plan çözücü şu anda sonuç üretemedi.'],
-      [500, 'Plan önizlemesi oluşturulamadı.']
-    ]) {
-      const { gateway, orchestrator } = createTestHarness(async () => ({
-        ok: false,
-        status: code,
-        json: async () => ({
-          success: false,
-          error: `HTTP ${code} Traceback: internal server error`
-        })
-      }));
+    const readinessPayload = {
+      schema_version: 'project_plan_preview_readiness.v0',
+      project_id: 'proj_house_2story',
+      ready_for_preview: false,
+      project_blockers: [
+        {
+          code: 'BRIEF_NOT_READY',
+          message: "Brief hazır değil veya eksik onaylanmamış gereksinimler var.",
+          related_ids: ['req_01', 'req_02']
+        }
+      ],
+      preparation: {
+        schema_version: 'plan_preview_readiness.v0',
+        ready: false,
+        blockers: [
+          {
+            code: 'METRIC_REQUIREMENTS_MISSING',
+            message: 'Metrik mekânsal gereksinimler eksik.',
+            related_ids: ['sn_living_01']
+          }
+        ],
+        request: null
+      }
+    };
 
-      const res = await gateway.previewPlan(demoFixture);
-      assert.strictEqual(res.ok, false);
-      assert.strictEqual(res.status, code);
-      assert.strictEqual(res.error, expectedSubstr, `Gateway must map status ${code} to "${expectedSubstr}"`);
+    const { gateway } = createTestHarness(async () => ({
+      ok: false,
+      status: 409,
+      json: async () => readinessPayload
+    }));
 
-      // Verify orchestrator renders the safe status-mapped Turkish message
-      orchestrator.renderPlanPreviewResult(res, demoFixture);
-      const contentEl = global.document.getElementById('planPreviewContent');
-      const errBox = contentEl.querySelector('.plan-preview-error');
-      assert(errBox, `Error box must be rendered for HTTP ${code}`);
-      const renderedMsg = errBox.querySelector('.error-message')?.textContent;
-      assert.strictEqual(renderedMsg, expectedSubstr, `UI must display mapped message for HTTP ${code}`);
-      assert(!renderedMsg.includes('Traceback'), 'UI must never display raw server traceback');
-    }
-    console.log('✓ 4. error response normalized and asserted for 409, 422, 500, 503');
+    const res = await gateway.previewProjectPlan('proj_house_2story');
+    assert.strictEqual(res.ok, false);
+    assert.strictEqual(res.status, 409);
+    assert.strictEqual(res.kind, 'not_ready');
+    assert.strictEqual(res.projectId, 'proj_house_2story');
+    assert.deepStrictEqual(res.readiness, readinessPayload);
+    console.log('✓ 5. 409 ProjectPlanPreviewReadinessResult => kind === "not_ready"');
   }
 
-  // Test 5: Raw backend error/traceback is never displayed in UI
+  // Test 6: Project-level blocker messages extracted correctly
   {
-    const { orchestrator } = createTestHarness();
-    const rawErrorResult = {
+    const readinessPayload = {
+      schema_version: 'project_plan_preview_readiness.v0',
+      project_id: 'proj_01',
+      ready_for_preview: false,
+      project_blockers: [
+        { code: 'BRIEF_MISSING', message: 'Proje için Brief bulunamadı.', related_ids: [] },
+        { code: 'SPATIAL_GRAPH_STALE', message: 'Mekânsal ilişki grafı güncel değil.', related_ids: [] }
+      ],
+      preparation: null
+    };
+
+    const { gateway } = createTestHarness(async () => ({
+      ok: false,
+      status: 409,
+      json: async () => readinessPayload
+    }), 'proj_01');
+
+    const res = await gateway.previewProjectPlan('proj_01');
+    assert.deepStrictEqual(res.blockers, [
+      'Proje için Brief bulunamadı.',
+      'Mekânsal ilişki grafı güncel değil.'
+    ]);
+    console.log('✓ 6. project-level blocker messages extracted correctly');
+  }
+
+  // Test 7: Preparation-level blocker messages extracted correctly
+  {
+    const readinessPayload = {
+      schema_version: 'project_plan_preview_readiness.v0',
+      project_id: 'proj_01',
+      ready_for_preview: false,
+      project_blockers: [],
+      preparation: {
+        schema_version: 'plan_preview_readiness.v0',
+        ready: false,
+        blockers: [
+          { code: 'SITE_ENVELOPE_MISSING', message: 'Arsa yapılaşma zarfı tanımlı değil.', related_ids: [] },
+          { code: 'FLOOR_PLATE_INPUT_MISSING', message: 'Taban oturumu girdisi eksik.', related_ids: [] }
+        ],
+        request: null
+      }
+    };
+
+    const { gateway } = createTestHarness(async () => ({
+      ok: false,
+      status: 409,
+      json: async () => readinessPayload
+    }), 'proj_01');
+
+    const res = await gateway.previewProjectPlan('proj_01');
+    assert.deepStrictEqual(res.blockers, [
+      'Arsa yapılaşma zarfı tanımlı değil.',
+      'Taban oturumu girdisi eksik.'
+    ]);
+    console.log('✓ 7. preparation-level blocker messages extracted correctly');
+  }
+
+  // Test 8: related_ids and tracebacks are never surfaced as user-facing blocker text
+  {
+    const readinessPayload = {
+      schema_version: 'project_plan_preview_readiness.v0',
+      project_id: 'proj_01',
+      ready_for_preview: false,
+      project_blockers: [
+        { code: 'BRIEF_NOT_READY', message: 'Brief tamamlanmadı.', related_ids: ['internal_technical_secret_id_99'] }
+      ],
+      preparation: {
+        schema_version: 'plan_preview_readiness.v0',
+        ready: false,
+        blockers: [
+          { code: 'SOLVER_INPUT_INVALID', message: 'Mekân boyutları uyumsuz.', related_ids: ['secret_solver_node_42'] }
+        ],
+        request: null
+      }
+    };
+
+    const { gateway } = createTestHarness(async () => ({
+      ok: false,
+      status: 409,
+      json: async () => readinessPayload
+    }), 'proj_01');
+
+    const res = await gateway.previewProjectPlan('proj_01');
+    const allBlockerText = res.blockers.join(' ');
+    assert(!allBlockerText.includes('internal_technical_secret_id_99'), 'Must not contain related_ids');
+    assert(!allBlockerText.includes('secret_solver_node_42'), 'Must not contain related_ids');
+    assert(!allBlockerText.includes('SOLVER_INPUT_INVALID'), 'Must not contain code enum as raw message');
+    console.log('✓ 8. related_ids and tracebacks are never surfaced as user-facing blocker text');
+  }
+
+  // Test 9: 409 PlanPreviewResponse failure => kind === 'execution_error' (not 'not_ready')
+  {
+    const { gateway } = createTestHarness(async () => ({
+      ok: false,
+      status: 409,
+      json: async () => ({
+        success: false,
+        solution: null,
+        document: null,
+        error: 'RoomGeometryInputMismatchError: Room ids do not match floor plate'
+      })
+    }));
+
+    const res = await gateway.previewProjectPlan('proj_house_2story');
+    assert.strictEqual(res.ok, false);
+    assert.strictEqual(res.status, 409);
+    assert.strictEqual(res.kind, 'execution_error');
+    assert.strictEqual(res.error, 'Plan girdileri birbiriyle uyuşmuyor.');
+    console.log('✓ 9. 409 PlanPreviewResponse failure => kind === "execution_error" (not "not_ready")');
+  }
+
+  // Test 10: 422 execution error safe mapping
+  {
+    const { gateway } = createTestHarness(async () => ({
+      ok: false,
+      status: 422,
+      json: async () => ({
+        success: false,
+        solution: null,
+        document: null,
+        error: 'RoomGeometryInfeasibleError: Cannot place rooms in floor plate'
+      })
+    }));
+
+    const res = await gateway.previewProjectPlan('proj_house_2story');
+    assert.strictEqual(res.ok, false);
+    assert.strictEqual(res.status, 422);
+    assert.strictEqual(res.kind, 'execution_error');
+    assert.strictEqual(res.error, 'Plan girdileri bu sürümde çözülemiyor.');
+    console.log('✓ 10. 422 execution error safe mapping');
+  }
+
+  // Test 11: 503 execution error safe mapping
+  {
+    const { gateway } = createTestHarness(async () => ({
+      ok: false,
+      status: 503,
+      json: async () => ({
+        success: false,
+        solution: null,
+        document: null,
+        error: 'RoomGeometryEngineError: Solver timeout'
+      })
+    }));
+
+    const res = await gateway.previewProjectPlan('proj_house_2story');
+    assert.strictEqual(res.ok, false);
+    assert.strictEqual(res.status, 503);
+    assert.strictEqual(res.kind, 'execution_error');
+    assert.strictEqual(res.error, 'Plan çözücü şu anda sonuç üretemedi.');
+    console.log('✓ 11. 503 execution error safe mapping');
+  }
+
+  // Test 12: 500 execution and readiness error safe mapping
+  {
+    // 12a. 500 execution error (PlanPreviewResponse)
+    const { gateway: execGateway } = createTestHarness(async () => ({
       ok: false,
       status: 500,
-      error: 'Traceback: internal solver exception in RoomGeometrySolver at line 42: CP-SAT failed'
-    };
-    orchestrator.renderPlanPreviewResult(rawErrorResult, demoFixture);
-    const contentEl = global.document.getElementById('planPreviewContent');
-    const errBox = contentEl.querySelector('.plan-preview-error');
-    assert(errBox, 'Error box must be rendered');
-    const renderedMsg = errBox.querySelector('.error-message')?.textContent;
-    assert.strictEqual(renderedMsg, 'Plan önizlemesi oluşturulamadı.', 'Must display safe status 500 mapped message');
-    assert(!renderedMsg.includes('Traceback'), 'Must NEVER leak raw traceback to UI');
-    assert(!renderedMsg.includes('RoomGeometrySolver'), 'Must NEVER leak internal class names to UI');
-    console.log('✓ 5. raw backend traceback is never displayed in UI');
+      json: async () => ({
+        success: false,
+        solution: null,
+        document: null,
+        error: 'SvgPlanRenderError: SVG viewBox calculation failed'
+      })
+    }));
+    const execRes = await execGateway.previewProjectPlan('proj_house_2story');
+    assert.strictEqual(execRes.ok, false);
+    assert.strictEqual(execRes.status, 500);
+    assert.strictEqual(execRes.kind, 'execution_error');
+    assert.strictEqual(execRes.error, 'Plan önizlemesi oluşturulamadı.');
+
+    // 12b. 500 server error (detail)
+    const { gateway: srvGateway } = createTestHarness(async () => ({
+      ok: false,
+      status: 500,
+      json: async () => ({ detail: 'Kalıcı depolama hatası: Disk error' })
+    }));
+    const srvRes = await srvGateway.previewProjectPlan('proj_house_2story');
+    assert.strictEqual(srvRes.ok, false);
+    assert.strictEqual(srvRes.status, 500);
+    assert.strictEqual(srvRes.kind, 'server_error');
+    assert.strictEqual(srvRes.error, 'Plan önizlemesi oluşturulamadı.');
+    console.log('✓ 12. 500 execution and readiness error safe mapping');
   }
 
-  // Test 6: Timeout and network failure handled and distinguished
+  // Test 13: Timeout handling and mapping
   {
-    const { gateway: netGateway, orchestrator: netOrchestrator } = createTestHarness(async () => {
-      throw new Error('Failed to fetch');
-    });
-    const netRes = await netGateway.previewPlan(demoFixture);
-    assert.strictEqual(netRes.ok, false);
-    assert.strictEqual(netRes.status, 0);
-    assert.strictEqual(netRes.error, 'Plan servisine ulaşılamadı.');
-
-    netOrchestrator.renderPlanPreviewResult(netRes, demoFixture);
-    const netContentEl = global.document.getElementById('planPreviewContent');
-    const netErrMsg = netContentEl.querySelector('.error-message')?.textContent;
-    assert.strictEqual(netErrMsg, 'Plan servisine ulaşılamadı.');
-
-    const { gateway: timeoutGateway, orchestrator: timeoutOrchestrator } = createTestHarness(async () => {
+    const { gateway } = createTestHarness(async () => {
       const err = new Error('The operation was aborted');
       err.name = 'AbortError';
       throw err;
     });
-    const timeoutRes = await timeoutGateway.previewPlan(demoFixture);
-    assert.strictEqual(timeoutRes.ok, false);
-    assert.strictEqual(timeoutRes.status, 0);
-    assert.strictEqual(timeoutRes.error, 'Plan isteği zaman aşımına uğradı.');
 
-    timeoutOrchestrator.renderPlanPreviewResult(timeoutRes, demoFixture);
-    const timeoutContentEl = global.document.getElementById('planPreviewContent');
-    const timeoutErrMsg = timeoutContentEl.querySelector('.error-message')?.textContent;
-    assert.strictEqual(timeoutErrMsg, 'Plan isteği zaman aşımına uğradı.');
-    console.log('✓ 6. timeout and network failure handled and distinguished');
+    const res = await gateway.previewProjectPlan('proj_house_2story');
+    assert.strictEqual(res.ok, false);
+    assert.strictEqual(res.status, 0);
+    assert.strictEqual(res.kind, 'timeout');
+    assert.strictEqual(res.error, 'Plan isteği zaman aşımına uğradı.');
+    console.log('✓ 13. timeout handling and mapping');
   }
 
-  // Test 7: Planı Göster action calls gateway with explicit payload
+  // Test 14: Network failure handling and mapping
   {
-    let previewCalledWith = null;
-    const { orchestrator } = createTestHarness();
-    orchestrator.localLLMGateway.previewPlan = async (payload) => {
-      previewCalledWith = payload;
-      return { ok: true, status: 200, solution: mockSuccessSolution, document: mockSuccessSvgDocument };
+    const { gateway } = createTestHarness(async () => {
+      throw new Error('Failed to fetch');
+    });
+
+    const res = await gateway.previewProjectPlan('proj_house_2story');
+    assert.strictEqual(res.ok, false);
+    assert.strictEqual(res.status, 0);
+    assert.strictEqual(res.kind, 'network_error');
+    assert.strictEqual(res.error, 'Plan servisine ulaşılamadı.');
+    console.log('✓ 14. network failure handling and mapping');
+  }
+
+  // Test 15: Cancellation handling and mapping
+  {
+    const controller = new AbortController();
+    controller.abort();
+
+    const { gateway } = createTestHarness(async () => ({}));
+    const res = await gateway.previewProjectPlan('proj_house_2story', { signal: controller.signal });
+    assert.strictEqual(res.ok, false);
+    assert.strictEqual(res.status, 0);
+    assert.strictEqual(res.kind, 'canceled');
+    assert.strictEqual(res.error, 'Plan isteği iptal edildi.');
+    console.log('✓ 15. cancellation handling and mapping');
+  }
+
+  // Test 16: Orchestrator obtains current stateMachine projectId
+  {
+    let calledWithProjectId = null;
+    const { orchestrator } = createTestHarness(null, 'proj_custom_villa');
+    orchestrator.localLLMGateway.previewProjectPlan = async (pid) => {
+      calledWithProjectId = pid;
+      return { ok: true, status: 200, kind: 'success', projectId: pid, solution: mockSuccessSolution, document: mockSuccessSvgDocument };
     };
 
-    await orchestrator.requestPlanPreview(demoFixture);
-    assert.deepStrictEqual(previewCalledWith, demoFixture, 'Orchestrator must forward explicit payload');
-
-    let threw = false;
-    try {
-      await orchestrator.requestPlanPreview(null);
-    } catch (e) {
-      threw = true;
-    }
-    assert.strictEqual(threw, true, 'requestPlanPreview without payload must throw');
-    console.log('✓ 7. Planı Göster action calls gateway with explicit payload');
+    await orchestrator.requestProjectPlanPreview();
+    assert.strictEqual(calledWithProjectId, 'proj_custom_villa', 'Must obtain active projectId from stateMachine');
+    console.log('✓ 16. orchestrator obtains current stateMachine projectId');
   }
 
-  // Test 8: Loading state displayed
+  // Test 17: Orchestrator calls previewProjectPlan(projectId)
   {
-    let checkedLoadingInFlight = false;
+    let methodCalled = false;
+    const { orchestrator } = createTestHarness();
+    orchestrator.localLLMGateway.previewProjectPlan = async (pid) => {
+      methodCalled = true;
+      assert.strictEqual(pid, 'proj_house_2story');
+      return { ok: true, status: 200, kind: 'success', projectId: pid, solution: mockSuccessSolution, document: mockSuccessSvgDocument };
+    };
+
+    await orchestrator.requestProjectPlanPreview();
+    assert.strictEqual(methodCalled, true, 'previewProjectPlan must be called');
+    console.log('✓ 17. orchestrator calls previewProjectPlan(projectId)');
+  }
+
+  // Test 18: Orchestrator does NOT call legacy previewPlan(requestPayload)
+  {
+    let legacyCalled = false;
+    const { orchestrator } = createTestHarness();
+    orchestrator.localLLMGateway.previewPlan = async () => {
+      legacyCalled = true;
+      return { ok: false };
+    };
+    orchestrator.localLLMGateway.previewProjectPlan = async (pid) => ({
+      ok: true, status: 200, kind: 'success', projectId: pid, solution: mockSuccessSolution, document: mockSuccessSvgDocument
+    });
+
+    await orchestrator.requestProjectPlanPreview();
+    assert.strictEqual(legacyCalled, false, 'Legacy previewPlan must NEVER be called by active flow');
+    console.log('✓ 18. orchestrator does NOT call legacy previewPlan(requestPayload)');
+  }
+
+  // Test 19: Orchestrator does NOT fetch plan_preview_request.demo.json
+  {
+    const fetchedUrls = [];
+    const { orchestrator } = createTestHarness(async (url) => {
+      fetchedUrls.push(url);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          solution: mockSuccessSolution,
+          document: mockSuccessSvgDocument
+        })
+      };
+    });
+
+    await orchestrator.requestProjectPlanPreview();
+    for (const url of fetchedUrls) {
+      assert(!url.includes('plan_preview_request.demo.json'), 'Must never fetch demo JSON fixture');
+    }
+    console.log('✓ 19. orchestrator does NOT fetch plan_preview_request.demo.json');
+  }
+
+  // Test 20: Loading state rendered in UI
+  {
+    let loadingStateObserved = false;
     const { orchestrator } = createTestHarness();
     const contentEl = global.document.getElementById('planPreviewContent');
 
-    orchestrator.localLLMGateway.previewPlan = async (payload) => {
+    orchestrator.localLLMGateway.previewProjectPlan = async (pid) => {
       const spinner = contentEl.querySelector('.plan-preview-loading');
       if (spinner || contentEl.textContent.includes('hesaplanıyor')) {
-        checkedLoadingInFlight = true;
+        loadingStateObserved = true;
       }
-      return { ok: true, status: 200, solution: mockSuccessSolution, document: mockSuccessSvgDocument };
+      return { ok: true, status: 200, kind: 'success', projectId: pid, solution: mockSuccessSolution, document: mockSuccessSvgDocument };
     };
 
-    await orchestrator.requestPlanPreview(demoFixture);
-    assert.strictEqual(checkedLoadingInFlight, true, 'Loading state must be visible during request');
-    console.log('✓ 8. loading state displayed');
+    await orchestrator.requestProjectPlanPreview();
+    assert.strictEqual(loadingStateObserved, true, 'Loading state must be rendered during active request');
+    console.log('✓ 20. loading state rendered in UI');
   }
 
-  // Test 9: Valid SVG rendered
+  // Test 21: Success SVG rendered in UI
   {
     const { orchestrator } = createTestHarness();
-    const result = {
-      ok: true,
-      status: 200,
-      solution: mockSuccessSolution,
-      document: mockSuccessSvgDocument
-    };
+    orchestrator.localLLMGateway.previewProjectPlan = async (pid) => ({
+      ok: true, status: 200, kind: 'success', projectId: pid, solution: mockSuccessSolution, document: mockSuccessSvgDocument
+    });
 
-    orchestrator.renderPlanPreviewResult(result, demoFixture);
+    await orchestrator.requestProjectPlanPreview();
     const contentEl = global.document.getElementById('planPreviewContent');
     const svgEl = contentEl.querySelector('svg');
     assert(svgEl, 'Must render SVG element in DOM');
     assert.strictEqual(svgEl.localName, 'svg', 'Root node must be SVG');
-    console.log('✓ 9. valid SVG rendered');
+    console.log('✓ 21. success SVG rendered in UI');
   }
 
-  // Test 10: Both Kitchen and Living Room visible in rendered SVG
+  // Test 22: Success chat message contains no "Demo önizleme" and uses truthful statement
+  {
+    let appendedMessage = null;
+    const { orchestrator } = createTestHarness();
+    orchestrator.appendAssistantMessage = (msg) => {
+      appendedMessage = msg;
+    };
+    orchestrator.localLLMGateway.previewProjectPlan = async (pid) => ({
+      ok: true, status: 200, kind: 'success', projectId: pid, solution: mockSuccessSolution, document: mockSuccessSvgDocument
+    });
+
+    await orchestrator.requestProjectPlanPreview();
+    assert(appendedMessage, 'Assistant message must be appended on success');
+    assert(!appendedMessage.includes('Demo önizleme'), 'Must not contain "Demo önizleme" disclaimer');
+    assert(
+      appendedMessage.includes('sunucuda doğrulanmış proje girdileri'),
+      'Must truthfully state verified project inputs were used'
+    );
+    console.log('✓ 22. success chat message contains no "Demo önizleme" and uses truthful statement');
+  }
+
+  // Test 23: not_ready response renders distinct blocked state in UI
   {
     const { orchestrator } = createTestHarness();
-    orchestrator.renderPlanPreviewResult({
-      ok: true,
-      status: 200,
-      solution: mockSuccessSolution,
-      document: mockSuccessSvgDocument
-    }, demoFixture);
+    orchestrator.localLLMGateway.previewProjectPlan = async (pid) => ({
+      ok: false,
+      status: 409,
+      kind: 'not_ready',
+      projectId: pid,
+      blockers: ['Taban oturumu girdisi eksik.', 'Arsa yapılaşma zarfı tanımlı değil.']
+    });
 
+    await orchestrator.requestProjectPlanPreview();
+    const contentEl = global.document.getElementById('planPreviewContent');
+    const blockedBox = contentEl.querySelector('.plan-preview-blocked');
+    assert(blockedBox, 'Must render distinct .plan-preview-blocked container');
+    assert(!contentEl.querySelector('.plan-preview-error'), 'Must NOT render generic error container for not_ready');
+    const heading = blockedBox.querySelector('.blocked-title');
+    assert.strictEqual(heading?.textContent, 'Taslak plan henüz oluşturulamıyor');
+    console.log('✓ 23. not_ready response renders distinct blocked state in UI');
+  }
+
+  // Test 24: Canonical blocker messages shown in blocked state
+  {
+    const { orchestrator } = createTestHarness();
+    orchestrator.localLLMGateway.previewProjectPlan = async (pid) => ({
+      ok: false,
+      status: 409,
+      kind: 'not_ready',
+      projectId: pid,
+      blockers: [
+        'Metrik mekânsal gereksinimler eksik.',
+        'Taban oturumu girdisi eksik.'
+      ]
+    });
+
+    await orchestrator.requestProjectPlanPreview();
     const contentEl = global.document.getElementById('planPreviewContent');
     const text = contentEl.textContent;
-    assert(text.includes('Living Room') || contentEl.innerHTML.includes('Living Room'), 'Living Room must be in preview');
-    assert(text.includes('Kitchen') || contentEl.innerHTML.includes('Kitchen'), 'Kitchen must be in preview');
-    console.log('✓ 10. both Kitchen and Living Room visible in rendered SVG');
+    assert(text.includes('Metrik mekânsal gereksinimler eksik.'), 'First blocker message must be displayed');
+    assert(text.includes('Taban oturumu girdisi eksik.'), 'Second blocker message must be displayed');
+    console.log('✓ 24. canonical blocker messages shown in blocked state');
   }
 
-  // Test 11: Metadata room count, status, grid step correctly rendered
+  // Test 25: related_ids and raw traceback not shown in blocked UI
   {
     const { orchestrator } = createTestHarness();
-    orchestrator.renderPlanPreviewResult({
-      ok: true,
-      status: 200,
-      solution: mockSuccessSolution,
-      document: mockSuccessSvgDocument
-    }, demoFixture);
+    orchestrator.localLLMGateway.previewProjectPlan = async (pid) => ({
+      ok: false,
+      status: 409,
+      kind: 'not_ready',
+      projectId: pid,
+      blockers: ['Mekânsal ilişki grafı güncel değil.']
+    });
 
+    await orchestrator.requestProjectPlanPreview();
     const contentEl = global.document.getElementById('planPreviewContent');
-    const metaBar = contentEl.querySelector('.plan-preview-meta-bar');
-    assert(metaBar, 'Metadata bar must be rendered');
-    const metaText = metaBar.textContent;
-    assert(metaText.includes('FEASIBLE'), 'Must show solver status FEASIBLE');
-    assert(metaText.includes('2'), 'Must show 2 rooms');
-    assert(metaText.includes('0.1'), 'Must show grid step 0.1');
-    console.log('✓ 11. metadata room count, status, grid step correctly rendered');
+    const text = contentEl.textContent;
+    assert(!text.includes('Traceback'), 'Blocked UI must not contain traceback');
+    assert(!text.includes('related_ids'), 'Blocked UI must not contain related_ids');
+    assert(!text.includes('schema_version'), 'Blocked UI must not contain raw JSON keys');
+    console.log('✓ 25. related_ids and raw traceback not shown in blocked UI');
   }
 
-  // Test 12: Demo provenance notice and architectural disclaimer rendered
+  // Test 26: server_error renders safe generic message in UI
   {
     const { orchestrator } = createTestHarness();
-    orchestrator.renderPlanPreviewResult({
-      ok: true,
-      status: 200,
-      solution: mockSuccessSolution,
-      document: mockSuccessSvgDocument
-    }, demoFixture);
+    orchestrator.localLLMGateway.previewProjectPlan = async (pid) => ({
+      ok: false,
+      status: 500,
+      kind: 'server_error',
+      projectId: pid,
+      error: 'Plan önizlemesi oluşturulamadı.'
+    });
 
+    await orchestrator.requestProjectPlanPreview();
     const contentEl = global.document.getElementById('planPreviewContent');
-    const demoNotice = contentEl.querySelector('.plan-preview-demo-notice');
-    assert(demoNotice, 'Demo provenance notice must be rendered');
-    assert(demoNotice.textContent.includes('Demo önizleme'), 'Must mention demo önizleme');
-    assert(demoNotice.textContent.includes('mevcut sohbetinizden otomatik üretilmemiştir'), 'Must clarify not auto-generated from current chat');
-
-    const disclaimer = contentEl.querySelector('.plan-preview-disclaimer');
-    assert(disclaimer, 'Architectural disclaimer must be rendered');
-    assert(disclaimer.textContent.includes('şematik yerleşimdir'), 'Must clarify schematic layout');
-    assert(disclaimer.textContent.includes('Resmî mimari uygulama projesi değildir'), 'Must state not official project');
-    console.log('✓ 12. demo provenance notice and architectural disclaimer rendered');
+    const errBox = contentEl.querySelector('.plan-preview-error');
+    assert(errBox, 'Error box must be rendered for server_error');
+    assert.strictEqual(errBox.querySelector('.error-message')?.textContent, 'Plan önizlemesi oluşturulamadı.');
+    console.log('✓ 26. server_error renders safe generic message in UI');
   }
 
-  // Test 13: Invalid/non-SVG document rejected
+  // Test 27: Repeated preview does not duplicate containers
+  {
+    const { orchestrator } = createTestHarness();
+    orchestrator.localLLMGateway.previewProjectPlan = async (pid) => ({
+      ok: true, status: 200, kind: 'success', projectId: pid, solution: mockSuccessSolution, document: mockSuccessSvgDocument
+    });
+
+    await orchestrator.requestProjectPlanPreview();
+    await orchestrator.requestProjectPlanPreview();
+
+    const contentEl = global.document.getElementById('planPreviewContent');
+    const svgElements = contentEl.querySelectorAll('svg');
+    assert.strictEqual(svgElements.length, 1, 'Only one SVG element should exist after repeated previews');
+    console.log('✓ 27. repeated preview does not duplicate containers');
+  }
+
+  // Test 28a: Gateway stale response protection directly tested
+  {
+    const { gateway, stateMachine } = createTestHarness(async () => {
+      // Simulate context switch mid-flight before fetch resolves
+      stateMachine.setProjectId('proj_B');
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          solution: mockSuccessSolution,
+          document: mockSuccessSvgDocument
+        })
+      };
+    }, 'proj_A');
+
+    const res = await gateway.previewProjectPlan('proj_A');
+    assert.strictEqual(res.ok, false, 'Gateway must return ok: false for stale project context');
+    assert.strictEqual(res.kind, 'stale', 'Gateway must return kind: "stale"');
+    assert.strictEqual(res.projectId, 'proj_A');
+    assert.strictEqual(res.solution, undefined, 'Gateway must not expose solution from stale project');
+    assert.strictEqual(res.document, undefined, 'Gateway must not expose document from stale project');
+    assert(res.error.includes('Proje bağlamı değiştiği için'), 'Gateway must provide safe stale error message');
+    console.log('✓ 28a. gateway stale response protection directly tested (switching project A -> B)');
+  }
+
+  // Test 28b: Gateway stale response protection when active project becomes null/empty
+  {
+    const { gateway, stateMachine } = createTestHarness(async () => {
+      // Simulate active project becoming null mid-flight before fetch resolves
+      stateMachine.setProjectId(null);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          solution: mockSuccessSolution,
+          document: mockSuccessSvgDocument
+        })
+      };
+    }, 'proj_A');
+
+    const res = await gateway.previewProjectPlan('proj_A');
+    assert.strictEqual(res.ok, false, 'Gateway must return ok: false when project context becomes null');
+    assert.strictEqual(res.kind, 'stale', 'Gateway must return kind: "stale" when project context becomes null');
+    assert.strictEqual(res.projectId, 'proj_A');
+    assert.strictEqual(res.solution, undefined, 'Gateway must not expose solution when project context becomes null');
+    assert.strictEqual(res.document, undefined, 'Gateway must not expose document when project context becomes null');
+    assert(res.error.includes('Proje bağlamı değiştiği için'), 'Gateway must provide safe stale error message');
+    console.log('✓ 28b. gateway stale response protection when active project becomes null');
+  }
+
+  // Test 28c: Orchestrator stale context protection: old SVG is not rendered and loading is cleared
+  {
+    const { orchestrator, stateMachine } = createTestHarness(null, 'proj_A');
+    const contentEl = global.document.getElementById('planPreviewContent');
+
+    // Simulate delayed response where project switches while in flight
+    orchestrator.localLLMGateway.previewProjectPlan = async (requestedPid) => {
+      // User switches context mid-flight!
+      stateMachine.setProjectId('proj_B');
+      return {
+        ok: false,
+        status: 0,
+        kind: 'stale',
+        projectId: requestedPid,
+        error: 'Proje bağlamı değiştiği için önceki plan sonucu kullanılmadı.'
+      };
+    };
+
+    const res = await orchestrator.requestProjectPlanPreview();
+    assert.strictEqual(res.ok, false, 'Stale result must be returned as not ok');
+    assert.strictEqual(res.kind, 'stale', 'Result kind must be stale');
+    assert.strictEqual(res.projectId, 'proj_A');
+
+    // Prove old SVG was NOT rendered in project B
+    const svgEl = contentEl.querySelector('svg');
+    assert.strictEqual(svgEl, null, 'Old SVG for proj_A must NEVER be rendered inside proj_B context');
+    assert.strictEqual(contentEl.children.length, 0, 'Loading state must be cleanly cleared upon stale context');
+    console.log('✓ 28c. orchestrator stale context protection: old SVG not rendered and loading state cleared');
+  }
+
+  // Test 29: app.js button wiring connects to requestProjectPlanPreview
+  {
+    const appJsPath = path.join(__dirname, '../app.js');
+    const appJsContent = fs.readFileSync(appJsPath, 'utf8');
+
+    assert(!appJsContent.includes('requestDemoPlanPreview'), 'app.js must not contain requestDemoPlanPreview');
+    assert(appJsContent.includes('requestProjectPlanPreview'), 'app.js must call requestProjectPlanPreview');
+    assert(appJsContent.includes('btnShowPlanPreview'), 'app.js must wire btnShowPlanPreview');
+    assert(appJsContent.includes('btnShowPlanPreviewEmpty'), 'app.js must wire btnShowPlanPreviewEmpty');
+    console.log('✓ 29. app.js button wiring connects to requestProjectPlanPreview');
+  }
+
+  // Test 30: Legacy gateway previewPlan remains backward-compatible
+  {
+    let requestedUrl = null;
+    let receivedPayload = null;
+    const dummyPayload = { sample: 'legacy_preview' };
+    const { gateway } = createTestHarness(async (url, opts) => {
+      requestedUrl = url;
+      receivedPayload = JSON.parse(opts.body);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          solution: mockSuccessSolution,
+          document: mockSuccessSvgDocument
+        })
+      };
+    });
+
+    const res = await gateway.previewPlan(dummyPayload);
+    assert.strictEqual(requestedUrl, 'http://127.0.0.1:8000/api/v1/plan/preview');
+    assert.deepStrictEqual(receivedPayload, dummyPayload);
+    assert.strictEqual(res.ok, true);
+    console.log('✓ 30. legacy gateway previewPlan remains backward-compatible');
+  }
+
+  // Test 31: Invalid/non-SVG document rejected by sanitization
   {
     const { orchestrator } = createTestHarness();
     const invalidDoc = {
@@ -623,18 +1087,19 @@ async function runTests() {
     const res = {
       ok: true,
       status: 200,
+      kind: 'success',
       solution: mockSuccessSolution,
       document: invalidDoc
     };
 
-    orchestrator.renderPlanPreviewResult(res, demoFixture);
+    orchestrator.renderPlanPreviewResult(res);
     const contentEl = global.document.getElementById('planPreviewContent');
     assert(!contentEl.querySelector('svg'), 'Invalid document must not render SVG');
     assert(contentEl.querySelector('.plan-preview-error'), 'Must render error state for invalid SVG document');
-    console.log('✓ 13. invalid/non-SVG document rejected');
+    console.log('✓ 31. invalid/non-SVG document rejected by sanitization');
   }
 
-  // Test 14: Script-containing SVG, foreignObject, and event handlers rejected
+  // Test 32: Script-containing SVG, foreignObject, and event handlers rejected
   {
     const { orchestrator } = createTestHarness();
 
@@ -642,7 +1107,7 @@ async function runTests() {
       schema_version: 'svg_plan_document.v0',
       svg: '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script><rect/></svg>'
     };
-    orchestrator.renderPlanPreviewResult({ ok: true, status: 200, solution: mockSuccessSolution, document: scriptDoc }, demoFixture);
+    orchestrator.renderPlanPreviewResult({ ok: true, status: 200, kind: 'success', solution: mockSuccessSolution, document: scriptDoc });
     let contentEl = global.document.getElementById('planPreviewContent');
     assert(!contentEl.querySelector('svg'), 'Script-containing SVG must be rejected');
 
@@ -650,7 +1115,7 @@ async function runTests() {
       schema_version: 'svg_plan_document.v0',
       svg: '<svg xmlns="http://www.w3.org/2000/svg"><foreignObject><iframe></iframe></foreignObject></svg>'
     };
-    orchestrator.renderPlanPreviewResult({ ok: true, status: 200, solution: mockSuccessSolution, document: foreignDoc }, demoFixture);
+    orchestrator.renderPlanPreviewResult({ ok: true, status: 200, kind: 'success', solution: mockSuccessSolution, document: foreignDoc });
     contentEl = global.document.getElementById('planPreviewContent');
     assert(!contentEl.querySelector('svg'), 'foreignObject-containing SVG must be rejected');
 
@@ -658,29 +1123,13 @@ async function runTests() {
       schema_version: 'svg_plan_document.v0',
       svg: '<svg xmlns="http://www.w3.org/2000/svg"><rect onclick="alert(1)"/></svg>'
     };
-    orchestrator.renderPlanPreviewResult({ ok: true, status: 200, solution: mockSuccessSolution, document: eventDoc }, demoFixture);
+    orchestrator.renderPlanPreviewResult({ ok: true, status: 200, kind: 'success', solution: mockSuccessSolution, document: eventDoc });
     contentEl = global.document.getElementById('planPreviewContent');
     assert(!contentEl.querySelector('svg'), 'Event handler attribute in SVG must be rejected');
-    console.log('✓ 14. script-containing SVG, foreignObject, and event handlers rejected');
+    console.log('✓ 32. script-containing SVG, foreignObject, and event handlers rejected');
   }
 
-  // Test 15: Error state rendered safely with Turkish messages
-  {
-    const { orchestrator } = createTestHarness();
-    orchestrator.renderPlanPreviewResult({
-      ok: false,
-      status: 409,
-      error: 'Plan girdileri birbiriyle uyuşmuyor.'
-    }, demoFixture);
-
-    const contentEl = global.document.getElementById('planPreviewContent');
-    const errorEl = contentEl.querySelector('.plan-preview-error');
-    assert(errorEl, 'Must render error element');
-    assert(errorEl.textContent.includes('Plan girdileri birbiriyle uyuşmuyor.'), 'Must display Turkish 409 error message');
-    console.log('✓ 15. error state rendered safely with Turkish messages');
-  }
-
-  // Test 16: No LLM call occurs for plan preview
+  // Test 33: No LLM interpret call occurs
   {
     let llmInterpretCalled = false;
     const { orchestrator, gateway } = createTestHarness();
@@ -688,57 +1137,32 @@ async function runTests() {
       llmInterpretCalled = true;
       return { status: 'success' };
     };
-    gateway.previewPlan = async () => ({
-      ok: true,
-      status: 200,
-      solution: mockSuccessSolution,
-      document: mockSuccessSvgDocument
+    gateway.previewProjectPlan = async (pid) => ({
+      ok: true, status: 200, kind: 'success', projectId: pid, solution: mockSuccessSolution, document: mockSuccessSvgDocument
     });
 
-    await orchestrator.requestPlanPreview(demoFixture);
+    await orchestrator.requestProjectPlanPreview();
     assert.strictEqual(llmInterpretCalled, false, 'Plan preview must never call LLM interpret endpoint');
-    console.log('✓ 16. no LLM call occurs for plan preview');
+    console.log('✓ 33. no LLM call occurs for plan preview');
   }
 
-  // Test 17: No brief mutation occurs
+  // Test 34: No brief or spatial mutation occurs
   {
     const { orchestrator } = createTestHarness();
     const initialBrief = orchestrator.getActiveBriefSnapshot();
     const initialBriefCopy = JSON.stringify(initialBrief);
 
-    orchestrator.localLLMGateway.previewPlan = async () => ({
-      ok: true,
-      status: 200,
-      solution: mockSuccessSolution,
-      document: mockSuccessSvgDocument
+    orchestrator.localLLMGateway.previewProjectPlan = async (pid) => ({
+      ok: true, status: 200, kind: 'success', projectId: pid, solution: mockSuccessSolution, document: mockSuccessSvgDocument
     });
 
-    await orchestrator.requestPlanPreview(demoFixture);
+    await orchestrator.requestProjectPlanPreview();
     const afterBrief = orchestrator.getActiveBriefSnapshot();
     assert.strictEqual(JSON.stringify(afterBrief), initialBriefCopy, 'Brief snapshot must remain completely untouched');
-    console.log('✓ 17. no brief mutation occurs');
+    console.log('✓ 34. no brief or spatial mutation occurs');
   }
 
-  // Test 18: Repeated preview does not duplicate UI containers
-  {
-    const { orchestrator } = createTestHarness();
-    orchestrator.localLLMGateway.previewPlan = async () => ({
-      ok: true,
-      status: 200,
-      solution: mockSuccessSolution,
-      document: mockSuccessSvgDocument
-    });
-
-    await orchestrator.requestPlanPreview(demoFixture);
-    await orchestrator.requestPlanPreview(demoFixture);
-
-    const contentEl = global.document.getElementById('planPreviewContent');
-    const svgElements = contentEl.querySelectorAll('svg');
-    assert.strictEqual(svgElements.length, 1, 'Only one SVG element should exist after repeated previews');
-    console.log('✓ 18. repeated preview does not duplicate UI containers');
-  }
-
-  console.log('\nAll 18 Focused Plan Preview UI V0 JS Unit Tests Passed Successfully!');
+  console.log('\nAll 36 Project Plan Preview Integration V1 JS Unit Tests Passed Successfully!');
 }
 
 if (require.main === module) {

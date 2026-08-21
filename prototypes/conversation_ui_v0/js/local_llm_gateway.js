@@ -370,6 +370,147 @@ class LocalLLMGateway {
     }
   }
 
+  async previewProjectPlan(projectId, options = {}) {
+    if (!projectId || typeof projectId !== 'string' || !projectId.trim()) {
+      return { ok: false, status: 400, kind: 'error', projectId, error: 'Geçersiz proje kimliği.' };
+    }
+    const cleanProjectId = projectId.trim();
+    const signal = options.signal;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
+
+    if (signal) {
+      if (signal.aborted) {
+        clearTimeout(timeoutId);
+        return { ok: false, status: 0, kind: 'canceled', projectId: cleanProjectId, error: 'Plan isteği iptal edildi.' };
+      }
+      signal.addEventListener('abort', () => controller.abort(), { once: true });
+    }
+
+    try {
+      const url = `${this.baseUrl}/api/v1/projects/${encodeURIComponent(cleanProjectId)}/plan/preview`;
+      const response = await this.fetchFn(url, {
+        method: 'POST',
+        signal: controller.signal
+      });
+      const payload = await this.readResponse(response);
+
+      // Defense-in-depth: check for stale project context at gateway boundary
+      const currentSnapshot = this.stateMachine ? this.stateMachine.getSnapshot() : null;
+      const currentProjectId = currentSnapshot ? currentSnapshot.projectId : null;
+      if (currentProjectId !== cleanProjectId) {
+        return {
+          ok: false,
+          status: 0,
+          kind: 'stale',
+          projectId: cleanProjectId,
+          error: 'Proje bağlamı değiştiği için önceki plan sonucu kullanılmadı.'
+        };
+      }
+
+      if (response.ok && payload && payload.success === true) {
+        return {
+          ok: true,
+          status: 200,
+          kind: 'success',
+          projectId: cleanProjectId,
+          solution: payload.solution,
+          document: payload.document
+        };
+      }
+
+      if (response.status === 409) {
+        if (payload && payload.schema_version === 'project_plan_preview_readiness.v0') {
+          const blockers = [];
+          if (Array.isArray(payload.project_blockers)) {
+            payload.project_blockers.forEach(b => {
+              if (b && typeof b.message === 'string' && b.message.trim()) {
+                blockers.push(b.message.trim());
+              }
+            });
+          }
+          if (payload.preparation && Array.isArray(payload.preparation.blockers)) {
+            payload.preparation.blockers.forEach(b => {
+              if (b && typeof b.message === 'string' && b.message.trim()) {
+                blockers.push(b.message.trim());
+              }
+            });
+          }
+          return {
+            ok: false,
+            status: 409,
+            kind: 'not_ready',
+            projectId: cleanProjectId,
+            readiness: payload,
+            blockers,
+            error: 'Taslak plan henüz oluşturulamıyor.'
+          };
+        }
+        return {
+          ok: false,
+          status: 409,
+          kind: 'execution_error',
+          projectId: cleanProjectId,
+          error: 'Plan girdileri birbiriyle uyuşmuyor.',
+          payload
+        };
+      }
+
+      if (response.status === 422) {
+        return {
+          ok: false,
+          status: 422,
+          kind: 'execution_error',
+          projectId: cleanProjectId,
+          error: 'Plan girdileri bu sürümde çözülemiyor.',
+          payload
+        };
+      }
+
+      if (response.status === 503) {
+        return {
+          ok: false,
+          status: 503,
+          kind: 'execution_error',
+          projectId: cleanProjectId,
+          error: 'Plan çözücü şu anda sonuç üretemedi.',
+          payload
+        };
+      }
+
+      if (response.status === 500) {
+        const isExecutionPlanResponse = payload && payload.success === false;
+        return {
+          ok: false,
+          status: 500,
+          kind: isExecutionPlanResponse ? 'execution_error' : 'server_error',
+          projectId: cleanProjectId,
+          error: 'Plan önizlemesi oluşturulamadı.',
+          payload
+        };
+      }
+
+      return {
+        ok: false,
+        status: response.status,
+        kind: 'server_error',
+        projectId: cleanProjectId,
+        error: 'Plan önizlemesi oluşturulamadı.',
+        payload
+      };
+    } catch (error) {
+      if (signal && signal.aborted) {
+        return { ok: false, status: 0, kind: 'canceled', projectId: cleanProjectId, error: 'Plan isteği iptal edildi.' };
+      }
+      if (error && error.name === 'AbortError') {
+        return { ok: false, status: 0, kind: 'timeout', projectId: cleanProjectId, error: 'Plan isteği zaman aşımına uğradı.' };
+      }
+      return { ok: false, status: 0, kind: 'network_error', projectId: cleanProjectId, error: 'Plan servisine ulaşılamadı.' };
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
   async previewPlan(requestPayload, options = {}) {
     if (!requestPayload || typeof requestPayload !== 'object') {
       return { ok: false, status: 400, error: 'Geçersiz plan önizleme isteği.' };
