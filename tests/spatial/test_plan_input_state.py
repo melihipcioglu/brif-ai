@@ -826,6 +826,7 @@ def test_33_concurrent_save_race_allows_single_winner_and_rejects_losers(
     tmp_path: Path,
 ) -> None:
     """Concurrent save race on the same version allows only 1 winner and rejects others."""
+    (tmp_path / "projects").mkdir(parents=True, exist_ok=True)
     repo = JSONPlanInputStateRepository(root_dir=tmp_path)
     concurrency = 8
     barrier = threading.Barrier(concurrency)
@@ -865,3 +866,108 @@ def test_33_concurrent_save_race_allows_single_winner_and_rejects_losers(
     assert winning_state is not None
     assert winning_state.solver_config is not None
     assert winning_state.solver_config.grid_step_m == round(0.05 + winning_idx * 0.05, 3)
+
+
+def test_34_concurrent_identical_payloads_are_all_idempotent_successes(
+    tmp_path: Path,
+) -> None:
+    """Multiple concurrent writers saving identical payloads all succeed idempotently."""
+    (tmp_path / "projects").mkdir(parents=True, exist_ok=True)
+    repo = JSONPlanInputStateRepository(root_dir=tmp_path)
+    concurrency = 8
+    barrier = threading.Barrier(concurrency)
+
+    cfg = RoomGeometrySolverConfig(grid_step_m=0.1)
+    shared_state = AuthoritativePlanInputState(
+        project_id="proj_idempotent",
+        state_version=1,
+        source_brief_version=1,
+        created_at=datetime(2026, 8, 20, 12, 0, 0, tzinfo=UTC),
+        solver_config=cfg,
+    )
+
+    def _save_same(idx: int) -> tuple[int, bool, str | None]:
+        barrier.wait()
+        try:
+            repo.save(shared_state)
+            return (idx, True, None)
+        except Exception as err:
+            return (idx, False, str(err))
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as executor:
+        futures = [executor.submit(_save_same, i) for i in range(concurrency)]
+        results = [f.result() for f in futures]
+
+    successes = [r for r in results if r[1] is True]
+    errors = [r for r in results if r[1] is False]
+    assert errors == []
+    assert len(successes) == concurrency
+
+    latest = repo.get_latest("proj_idempotent")
+    assert latest == shared_state
+
+
+def test_35_temp_file_cleaned_up_after_collision_and_publish(
+    tmp_path: Path,
+) -> None:
+    """Verify that no temporary publish files remain in versions/ after collision or success."""
+    repo = JSONPlanInputStateRepository(root_dir=tmp_path)
+    cfg1 = RoomGeometrySolverConfig(grid_step_m=0.1)
+    cfg2 = RoomGeometrySolverConfig(grid_step_m=0.2)
+
+    state1 = AuthoritativePlanInputState(
+        project_id="proj_cleanup",
+        state_version=1,
+        source_brief_version=1,
+        created_at=datetime(2026, 8, 20, 12, 0, 0, tzinfo=UTC),
+        solver_config=cfg1,
+    )
+    state2 = AuthoritativePlanInputState(
+        project_id="proj_cleanup",
+        state_version=1,
+        source_brief_version=1,
+        created_at=datetime(2026, 8, 20, 12, 0, 0, tzinfo=UTC),
+        solver_config=cfg2,
+    )
+
+    repo.save(state1)
+    with pytest.raises(PlanInputStateVersionConflictError):
+        repo.save(state2)
+
+    versions_dir = tmp_path / "projects" / "proj_cleanup" / "plan_input" / "versions"
+    remaining_files = list(versions_dir.iterdir())
+    assert len(remaining_files) == 1
+    assert remaining_files[0].name == "000001.json"
+
+
+def test_36_conflicting_loser_does_not_update_latest_json(
+    tmp_path: Path,
+) -> None:
+    """A conflicting loser fails on version creation and MUST NOT update latest.json."""
+    repo = JSONPlanInputStateRepository(root_dir=tmp_path)
+    cfg1 = RoomGeometrySolverConfig(grid_step_m=0.1)
+    cfg2 = RoomGeometrySolverConfig(grid_step_m=0.2)
+
+    state_winner = AuthoritativePlanInputState(
+        project_id="proj_pointer",
+        state_version=1,
+        source_brief_version=1,
+        created_at=datetime(2026, 8, 20, 12, 0, 0, tzinfo=UTC),
+        solver_config=cfg1,
+    )
+    state_loser = AuthoritativePlanInputState(
+        project_id="proj_pointer",
+        state_version=1,
+        source_brief_version=1,
+        created_at=datetime(2026, 8, 20, 12, 0, 0, tzinfo=UTC),
+        solver_config=cfg2,
+    )
+
+    repo.save(state_winner)
+    with pytest.raises(PlanInputStateVersionConflictError):
+        repo.save(state_loser)
+
+    latest = repo.get_latest("proj_pointer")
+    assert latest == state_winner
+    assert latest is not None and latest.solver_config is not None
+    assert latest.solver_config.grid_step_m == 0.1
