@@ -38,7 +38,11 @@ class MockProvider:
         return [LocalModelInfo(name="local-model:latest")]
 
     async def interpret(
-        self, request: ConversationRequest, output_schema: dict[str, object]
+        self,
+        request: ConversationRequest,
+        output_schema: dict[str, object],
+        *,
+        metric_context: Any = None,
     ) -> ArchitecturalIntentResult:
         self.interpret_calls += 1
         self.schema = output_schema
@@ -58,7 +62,20 @@ def test_valid_structured_result_passes_policy() -> None:
     assert response.success is True
     assert response.result is not None
     assert response.context_fingerprint == "house|main|ground|living|study"
-    assert provider.schema == ArchitecturalIntentResult.model_json_schema()
+    # _build_provider_output_schema always constrains ProposedMetricRequirement
+    # requirement_type to the V0-supported enum values.
+    from copy import deepcopy
+
+    expected_schema = deepcopy(ArchitecturalIntentResult.model_json_schema())
+    defs = expected_schema.get("$defs", {})
+    if "ProposedMetricRequirement" in defs:
+        m_props = defs["ProposedMetricRequirement"].get("properties", {})
+        if "requirement_type" in m_props:
+            m_props["requirement_type"] = {
+                "type": "string",
+                "enum": ["MIN_AREA", "MAX_AREA", "MIN_CLEAR_WIDTH"],
+            }
+    assert provider.schema == expected_schema
 
 
 def test_neutral_start_constrains_provider_schema() -> None:
@@ -335,7 +352,11 @@ def test_active_relationship_request_stays_a_confirmation_only_suggestion() -> N
 def test_scenario_f_provider_failure_preserves_request_state() -> None:
     class OfflineProvider(MockProvider):
         async def interpret(
-            self, request: ConversationRequest, output_schema: dict[str, object]
+            self,
+            request: ConversationRequest,
+            output_schema: dict[str, object],
+            *,
+            metric_context: Any = None,
         ) -> ArchitecturalIntentResult:
             raise ProviderUnavailableError("offline")
 

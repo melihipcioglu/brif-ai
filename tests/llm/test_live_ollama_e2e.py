@@ -8,8 +8,14 @@ from datetime import UTC, datetime
 import httpx
 import pytest
 
-from brif_ai.brief.models.common import ConfirmationStatus, OpenQuestionStatus
-from brif_ai.brief.models.snapshot import BriefSnapshot, OpenQuestion, SpaceRequest, Stakeholder
+from brif_ai.brief.models.common import ConfirmationStatus, EvidenceSource, OpenQuestionStatus
+from brif_ai.brief.models.snapshot import (
+    BriefSnapshot,
+    Evidence,
+    OpenQuestion,
+    SpaceRequest,
+    Stakeholder,
+)
 from brif_ai.conversation.elicitation.models import ElicitationTopic
 from brif_ai.core.models.common import SpaceFunction
 from brif_ai.llm.contracts import (
@@ -38,10 +44,8 @@ def get_live_model_name() -> str:
             models = payload.get("models")
             if isinstance(models, list) and models:
                 first_model = models[0]
-                if isinstance(first_model, dict):
-                    name = first_model.get("name")
-                    if isinstance(name, str):
-                        return name
+                if isinstance(first_model, dict) and "name" in first_model:
+                    return str(first_model["name"])
     except Exception:
         pass
     return "qwen3:4b-instruct"
@@ -67,7 +71,14 @@ def sample_snapshot(project_id: str = "proj_live_test", version: int = 1) -> Bri
                 active=True,
             )
         ],
-        evidence=[],
+        evidence=[
+            Evidence(
+                id="ev_live_1",
+                source_type=EvidenceSource.CHAT,
+                source_reference="chat_live",
+                excerpt="Live test conversation",
+            )
+        ],
         brief_items=[],
         space_requests=[],
         usage_scenarios=[],
@@ -350,7 +361,7 @@ def test_live_scenario_f_spatial_relationship_bedroom_near() -> None:
                     mandatory=True,
                     confirmation_status=ConfirmationStatus.CONFIRMED,
                     stakeholder_ids=["stk_owner"],
-                    evidence_ids=[],
+                    evidence_ids=["ev_live_1"],
                 ),
                 SpaceRequest(
                     id="sr_living",
@@ -360,7 +371,7 @@ def test_live_scenario_f_spatial_relationship_bedroom_near() -> None:
                     mandatory=True,
                     confirmation_status=ConfirmationStatus.CONFIRMED,
                     stakeholder_ids=["stk_owner"],
-                    evidence_ids=[],
+                    evidence_ids=["ev_live_1"],
                 ),
             ]
         }
@@ -404,7 +415,7 @@ def test_live_scenario_g_spatial_relationship_kitchen_living_near() -> None:
                     mandatory=True,
                     confirmation_status=ConfirmationStatus.CONFIRMED,
                     stakeholder_ids=["stk_owner"],
-                    evidence_ids=[],
+                    evidence_ids=["ev_live_1"],
                 ),
                 SpaceRequest(
                     id="sr_living",
@@ -414,7 +425,7 @@ def test_live_scenario_g_spatial_relationship_kitchen_living_near() -> None:
                     mandatory=True,
                     confirmation_status=ConfirmationStatus.CONFIRMED,
                     stakeholder_ids=["stk_owner"],
-                    evidence_ids=[],
+                    evidence_ids=["ev_live_1"],
                 ),
             ]
         }
@@ -452,7 +463,7 @@ def test_live_scenario_h_spatial_relationship_guest_child_separated() -> None:
                     mandatory=True,
                     confirmation_status=ConfirmationStatus.CONFIRMED,
                     stakeholder_ids=["stk_owner"],
-                    evidence_ids=[],
+                    evidence_ids=["ev_live_1"],
                 ),
                 SpaceRequest(
                     id="sr_child",
@@ -462,7 +473,7 @@ def test_live_scenario_h_spatial_relationship_guest_child_separated() -> None:
                     mandatory=True,
                     confirmation_status=ConfirmationStatus.CONFIRMED,
                     stakeholder_ids=["stk_owner"],
-                    evidence_ids=[],
+                    evidence_ids=["ev_live_1"],
                 ),
             ]
         }

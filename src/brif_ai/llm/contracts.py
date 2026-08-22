@@ -14,7 +14,13 @@ from brif_ai.brief.mutation import ProposedBriefMutation
 from brif_ai.conversation.elicitation.household import HouseholdComposition
 from brif_ai.conversation.elicitation.models import ElicitationContext, ElicitationTopic
 from brif_ai.regulatory.models import ComplianceFinding, ProjectRegulatoryContext
+from brif_ai.spatial.metrics.models import (
+    MetricRequirementType,
+    MetricUnit,
+    ProposedMetricRequirement,
+)
 from brif_ai.spatial.models import ProposedSpatialRelationship, SpatialRelationshipGraph
+from brif_ai.spatial.plan_input.models import AuthoritativePlanInputState
 
 if sys.version_info >= (3, 11):  # noqa: UP036
     from enum import StrEnum
@@ -138,6 +144,25 @@ class VisibleEntity(StrictContract):
     zone_id: NonEmptyString | None = None
 
 
+class ExistingMetricRequirementContext(StrictContract):
+    requirement_type: MetricRequirementType
+    value: float
+    unit: MetricUnit
+
+
+class SpaceMetricContext(StrictContract):
+    space_id: NonEmptyString
+    display_name: NonEmptyString
+    function: str
+    existing_requirements: list[ExistingMetricRequirementContext] = Field(default_factory=list)
+
+
+class MetricConversationContext(StrictContract):
+    spaces: list[SpaceMetricContext] = Field(default_factory=list)
+    source_brief_version: int = Field(ge=1)
+    source_plan_input_state_version: int | None = None
+
+
 class ConversationRequest(StrictContract):
     message: NonEmptyString
     active_context: ActiveContextSnapshot
@@ -206,15 +231,21 @@ class PendingProposalContext(StrictContract):
     action: ProposedAction | None = None
     brief_mutation: ProposedBriefMutation | None = None
     spatial_relationship: ProposedSpatialRelationship | None = None
+    metric_requirement: ProposedMetricRequirement | None = None
 
     @model_validator(mode="after")
     def validate_proposal_content_xor(self) -> PendingProposalContext:
-        proposals = [self.action, self.brief_mutation, self.spatial_relationship]
+        proposals = [
+            self.action,
+            self.brief_mutation,
+            self.spatial_relationship,
+            self.metric_requirement,
+        ]
         non_none_count = sum(1 for p in proposals if p is not None)
         if non_none_count != 1:
             raise ValueError(
-                "Exactly one of action, brief_mutation, or spatial_relationship must be populated "
-                "in PendingProposalContext"
+                "Exactly one of action, brief_mutation, spatial_relationship, "
+                "or metric_requirement must be populated in PendingProposalContext"
             )
         return self
 
@@ -230,6 +261,7 @@ class ArchitecturalIntentResult(StrictContract):
     proposed_actions: list[ProposedAction]
     proposed_brief_mutations: list[ProposedBriefMutation] = Field(default_factory=list)
     proposed_spatial_relationships: list[ProposedSpatialRelationship] = Field(default_factory=list)
+    proposed_metric_requirements: list[ProposedMetricRequirement] = Field(default_factory=list)
     household_composition: HouseholdComposition | None = None
     answers_current_open_question: bool = False
     needs_follow_up: bool
@@ -266,6 +298,29 @@ class ArchitecturalIntentResult(StrictContract):
                 raise ValueError(
                     "cannot mix proposed spatial relationships with proposed brief mutations"
                 )
+            if self.proposed_metric_requirements:
+                raise ValueError(
+                    "cannot mix proposed spatial relationships with proposed metric requirements"
+                )
+
+        # Invariant: If metric requirements are present, enforce safety invariants
+        if self.proposed_metric_requirements:
+            if not self.needs_user_confirmation:
+                raise ValueError("proposed metric requirements require user confirmation")
+            if self.needs_follow_up:
+                raise ValueError(
+                    "needs_follow_up must be false when metric requirements are present"
+                )
+            if self.proposed_actions:
+                raise ValueError("cannot mix proposed metric requirements with proposed actions")
+            if self.proposed_brief_mutations:
+                raise ValueError(
+                    "cannot mix proposed metric requirements with proposed brief mutations"
+                )
+            if self.proposed_spatial_relationships:
+                raise ValueError(
+                    "cannot mix proposed metric requirements with proposed spatial relationships"
+                )
 
         # Enforce single proposal category in V0 (mutations vs actions)
         if self.proposed_brief_mutations and self.proposed_actions:
@@ -276,6 +331,7 @@ class ArchitecturalIntentResult(StrictContract):
             self.proposed_brief_mutations
             or self.proposed_actions
             or self.proposed_spatial_relationships
+            or self.proposed_metric_requirements
         ) and self.needs_follow_up:
             raise ValueError("needs_follow_up must be false when proposals are present")
 
@@ -285,8 +341,12 @@ class ArchitecturalIntentResult(StrictContract):
         if self.proposed_brief_mutations and not self.needs_user_confirmation:
             raise ValueError("proposed brief mutations require user confirmation")
 
-        if self.intent is IntentType.COMPARE_ALTERNATIVES and self.proposed_brief_mutations:
-            raise ValueError("compare_alternatives cannot produce brief mutations")
+        if self.intent is IntentType.COMPARE_ALTERNATIVES and (
+            self.proposed_brief_mutations or self.proposed_metric_requirements
+        ):
+            raise ValueError(
+                "compare_alternatives cannot produce brief mutations or metric proposals"
+            )
 
         for action in self.proposed_actions:
             if action.action_type in PLAN_CHANGE_ACTIONS:
@@ -302,10 +362,14 @@ class ArchitecturalIntentResult(StrictContract):
             raise ValueError("explain_plan cannot contain plan change suggestions")
 
         if self.answers_current_open_question:
-            if not self.proposed_brief_mutations and not self.proposed_spatial_relationships:
+            if (
+                not self.proposed_brief_mutations
+                and not self.proposed_spatial_relationships
+                and not self.proposed_metric_requirements
+            ):
                 raise ValueError(
-                    "answers_current_open_question requires at least one proposed_brief_mutation "
-                    "or proposed_spatial_relationship"
+                    "answers_current_open_question requires at least one proposed_brief_mutation, "
+                    "proposed_spatial_relationship, or proposed_metric_requirement"
                 )
             if self.needs_follow_up:
                 raise ValueError(
@@ -357,6 +421,7 @@ class ConversationInterpretationResponse(StrictContract):
     result: ArchitecturalIntentResult | None
     error: str | None
     resulting_brief_snapshot: BriefSnapshot | None = None
+    authoritative_plan_input_state_version: int | None = None
 
 
 class ProposalApprovalRecord(StrictContract):
@@ -444,4 +509,44 @@ class SpatialRelationshipApprovalResponse(StrictContract):
     resulting_snapshot: BriefSnapshot | None = None
     resulting_spatial_graph: SpatialRelationshipGraph | None = None
     approval_record: SpatialRelationshipApprovalRecord | None = None
+    error: str | None = None
+
+
+class MetricRequirementApprovalRecord(StrictContract):
+    proposal_status: Literal["user_approved"] = "user_approved"
+    approved_at: datetime
+    project_id: NonEmptyString
+    proposal_id: NonEmptyString
+    space_id: NonEmptyString
+    requirement_type: MetricRequirementType
+    value: float
+    unit: MetricUnit
+    resulting_state_version: int = Field(ge=1)
+    context_fingerprint: NonEmptyString
+    generation_id: int = Field(ge=0)
+
+
+class MetricRequirementApprovalRequest(StrictContract):
+    proposed_requirement: ProposedMetricRequirement
+    current_project_id: NonEmptyString
+    expected_brief_version: int = Field(ge=1)
+    expected_plan_input_state_version: int | None = None
+    proposal_fingerprint: NonEmptyString
+    current_fingerprint: NonEmptyString
+    proposal_generation_id: int = Field(ge=0)
+    current_generation_id: int = Field(ge=0)
+    user_message: str | None = None
+    source_reference: str | None = None
+
+    @model_validator(mode="after")
+    def validate_project_context(self) -> MetricRequirementApprovalRequest:
+        if self.proposed_requirement.proposal_id.strip() == "":
+            raise ValueError("proposal_id cannot be empty")
+        return self
+
+
+class MetricRequirementApprovalResponse(StrictContract):
+    success: bool
+    resulting_plan_input_state: AuthoritativePlanInputState | None = None
+    approval_record: MetricRequirementApprovalRecord | None = None
     error: str | None = None

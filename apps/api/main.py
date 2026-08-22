@@ -13,6 +13,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import TypeAdapter
 
+from brif_ai.brief.models.common import (
+    Priority,
+)
 from brif_ai.brief.models.snapshot import BriefSnapshot
 from brif_ai.brief.mutation import (
     NoActiveElicitationQuestionError,
@@ -34,8 +37,14 @@ from brif_ai.llm.contracts import (
     BriefMutationApprovalResponse,
     ConversationInterpretationResponse,
     ConversationRequest,
+    ExistingMetricRequirementContext,
     HealthResponse,
     LocalModelInfo,
+    MetricConversationContext,
+    MetricRequirementApprovalRecord,
+    MetricRequirementApprovalRequest,
+    MetricRequirementApprovalResponse,
+    SpaceMetricContext,
     SpatialRelationshipApprovalRecord,
     SpatialRelationshipApprovalRequest,
     SpatialRelationshipApprovalResponse,
@@ -52,6 +61,18 @@ from brif_ai.llm.provider import (
 )
 from brif_ai.llm.service import LocalLLMConversationService, StaleContextError
 from brif_ai.llm.settings import LocalLLMSettings
+from brif_ai.spatial.metrics.builder import MetricSpatialRequirementsBuilder
+from brif_ai.spatial.metrics.errors import (
+    DuplicateMetricRequirementError,
+    MetricInvalidEvidenceError,
+    MetricInvalidValueError,
+    MetricNonexistentSpaceError,
+    MetricRangeConflictError,
+    MetricUnitMismatchError,
+)
+from brif_ai.spatial.metrics.models import (
+    MetricRequirementInput,
+)
 from brif_ai.spatial.models import (
     RelationshipProvenance,
     SpatialRelationshipGraph,
@@ -84,6 +105,15 @@ from brif_ai.spatial.plan_preview import (
     PlanPreviewService,
     ProjectPlanPreviewReadinessResult,
     ProjectPlanPreviewReadinessService,
+)
+from brif_ai.spatial.program.builder import SpatialProgramBuilder
+from brif_ai.spatial.program.errors import (
+    BriefNotReadyError,
+    SpatialProgramConflictBlockerError,
+    SpatialProgramMissingInputError,
+    SpatialProgramNodeMismatchError,
+    SpatialProgramProjectMismatchError,
+    SpatialProgramVersionMismatchError,
 )
 from brif_ai.spatial.room_solver import (
     RoomGeometryEngineError,
@@ -158,6 +188,61 @@ def _validate_project_id_param(project_id: str) -> str:
         return str(TypeAdapter(ObjectId).validate_python(project_id.strip()))
     except Exception as err:
         raise InvalidProjectIdError(f"Invalid project ID format: {project_id!r}") from err
+
+
+def build_metric_conversation_context(
+    snapshot: BriefSnapshot | None,
+    graph: SpatialRelationshipGraph | None,
+    plan_input_state: AuthoritativePlanInputState | None,
+) -> MetricConversationContext | None:
+    """Build server-authoritative metric conversation context from SpatialProgram."""
+    if snapshot is None or graph is None:
+        return None
+    try:
+        program = SpatialProgramBuilder().build(snapshot, graph)
+    except (
+        BriefNotReadyError,
+        SpatialProgramConflictBlockerError,
+        SpatialProgramMissingInputError,
+        SpatialProgramNodeMismatchError,
+        SpatialProgramProjectMismatchError,
+        SpatialProgramVersionMismatchError,
+    ):
+        return None
+
+    existing_reqs_by_space: dict[str, list[ExistingMetricRequirementContext]] = {}
+    if plan_input_state is not None and plan_input_state.metric_requirements is not None:
+        for space_req in plan_input_state.metric_requirements.space_requirements:
+            existing_reqs_by_space[space_req.space_id] = [
+                ExistingMetricRequirementContext(
+                    requirement_type=r.requirement_type,
+                    value=r.value,
+                    unit=r.unit,
+                )
+                for r in space_req.requirements
+            ]
+
+    spaces_context = [
+        SpaceMetricContext(
+            space_id=p_space.id,
+            display_name=p_space.display_name,
+            function=(
+                p_space.function.value
+                if hasattr(p_space.function, "value")
+                else str(p_space.function)
+            ),
+            existing_requirements=existing_reqs_by_space.get(p_space.id, []),
+        )
+        for p_space in program.spaces
+    ]
+
+    return MetricConversationContext(
+        spaces=spaces_context,
+        source_brief_version=snapshot.brief_version,
+        source_plan_input_state_version=(
+            plan_input_state.state_version if plan_input_state is not None else None
+        ),
+    )
 
 
 def create_app(
@@ -332,11 +417,31 @@ def create_app(
                         resulting_brief_snapshot=new_snapshot,
                     )
 
-            # Step 6: Replace client brief content with authoritative snapshot
-            prepared_request = request.model_copy(update={"brief_snapshot": authoritative_snapshot})
+            # Step 6: Replace client brief with authoritative snapshot and build metric context
+            authoritative_graph = persistent_spatial_service.get_latest_graph(project_id)
+            authoritative_plan_input = persistent_plan_input_service.get_latest_state(project_id)
+            authoritative_metric_context = build_metric_conversation_context(
+                authoritative_snapshot,
+                authoritative_graph,
+                authoritative_plan_input,
+            )
+            prepared_request = request.model_copy(
+                update={
+                    "brief_snapshot": authoritative_snapshot,
+                }
+            )
 
             # Step 7: Execute LLM interpretation
-            interpretation_result = await service.interpret(prepared_request)
+            plan_input_version = (
+                authoritative_plan_input.state_version
+                if authoritative_plan_input is not None
+                else None
+            )
+            interpretation_result = await service.interpret(
+                prepared_request,
+                metric_context=authoritative_metric_context,
+                plan_input_state_version=plan_input_version,
+            )
 
             # Step 8: Post-LLM OpenQuestion persistence
             resulting_snapshot: BriefSnapshot | None = None
@@ -368,8 +473,16 @@ def create_app(
                         },
                     )
 
+            plan_input_version = (
+                authoritative_plan_input.state_version
+                if authoritative_plan_input is not None
+                else None
+            )
             return interpretation_result.model_copy(
-                update={"resulting_brief_snapshot": resulting_snapshot}
+                update={
+                    "resulting_brief_snapshot": resulting_snapshot,
+                    "authoritative_plan_input_state_version": plan_input_version,
+                }
             )
         except ModelNotSelectedError as error:
             return _error_response(request, resolved_settings, str(error), 409)
@@ -1000,6 +1113,297 @@ def create_app(
             return JSONResponse(
                 status_code=500,
                 content={"detail": f"Sunucu hatası: {error}"},
+            )
+
+    @application.post(
+        "/api/v1/projects/{project_id}/plan/input/metrics/approve",
+        response_model=MetricRequirementApprovalResponse,
+    )
+    async def approve_metric_requirement(
+        project_id: str,
+        request: MetricRequirementApprovalRequest,
+    ) -> Any:
+        try:
+            clean_project_id = _validate_project_id_param(project_id)
+            if request.current_project_id != clean_project_id:
+                raise PolicyValidationError(
+                    f"Route project_id '{clean_project_id}' does not match "
+                    f"payload current_project_id '{request.current_project_id}'."
+                )
+
+            if request.proposal_fingerprint != request.current_fingerprint:
+                raise StaleContextError("Farklı bağlama ait öneri onaylanamaz.")
+            if request.proposal_generation_id != request.current_generation_id:
+                raise StaleContextError("Eski jenerasyona ait öneri onaylanamaz.")
+
+            # 1. Fetch authoritative persisted BriefSnapshot
+            persisted_brief = persistent_brief_service.get_latest_brief(clean_project_id)
+            if persisted_brief is None:
+                raise BriefNotFoundError(
+                    f"Cannot approve metric requirement: Project '{clean_project_id}' "
+                    "brief is not initialized."
+                )
+
+            if persisted_brief.brief_version != request.expected_brief_version:
+                raise BriefVersionConflictError(
+                    f"Stale brief approval: Current persisted brief version for "
+                    f"'{clean_project_id}' is {persisted_brief.brief_version}, "
+                    f"but client expected version {request.expected_brief_version}."
+                )
+
+            # 2. Fetch authoritative spatial graph & validate project/version
+            persisted_graph = persistent_spatial_service.get_latest_graph(clean_project_id)
+            if persisted_graph is None:
+                raise SpatialProgramMissingInputError(
+                    f"Spatial relationship graph for project '{clean_project_id}' not found."
+                )
+            if persisted_graph.project_id != clean_project_id:
+                raise SpatialProgramProjectMismatchError(
+                    snapshot_project_id=clean_project_id,
+                    graph_project_id=persisted_graph.project_id,
+                )
+            if persisted_graph.source_brief_version != persisted_brief.brief_version:
+                raise SpatialProgramVersionMismatchError(
+                    snapshot_version=persisted_brief.brief_version,
+                    graph_source_version=persisted_graph.source_brief_version,
+                )
+
+            # 3. Derive SpatialProgram and validate target space
+            program = SpatialProgramBuilder().build(persisted_brief, persisted_graph)
+            prop = request.proposed_requirement
+
+            target_space = next((s for s in program.spaces if s.id == prop.space_id), None)
+            if target_space is None:
+                raise MetricNonexistentSpaceError(
+                    f"Target space {prop.space_id!r} is not part of the active SpatialProgram."
+                )
+
+            now = datetime.now(UTC)
+
+            # 4. Fetch authoritative plan input state
+            current_plan_input_state = persistent_plan_input_service.get_latest_state(
+                clean_project_id
+            )
+
+            # 5. Idempotent replay check:
+            # Match identical USER_CONFIRMED requirement with same space, type, value, unit
+            if (
+                current_plan_input_state is not None
+                and current_plan_input_state.metric_requirements is not None
+            ):
+                for space_req in current_plan_input_state.metric_requirements.space_requirements:
+                    if space_req.space_id == prop.space_id:
+                        for req in space_req.requirements:
+                            if (
+                                req.requirement_type == prop.requirement_type
+                                and req.value == prop.value
+                                and req.unit == prop.unit
+                                and req.provenance == RelationshipProvenance.USER_CONFIRMED
+                            ):
+                                record = MetricRequirementApprovalRecord(
+                                    proposal_status="user_approved",
+                                    approved_at=now,
+                                    project_id=clean_project_id,
+                                    proposal_id=prop.proposal_id,
+                                    space_id=prop.space_id,
+                                    requirement_type=prop.requirement_type,
+                                    value=prop.value,
+                                    unit=prop.unit,
+                                    resulting_state_version=current_plan_input_state.state_version,
+                                    context_fingerprint=request.current_fingerprint,
+                                    generation_id=request.current_generation_id,
+                                )
+                                return MetricRequirementApprovalResponse(
+                                    success=True,
+                                    resulting_plan_input_state=current_plan_input_state,
+                                    approval_record=record,
+                                    error=None,
+                                )
+
+            # 6. Validate expected plan input state version (for mutating changes)
+            if request.expected_plan_input_state_version is None:
+                if current_plan_input_state is not None:
+                    raise PlanInputStateVersionConflictError(
+                        f"Expected plan input state to be uninitialized, but version "
+                        f"{current_plan_input_state.state_version} exists."
+                    )
+            else:
+                if current_plan_input_state is None:
+                    raise PlanInputStateVersionConflictError(
+                        f"Expected plan input state version "
+                        f"{request.expected_plan_input_state_version}, "
+                        "but plan input state does not exist."
+                    )
+                if (
+                    current_plan_input_state.state_version
+                    != request.expected_plan_input_state_version
+                ):
+                    raise PlanInputStateVersionConflictError(
+                        f"Stale plan input state: expected "
+                        f"{request.expected_plan_input_state_version}, "
+                        f"but latest version is {current_plan_input_state.state_version}."
+                    )
+
+            # 6. Collect existing requirements, replace matching (space_id, requirement_type)
+            existing_inputs: list[MetricRequirementInput] = []
+            if (
+                current_plan_input_state is not None
+                and current_plan_input_state.metric_requirements is not None
+            ):
+                for space_req in current_plan_input_state.metric_requirements.space_requirements:
+                    for req in space_req.requirements:
+                        if (
+                            req.space_id == prop.space_id
+                            and req.requirement_type == prop.requirement_type
+                        ):
+                            continue  # will be replaced
+                        existing_inputs.append(
+                            MetricRequirementInput(
+                                space_id=req.space_id,
+                                requirement_type=req.requirement_type,
+                                value=req.value,
+                                unit=req.unit,
+                                provenance=req.provenance,
+                                priority=req.priority,
+                                evidence_ids=req.evidence_ids,
+                                rationale=req.rationale,
+                            )
+                        )
+
+            # Add approved requirement with USER_CONFIRMED and ProgramSpace evidence_ids
+            approved_input = MetricRequirementInput(
+                space_id=prop.space_id,
+                requirement_type=prop.requirement_type,
+                value=prop.value,
+                unit=prop.unit,
+                provenance=RelationshipProvenance.USER_CONFIRMED,
+                priority=Priority.MUST,
+                evidence_ids=target_space.evidence_ids,
+                rationale=prop.rationale,
+            )
+            all_inputs = [*existing_inputs, approved_input]
+
+            # 7. Deterministic build of new MetricSpatialRequirements
+            builder = MetricSpatialRequirementsBuilder()
+            new_metric_spatial_requirements = builder.build(
+                program=program,
+                requirements=all_inputs,
+                created_at=now,
+            )
+
+            # 8. Plan input state initialization / update
+            if current_plan_input_state is None:
+                new_state = persistent_plan_input_service.initialize_state(
+                    project_id=clean_project_id,
+                    source_brief_version=persisted_brief.brief_version,
+                    metric_requirements=new_metric_spatial_requirements,
+                    created_at=now,
+                )
+            else:
+                new_state = persistent_plan_input_service.update_state(
+                    project_id=clean_project_id,
+                    expected_state_version=current_plan_input_state.state_version,
+                    source_brief_version=persisted_brief.brief_version,
+                    metric_requirements=new_metric_spatial_requirements,
+                    created_at=now,
+                )
+
+            record = MetricRequirementApprovalRecord(
+                proposal_status="user_approved",
+                approved_at=now,
+                project_id=clean_project_id,
+                proposal_id=prop.proposal_id,
+                space_id=prop.space_id,
+                requirement_type=prop.requirement_type,
+                value=prop.value,
+                unit=prop.unit,
+                resulting_state_version=new_state.state_version,
+                context_fingerprint=request.current_fingerprint,
+                generation_id=request.current_generation_id,
+            )
+
+            return MetricRequirementApprovalResponse(
+                success=True,
+                resulting_plan_input_state=new_state,
+                approval_record=record,
+                error=None,
+            )
+        except (
+            BriefVersionConflictError,
+            StaleContextError,
+            PlanInputStateVersionConflictError,
+            SpatialProgramProjectMismatchError,
+            SpatialProgramVersionMismatchError,
+            SpatialProgramMissingInputError,
+            BriefNotReadyError,
+            SpatialProgramConflictBlockerError,
+            SpatialProgramNodeMismatchError,
+            MetricNonexistentSpaceError,
+        ) as error:
+            return JSONResponse(
+                status_code=409,
+                content=MetricRequirementApprovalResponse(
+                    success=False,
+                    resulting_plan_input_state=None,
+                    approval_record=None,
+                    error=str(error),
+                ).model_dump(mode="json"),
+            )
+        except BriefNotFoundError as error:
+            return JSONResponse(
+                status_code=404,
+                content=MetricRequirementApprovalResponse(
+                    success=False,
+                    resulting_plan_input_state=None,
+                    approval_record=None,
+                    error=str(error),
+                ).model_dump(mode="json"),
+            )
+        except (
+            PolicyValidationError,
+            InvalidProjectIdError,
+            MetricRangeConflictError,
+            MetricUnitMismatchError,
+            MetricInvalidValueError,
+            MetricInvalidEvidenceError,
+            DuplicateMetricRequirementError,
+            PlanInputStateValidationError,
+            PlanInputStateBriefVersionMismatchError,
+            PlanInputStateProjectMismatchError,
+            ValueError,
+        ) as error:
+            return JSONResponse(
+                status_code=422,
+                content=MetricRequirementApprovalResponse(
+                    success=False,
+                    resulting_plan_input_state=None,
+                    approval_record=None,
+                    error=str(error),
+                ).model_dump(mode="json"),
+            )
+        except (
+            BriefPersistenceError,
+            SpatialGraphPersistenceError,
+            PlanInputStatePersistenceError,
+        ) as error:
+            return JSONResponse(
+                status_code=500,
+                content=MetricRequirementApprovalResponse(
+                    success=False,
+                    resulting_plan_input_state=None,
+                    approval_record=None,
+                    error=str(error),
+                ).model_dump(mode="json"),
+            )
+        except Exception as error:
+            return JSONResponse(
+                status_code=500,
+                content=MetricRequirementApprovalResponse(
+                    success=False,
+                    resulting_plan_input_state=None,
+                    approval_record=None,
+                    error=str(error),
+                ).model_dump(mode="json"),
             )
 
     @application.get(

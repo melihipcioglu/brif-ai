@@ -27,6 +27,7 @@ from brif_ai.llm.contracts import (
     CompareDecisionPlan,
     ConversationRequest,
     LocalModelInfo,
+    MetricConversationContext,
     ProviderHealth,
 )
 from brif_ai.llm.policy_validator import (
@@ -218,6 +219,8 @@ class OllamaProvider:
         self,
         request: ConversationRequest,
         output_schema: dict[str, object],
+        *,
+        metric_context: MetricConversationContext | None = None,
     ) -> ArchitecturalIntentResult:
         self.last_performance_metrics = None
         self.last_attempt_records = []
@@ -244,6 +247,7 @@ class OllamaProvider:
             active_schema,
             is_compact=is_compact,
             compare_analysis=compare_analysis,
+            metric_context=metric_context,
         )
         self.last_chat_call_count += 1
         response = await self._request("POST", "/api/chat", json=payload)
@@ -254,6 +258,7 @@ class OllamaProvider:
                 attempt="initial",
                 is_compact=is_compact,
                 compare_analysis=compare_analysis,
+                metric_context=metric_context,
             )
         except _AttemptFailure as error:
             repair_payload = self._build_chat_payload(
@@ -263,6 +268,7 @@ class OllamaProvider:
                 is_compact=is_compact,
                 compare_analysis=compare_analysis,
                 failure_category=error.category,
+                metric_context=metric_context,
             )
             self.last_chat_call_count += 1
             repair_response = await self._request("POST", "/api/chat", json=repair_payload)
@@ -272,6 +278,7 @@ class OllamaProvider:
                 attempt="repair",
                 is_compact=is_compact,
                 compare_analysis=compare_analysis,
+                metric_context=metric_context,
             )
 
     def _build_chat_payload(
@@ -283,6 +290,7 @@ class OllamaProvider:
         is_compact: bool = False,
         compare_analysis: CompareRequestAnalysis | None = None,
         failure_category: CompareFailureCategory | None = None,
+        metric_context: MetricConversationContext | None = None,
     ) -> dict[str, object]:
         active_oq = None
         if (
@@ -325,7 +333,7 @@ class OllamaProvider:
             )
         else:
             system_prompt = SCHEMA_REPAIR_PROMPT if repair else SYSTEM_PROMPT
-            user_prompt = build_user_prompt(request)
+            user_prompt = build_user_prompt(request, metric_context=metric_context)
 
         return {
             "model": self.settings.model,
@@ -351,6 +359,7 @@ class OllamaProvider:
         attempt: str,
         is_compact: bool = False,
         compare_analysis: CompareRequestAnalysis | None = None,
+        metric_context: MetricConversationContext | None = None,
     ) -> ArchitecturalIntentResult:
         raw_payload: object | None = None
         response_payload: dict[str, Any] = {}
@@ -406,6 +415,7 @@ class OllamaProvider:
                         data.get("proposed_brief_mutations")
                         or data.get("proposed_actions")
                         or data.get("proposed_spatial_relationships")
+                        or data.get("proposed_metric_requirements")
                     ):
                         data["needs_user_confirmation"] = True
                         data["needs_follow_up"] = False
@@ -418,8 +428,12 @@ class OllamaProvider:
             if is_compact:
                 sanitized = parsed_result
             else:
-                sanitized = self.policy_validator.sanitize(parsed_result, request)
-            self.policy_validator.validate_semantic_integrity(sanitized, request)
+                sanitized = self.policy_validator.sanitize(
+                    parsed_result, request, metric_context=metric_context
+                )
+            self.policy_validator.validate_semantic_integrity(
+                sanitized, request, metric_context=metric_context
+            )
             self.last_attempt_records.append(
                 OllamaAttemptRecord(
                     attempt=attempt,

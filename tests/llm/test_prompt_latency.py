@@ -12,7 +12,7 @@ from .test_prompts import request_data
 def test_system_prompt_has_a_compact_cpu_output_budget() -> None:
     normalized = SYSTEM_PROMPT.casefold()
 
-    assert len(SYSTEM_PROMPT) <= 1300
+    assert len(SYSTEM_PROMPT) <= 1800
     assert "aynı bilgiyi alanlar arasında tekrarlama" in normalized
     assert "her metin listesinde en fazla bir" in normalized
     assert "önerilen eylemlerde normalde en fazla bir" in normalized
