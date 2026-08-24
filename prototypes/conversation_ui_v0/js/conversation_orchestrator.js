@@ -182,6 +182,17 @@ class ConversationOrchestrator {
     return `“Site geometrisi: ${verticesStr}.” plan girdilerine eklensin mi?`;
   }
 
+  getFloorPlateDescription(floorPlate) {
+    if (!floorPlate) return '';
+    const formatCoord = (num) => typeof num === 'number'
+      ? String(num).replace('.', ',')
+      : String(num || '');
+    const verticesStr = (floorPlate.vertices || [])
+      .map(v => `(${formatCoord(v.x_m)};${formatCoord(v.y_m)})`)
+      .join(', ');
+    return `“Taban oturumu: ${verticesStr}.” plan girdilerine eklensin mi?`;
+  }
+
   setChatInputLocked(locked) {
     if (typeof document === 'undefined') return;
     const chatContainer = document.getElementById(this.chatContainerId);
@@ -458,7 +469,9 @@ class ConversationOrchestrator {
         msg.proposedActions.forEach(proposal => {
           const label = document.createElement('span');
           label.className = 'message-text';
-          if (proposal.siteGeometry) {
+          if (proposal.floorPlate) {
+            label.textContent = this.getFloorPlateDescription(proposal.floorPlate);
+          } else if (proposal.siteGeometry) {
             label.textContent = this.getSiteGeometryDescription(proposal.siteGeometry);
           } else if (proposal.metricRequirement) {
             label.textContent = this.getMetricRequirementDescription(proposal.metricRequirement);
@@ -479,7 +492,7 @@ class ConversationOrchestrator {
           if (proposal.status === 'approved') {
             button.disabled = true;
             button.classList.add('proposal-approved');
-            button.textContent = (proposal.siteGeometry || proposal.metricRequirement)
+            button.textContent = (proposal.siteGeometry || proposal.metricRequirement || proposal.floorPlate)
               ? 'Plan girdisine eklendi'
               : (proposal.spatialRelationship
                 ? 'İlişki onaylandı'
@@ -491,7 +504,9 @@ class ConversationOrchestrator {
             button.textContent = 'Yeniden değerlendirilmeli';
             button.setAttribute('aria-disabled', 'true');
           } else {
-            if (proposal.siteGeometry) {
+            if (proposal.floorPlate) {
+              button.textContent = 'Taban oturumunu onayla';
+            } else if (proposal.siteGeometry) {
               button.textContent = proposal.siteGeometry.role === 'BUILDABLE_ENVELOPE'
                 ? 'Yapılaşma zarfını onayla'
                 : 'Parseli onayla';
@@ -789,6 +804,53 @@ class ConversationOrchestrator {
         spatialRelationship: null,
         metricRequirement: null,
         siteGeometry: siteCopy,
+        floorPlate: null,
+        expectedBriefVersion: proposalBriefVersion !== undefined
+          ? proposalBriefVersion
+          : null,
+        expectedPlanInputStateVersion: authoritativePlanInputStateVersion !== undefined
+          ? authoritativePlanInputStateVersion
+          : null,
+        contextFingerprint,
+        generationId: proposalGenerationId,
+        userMessageText: frozenUserMessageText,
+        userMessageRef: frozenUserMessageRef
+      };
+      this.pendingProposals.set(id, proposal);
+      return proposal;
+    });
+
+    const proposedFloorPlates = Array.isArray(result.proposed_floor_plates)
+      ? result.proposed_floor_plates
+      : [];
+
+    const floorPlateProposals = proposedFloorPlates.map(fp => {
+      const fpCopy = JSON.parse(JSON.stringify(fp));
+      const existing = Array.from(this.pendingProposals.values()).find(candidate =>
+        candidate.contextFingerprint === contextFingerprint &&
+        candidate.generationId === proposalGenerationId &&
+        candidate.floorPlate &&
+        JSON.stringify(candidate.floorPlate) === JSON.stringify(fpCopy)
+      );
+      if (existing) return existing;
+
+      const frozenUserMessageText = typeof proposalSourceMessageText === 'string'
+        ? proposalSourceMessageText
+        : '';
+      const frozenUserMessageRef = typeof proposalSourceMessageRef === 'string'
+        ? proposalSourceMessageRef
+        : null;
+
+      this.proposalSequence += 1;
+      const id = `proposal_${this.proposalSequence}`;
+      const proposal = {
+        id,
+        action: null,
+        briefMutation: null,
+        spatialRelationship: null,
+        metricRequirement: null,
+        siteGeometry: null,
+        floorPlate: fpCopy,
         expectedBriefVersion: proposalBriefVersion !== undefined
           ? proposalBriefVersion
           : null,
@@ -809,7 +871,8 @@ class ConversationOrchestrator {
       ...mutationProposals,
       ...spatialProposals,
       ...metricProposals,
-      ...siteProposals
+      ...siteProposals,
+      ...floorPlateProposals
     ];
     this.appendAssistantMessage(assistantMessage, [], proposals);
   }
@@ -824,6 +887,131 @@ class ConversationOrchestrator {
     ) {
       this.appendAssistantMessage('Bağlam değiştiği için bu öneri onaylanamadı.');
       return null;
+    }
+
+    if (proposal.floorPlate) {
+      if (!this.localLLMGateway) {
+        this.appendAssistantMessage('Yerel LLM ağ geçidi tanımlı değil; taban oturumu onaylanamadı.');
+        return null;
+      }
+      if (proposal.expectedBriefVersion === null || proposal.expectedBriefVersion === undefined) {
+        this.appendAssistantMessage('Öneri için geçerli brief versiyonu bulunamadı; onaylanamadı.');
+        return null;
+      }
+      if (!proposal.userMessageText || typeof proposal.userMessageText !== 'string' || !proposal.userMessageText.trim()) {
+        this.appendAssistantMessage('Kullanıcı kaynak mesajı bulunamadığı için taban oturumu onaylanamadı.');
+        return null;
+      }
+      if (!proposal.userMessageRef || typeof proposal.userMessageRef !== 'string' || !proposal.userMessageRef.trim()) {
+        this.appendAssistantMessage('Kullanıcı kaynak referansı bulunamadığı için taban oturumu onaylanamadı.');
+        return null;
+      }
+      const payload = {
+        proposed_floor_plate: proposal.floorPlate,
+        current_project_id: current.projectId,
+        expected_brief_version: proposal.expectedBriefVersion,
+        expected_plan_input_state_version: proposal.expectedPlanInputStateVersion,
+        proposal_fingerprint: proposal.contextFingerprint,
+        current_fingerprint: current.contextFingerprint,
+        proposal_generation_id: proposal.generationId,
+        current_generation_id: current.generationId,
+        user_message: proposal.userMessageText,
+        source_reference: proposal.userMessageRef
+      };
+      const response = await this.localLLMGateway.approveFloorPlate(current.projectId, payload);
+      if (response && response.success && response.resulting_plan_input_state) {
+        const record = response.approval_record || {
+          proposal_status: 'user_approved',
+          approved_at: new Date().toISOString(),
+          context_fingerprint: current.contextFingerprint,
+          generation_id: current.generationId,
+          proposed_floor_plate: proposal.floorPlate,
+          resulting_plan_input_state_version: response.resulting_plan_input_state.state_version
+        };
+        if (!Array.isArray(this.floorPlateProposalRecords)) {
+          this.floorPlateProposalRecords = [];
+        }
+        this.floorPlateProposalRecords.push(record);
+        this.lastPlanInputStateVersion = response.resulting_plan_input_state.state_version;
+        this.pendingProposals.delete(proposalId);
+        this.allChatMessages.forEach(message => {
+          if (!Array.isArray(message.proposedActions)) return;
+          message.proposedActions.forEach(candidate => {
+            if (candidate.id === proposalId) candidate.status = 'approved';
+          });
+        });
+
+        // Invalidate other pending plan-input proposals (metric, site, floor-plate) only if state version actually changed
+        const resultingVersion = response.resulting_plan_input_state.state_version;
+        const expectedVersion = proposal.expectedPlanInputStateVersion;
+
+        let stalePlanInputProposals = [];
+        if (resultingVersion !== expectedVersion) {
+          stalePlanInputProposals = Array.from(this.pendingProposals.values()).filter(p =>
+            (p.metricRequirement || p.siteGeometry || p.floorPlate) &&
+            p.expectedPlanInputStateVersion === proposal.expectedPlanInputStateVersion
+          );
+          const staleIds = new Set(stalePlanInputProposals.map(p => p.id));
+          stalePlanInputProposals.forEach(staleP => {
+            this.pendingProposals.delete(staleP.id);
+          });
+          this.allChatMessages.forEach(message => {
+            if (!Array.isArray(message.proposedActions)) return;
+            message.proposedActions.forEach(candidate => {
+              if (staleIds.has(candidate.id)) {
+                candidate.status = 'stale';
+              }
+            });
+          });
+        }
+
+        this.appendAssistantMessage('Bina taban oturumu plan girdilerine kaydedildi.');
+
+        if (stalePlanInputProposals.length > 0) {
+          this.appendAssistantMessage(
+            'Plan girdileri değiştiği için diğer plan girdisi önerileri yeniden değerlendirilmelidir.'
+          );
+        }
+
+        return record;
+      } else {
+        const httpStatus = (response && typeof response.httpStatus === 'number')
+          ? response.httpStatus
+          : null;
+
+        if (httpStatus === 409) {
+          this.appendAssistantMessage(
+            'Bu taban oturumu önerisi artık güncel proje durumuna ait değil. Yeniden değerlendirilmesi gerekiyor.'
+          );
+        } else if (httpStatus === 422) {
+          this.appendAssistantMessage(
+            'Bina taban oturumu geçersiz olduğu için onaylanamadı.'
+          );
+        } else if (httpStatus === 404) {
+          this.appendAssistantMessage(
+            'Proje veya brief verisi bulunamadığı için taban oturumu onaylanamadı.'
+          );
+        } else if (httpStatus !== null && httpStatus >= 500) {
+          this.appendAssistantMessage(
+            'Bina taban oturumu şu anda kaydedilemedi. Sunucu tarafında bir hata oluştu.'
+          );
+        } else if (httpStatus === 0) {
+          if (response && response.failureKind === 'timeout') {
+            this.appendAssistantMessage(
+              'Taban oturumu onay isteği zaman aşımına uğradı. Lütfen tekrar deneyin.'
+            );
+          } else {
+            this.appendAssistantMessage(
+              'Yerel sunucuya ulaşılamadı. Lütfen bağlantınızı kontrol edin.'
+            );
+          }
+        } else {
+          this.appendAssistantMessage(
+            'Bina taban oturumu onaylanamadı.'
+          );
+        }
+        return null;
+      }
     }
 
     if (proposal.siteGeometry) {
@@ -878,14 +1066,14 @@ class ConversationOrchestrator {
           });
         });
 
-        // Invalidate other pending plan-input proposals (metric or site) only if state version actually changed
+        // Invalidate other pending plan-input proposals (metric or site or floorPlate) only if state version actually changed
         const resultingVersion = response.resulting_plan_input_state.state_version;
         const expectedVersion = proposal.expectedPlanInputStateVersion;
 
         let stalePlanInputProposals = [];
         if (resultingVersion !== expectedVersion) {
           stalePlanInputProposals = Array.from(this.pendingProposals.values()).filter(p =>
-            (p.metricRequirement || p.siteGeometry) &&
+            (p.metricRequirement || p.siteGeometry || p.floorPlate) &&
             p.expectedPlanInputStateVersion === proposal.expectedPlanInputStateVersion
           );
           const staleIds = new Set(stalePlanInputProposals.map(p => p.id));
@@ -1012,7 +1200,7 @@ class ConversationOrchestrator {
         let stalePlanInputProposals = [];
         if (resultingVersion !== expectedVersion) {
           stalePlanInputProposals = Array.from(this.pendingProposals.values()).filter(p =>
-            (p.metricRequirement || p.siteGeometry) &&
+            (p.metricRequirement || p.siteGeometry || p.floorPlate) &&
             p.expectedPlanInputStateVersion === proposal.expectedPlanInputStateVersion
           );
           const staleIds = new Set(stalePlanInputProposals.map(p => p.id));
@@ -1248,6 +1436,8 @@ class ConversationOrchestrator {
       this.appendAssistantMessage('Mekânsal ilişki önerisi iptal edildi.');
     } else if (proposal.briefMutation) {
       this.appendAssistantMessage('Brief önerisi iptal edildi; mevcut brief değiştirilmedi.');
+    } else if (proposal.floorPlate) {
+      this.appendAssistantMessage('Taban oturumu önerisi iptal edildi. Plan girdileri değiştirilmedi.');
     } else {
       this.appendAssistantMessage('Bekleyen öneri iptal edildi. Plan değiştirilmedi.');
     }
@@ -1271,7 +1461,8 @@ class ConversationOrchestrator {
       brief_mutation: proposal.briefMutation ? JSON.parse(JSON.stringify(proposal.briefMutation)) : null,
       spatial_relationship: proposal.spatialRelationship ? JSON.parse(JSON.stringify(proposal.spatialRelationship)) : null,
       metric_requirement: proposal.metricRequirement ? JSON.parse(JSON.stringify(proposal.metricRequirement)) : null,
-      site_geometry: proposal.siteGeometry ? JSON.parse(JSON.stringify(proposal.siteGeometry)) : null
+      site_geometry: proposal.siteGeometry ? JSON.parse(JSON.stringify(proposal.siteGeometry)) : null,
+      floor_plate: proposal.floorPlate ? JSON.parse(JSON.stringify(proposal.floorPlate)) : null
     }));
   }
 
@@ -1295,6 +1486,9 @@ class ConversationOrchestrator {
       if (proposal.site_geometry) {
         return `${proposal.status}: ${this.getSiteGeometryDescription(proposal.site_geometry)}`;
       }
+      if (proposal.floor_plate) {
+        return `${proposal.status}: ${this.getFloorPlateDescription(proposal.floor_plate)}`;
+      }
       return proposal.status;
     });
     return [...transcript, ...pending].join('\n');
@@ -1310,6 +1504,12 @@ class ConversationOrchestrator {
       }
       if (record.proposed_metric_requirement) {
         return record.proposal_status + ': Metric requirement v' + record.resulting_plan_input_state_version;
+      }
+      if (record.proposed_site_geometry) {
+        return record.proposal_status + ': Site geometry v' + record.resulting_plan_input_state_version;
+      }
+      if (record.proposed_floor_plate) {
+        return record.proposal_status + ': Floor plate v' + record.resulting_plan_input_state_version;
       }
       return record.proposal_status;
     });
@@ -1389,6 +1589,7 @@ class ConversationOrchestrator {
           if (proposal.spatial_relationship) return this.getSpatialRelationshipDescription(proposal.spatial_relationship);
           if (proposal.metric_requirement) return this.getMetricRequirementDescription(proposal.metric_requirement);
           if (proposal.site_geometry) return this.getSiteGeometryDescription(proposal.site_geometry);
+          if (proposal.floor_plate) return this.getFloorPlateDescription(proposal.floor_plate);
           return 'Öneri';
         })
         .join(' ');

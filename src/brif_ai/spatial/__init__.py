@@ -20,8 +20,10 @@ from brif_ai.spatial.floor_plate import (
     FloorPlateNonAuthoritativeError,
     FloorPlateOutsideBuildableEnvelopeError,
     FloorPlateSchemaVersionMismatchError,
+    FloorPlateSourceBindingError,
     generate_floor_plate_id,
     validate_floor_plate_inside_buildable_envelope,
+    validate_floor_plate_source_binding,
 )
 from brif_ai.spatial.layout import (
     LayoutConstraint,
@@ -184,6 +186,7 @@ __all__ = [
     "FloorPlateNonAuthoritativeError",
     "FloorPlateOutsideBuildableEnvelopeError",
     "FloorPlateSchemaVersionMismatchError",
+    "FloorPlateSourceBindingError",
     "InvalidEvidenceReferenceError",
     "InvalidProvenanceError",
     "JSONSpatialRelationshipRepository",
@@ -311,5 +314,6 @@ __all__ = [
     "project_space_requests_to_spatial_nodes",
     "validate_evidence_references",
     "validate_floor_plate_inside_buildable_envelope",
+    "validate_floor_plate_source_binding",
     "validate_spatial_relationship_inputs",
 ]

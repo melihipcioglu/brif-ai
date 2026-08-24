@@ -464,7 +464,7 @@ def test_proposed_action_and_brief_mutation_remain_separate() -> None:
         ValidationError,
         match=(
             "Exactly one of action, brief_mutation, spatial_relationship, "
-            "metric_requirement, or site_geometry"
+            "metric_requirement, site_geometry, or floor_plate"
         ),
     ):
         PendingProposalContext(

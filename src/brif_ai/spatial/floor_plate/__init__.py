@@ -18,6 +18,10 @@ from brif_ai.spatial.floor_plate.models import (
     FloorPlateInput,
     generate_floor_plate_id,
 )
+from brif_ai.spatial.floor_plate.source_binding import (
+    FloorPlateSourceBindingError,
+    validate_floor_plate_source_binding,
+)
 
 __all__ = [
     "FloorPlate",
@@ -28,6 +32,8 @@ __all__ = [
     "FloorPlateNonAuthoritativeError",
     "FloorPlateOutsideBuildableEnvelopeError",
     "FloorPlateSchemaVersionMismatchError",
+    "FloorPlateSourceBindingError",
     "generate_floor_plate_id",
     "validate_floor_plate_inside_buildable_envelope",
+    "validate_floor_plate_source_binding",
 ]

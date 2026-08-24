@@ -23,9 +23,10 @@ SYSTEM_PROMPT = (
     "Mevzuat uydurma; PASS/FAIL/UNKNOWN değiştirme; tercih/mevzuatı ayırt et.\n"
     "Aktif bağlamda olmayan yön, ölçü/konum uydurma.\n"
     "Plan proposed_actions, brief proposed_brief_mutations, "
-    "mekânsal ilişkiler proposed_spatial_relationships, "
-    "alan/ölçü gereksinimleri proposed_metric_requirements, "
-    "parsel ve yapılaşma zarfı proposed_site_geometries ile verilir.\n"
+    "ilişkiler proposed_spatial_relationships, "
+    "metrik proposed_metric_requirements, "
+    "parsel/zarf proposed_site_geometries, "
+    "taban oturumu proposed_floor_plates ile verilir.\n"
     "Her öneride diğer öneri listeleri boş olsun.\n"
     "Mekânsal ilişkide active_brief.spatial_nodes kimliklerini "
     "ve canonical relation_type ile USER_STATED provenance kullan.\n"
@@ -33,10 +34,9 @@ SYSTEM_PROMPT = (
     "içindeki space_id kimliğini kullan; kesin min/max "
     "('en az 30 m²', 'en fazla 20 m²', 'en az 1.20 m') dışında metrik önerme; "
     "yaklaşık/belirsiz ifadelerde açıklama iste; TARGET_AREA kullanma.\n"
-    "Site geometrisinde (PARCEL_BOUNDARY, BUILDABLE_ENVELOPE) yalnız açık "
-    "koordinat listesini ((x;y) veya (x,y)) birebir kullan; "
-    "boyut/alan/çekmeden üretme.\n"
-    "Plan değişikliği, ilişki, metrik veya site geometri önerisi "
+    "Site ve taban oturumunda (PARCEL_BOUNDARY, BUILDABLE_ENVELOPE, proposed_floor_plates) "
+    "yalnız açık koordinat ((x;y)) kullan; boyut/alandan üretme, koordinat sor; orijin uydurma.\n"
+    "Plan, ilişki, metrik, site veya taban oturumu önerisi "
     "requires_user_confirmation=true gerektirir.\n"
     "Bekleyen öneri henüz onaylanmış karar değildir; ilk analizi tekrarlama, "
     "onaylama, ayrıntılandırma veya vazgeçme seçeneklerini doğal Türkçe sun.\n"
@@ -60,7 +60,7 @@ Aşağıdaki kurallara KESİNLİKLE UY:
 - İngilizce kelime kullanma; tüm anlatım öz Türkçe ve doğal olsun.
 - Karşılaştırmada intent=compare_alternatives, target tüm alanları null,
   proposed_actions=[], proposed_brief_mutations=[], proposed_metric_requirements=[],
-  proposed_site_geometries=[],
+  proposed_site_geometries=[], proposed_floor_plates=[],
   needs_user_confirmation=false, needs_follow_up=false, follow_up_question=null yap.
 - assistant_message içinde kesin yön ve konum belirtmeden şu 3 bölümü eksiksiz üret:
   Alternatif 1 - <Türkçe kısa ad>: <tek veya iki kısa cümle>
@@ -75,17 +75,17 @@ Aşağıdaki kurallara KESİNLİKLE UY:
 - user_requirements, interpreted_priorities, constraints_to_check,
   missing_information, proposed_actions, proposed_brief_mutations,
   proposed_spatial_relationships, proposed_metric_requirements,
-  proposed_site_geometries ve warnings
+  proposed_site_geometries, proposed_floor_plates ve warnings
   her zaman JSON dizisi olsun; null veya metin kullanma.
 - needs_follow_up=true ise follow_up_question dolu bir metin olsun ve follow_up_topic
   girdideki elicitation.allowed_follow_up_topic ile birebir aynı olsun.
 - needs_follow_up=false ise follow_up_question=null ve follow_up_topic=null olsun.
 - elicitation.allowed_follow_up_topic=null ise needs_follow_up=false olsun.
 - proposed_actions, proposed_brief_mutations, proposed_spatial_relationships,
-  proposed_metric_requirements veya proposed_site_geometries
+  proposed_metric_requirements, proposed_site_geometries veya proposed_floor_plates
   boş değilse needs_follow_up=false olsun.
 - proposed_actions, proposed_brief_mutations, proposed_spatial_relationships,
-  proposed_metric_requirements veya proposed_site_geometries
+  proposed_metric_requirements, proposed_site_geometries veya proposed_floor_plates
   boş değilse needs_user_confirmation=true olsun.
 - Plan değişikliği eyleminde yalnız görünür kapsamdaki gerçek target_entity_id değerini kullan;
   hedef bilinmiyorsa eylem üretme, takip sorusu sor.
@@ -200,6 +200,10 @@ def _proposal_payload(proposal: PendingProposalContext) -> dict[str, object]:
         payload["spatial_relationship"] = proposal.spatial_relationship.model_dump(mode="json")
     if proposal.metric_requirement is not None:
         payload["metric_requirement"] = proposal.metric_requirement.model_dump(mode="json")
+    if proposal.site_geometry is not None:
+        payload["site_geometry"] = proposal.site_geometry.model_dump(mode="json")
+    if proposal.floor_plate is not None:
+        payload["floor_plate"] = proposal.floor_plate.model_dump(mode="json")
     return payload
 
 

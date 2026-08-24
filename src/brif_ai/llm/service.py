@@ -128,8 +128,16 @@ def _build_provider_output_schema(
                 "maxItems": 2,
             }
 
-        # Do not allow metric proposals during active brief elicitation
+        # Do not allow metric, site, or floor plate proposals during active brief elicitation
         properties["proposed_metric_requirements"] = {
+            "type": "array",
+            "maxItems": 0,
+        }
+        properties["proposed_site_geometries"] = {
+            "type": "array",
+            "maxItems": 0,
+        }
+        properties["proposed_floor_plates"] = {
             "type": "array",
             "maxItems": 0,
         }
@@ -242,6 +250,8 @@ def _build_provider_output_schema(
         "proposed_brief_mutations",
         "proposed_spatial_relationships",
         "proposed_metric_requirements",
+        "proposed_site_geometries",
+        "proposed_floor_plates",
         "warnings",
     ):
         current = properties.get(field)
