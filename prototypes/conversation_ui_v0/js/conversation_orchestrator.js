@@ -24,6 +24,7 @@ class ConversationOrchestrator {
     this.localLLMGateway = options.localLLMGateway || null;
     this.proposalRecords = [];
     this.briefMutationProposalRecords = [];
+    this.metricRequirementProposalRecords = [];
     this.pendingProposals = new Map();
     this.proposalSequence = 0;
     this.userMessageSequence = 0;
@@ -65,8 +66,12 @@ class ConversationOrchestrator {
   }
 
   replaceActiveBriefSnapshot(newSnapshot) {
-    if (!newSnapshot || !newSnapshot.project_id) return;
-    this.briefSnapshotsByProject[newSnapshot.project_id] = newSnapshot;
+    const activeProjectId = this.stateMachine.getSnapshot().projectId;
+    if (!newSnapshot || newSnapshot.project_id !== activeProjectId) {
+      return false;
+    }
+    this.briefSnapshotsByProject[activeProjectId] = JSON.parse(JSON.stringify(newSnapshot));
+    return true;
   }
 
   async loadProjectBrief(projectId) {
@@ -89,13 +94,22 @@ class ConversationOrchestrator {
     return false;
   }
 
-  replaceActiveBriefSnapshot(newSnapshot) {
-    const activeProjectId = this.stateMachine.getSnapshot().projectId;
-    if (!newSnapshot || newSnapshot.project_id !== activeProjectId) {
-      return false;
+  getSpaceDisplayName(spaceId) {
+    if (!spaceId) return '';
+    const activeBrief = this.getActiveBriefSnapshot();
+    if (activeBrief && Array.isArray(activeBrief.space_requests)) {
+      for (const req of activeBrief.space_requests) {
+        const cleanReqId = req.id.replace(/^sr_/, '');
+        if (spaceId.includes(cleanReqId)) {
+          const idxMatch = spaceId.match(/_(\d{2})$/);
+          if (idxMatch && req.minimum_quantity > 1) {
+            return `${req.display_name} ${parseInt(idxMatch[1], 10)}`;
+          }
+          return req.display_name;
+        }
+      }
     }
-    this.briefSnapshotsByProject[activeProjectId] = JSON.parse(JSON.stringify(newSnapshot));
-    return true;
+    return spaceId;
   }
 
   getBriefMutationDescription(briefMutation) {
@@ -115,26 +129,8 @@ class ConversationOrchestrator {
 
   getSpatialRelationshipDescription(spatialRel) {
     if (!spatialRel) return '';
-    const activeBrief = this.getActiveBriefSnapshot();
-    let displayA = spatialRel.source_space_id;
-    let displayB = spatialRel.target_space_id;
-    if (activeBrief && Array.isArray(activeBrief.space_requests)) {
-      const findName = (id) => {
-        for (const req of activeBrief.space_requests) {
-          const cleanReqId = req.id.replace(/^sr_/, '');
-          if (id.includes(cleanReqId)) {
-            const idxMatch = id.match(/_(\d{2})$/);
-            if (idxMatch && req.minimum_quantity > 1) {
-              return `${req.display_name} ${parseInt(idxMatch[1], 10)}`;
-            }
-            return req.display_name;
-          }
-        }
-        return id;
-      };
-      displayA = findName(spatialRel.source_space_id);
-      displayB = findName(spatialRel.target_space_id);
-    }
+    const displayA = this.getSpaceDisplayName(spatialRel.source_space_id);
+    const displayB = this.getSpaceDisplayName(spatialRel.target_space_id);
 
     const relationDescriptions = {
       ADJACENT_TO: 'birbirine bitişik',
@@ -148,6 +144,24 @@ class ConversationOrchestrator {
     };
     const relText = relationDescriptions[spatialRel.relation_type] || spatialRel.relation_type;
     return `“${displayA} ile ${displayB} ${relText} olmalı.” mekânsal ilişkisi onaylansın mı?`;
+  }
+
+  getMetricRequirementDescription(metricReq) {
+    if (!metricReq) return '';
+    const displayName = this.getSpaceDisplayName(metricReq.space_id);
+    const valStr = typeof metricReq.value === 'number'
+      ? String(metricReq.value).replace('.', ',')
+      : String(metricReq.value || '');
+    if (metricReq.requirement_type === 'MIN_AREA') {
+      return `“${displayName} en az ${valStr} m² olsun.” plan girdilerine eklensin mi?`;
+    }
+    if (metricReq.requirement_type === 'MAX_AREA') {
+      return `“${displayName} en fazla ${valStr} m² olsun.” plan girdilerine eklensin mi?`;
+    }
+    if (metricReq.requirement_type === 'MIN_CLEAR_WIDTH') {
+      return `“${displayName} net genişliği en az ${valStr} m olsun.” plan girdilerine eklensin mi?`;
+    }
+    return `“${displayName} ölçü gereksinimi” plan girdilerine eklensin mi?`;
   }
 
   setChatInputLocked(locked) {
@@ -426,7 +440,9 @@ class ConversationOrchestrator {
         msg.proposedActions.forEach(proposal => {
           const label = document.createElement('span');
           label.className = 'message-text';
-          if (proposal.briefMutation) {
+          if (proposal.metricRequirement) {
+            label.textContent = this.getMetricRequirementDescription(proposal.metricRequirement);
+          } else if (proposal.briefMutation) {
             label.textContent = this.getBriefMutationDescription(proposal.briefMutation);
           } else if (proposal.spatialRelationship) {
             label.textContent = this.getSpatialRelationshipDescription(proposal.spatialRelationship);
@@ -443,14 +459,18 @@ class ConversationOrchestrator {
           if (proposal.status === 'approved') {
             button.disabled = true;
             button.classList.add('proposal-approved');
-            button.textContent = proposal.spatialRelationship
-              ? 'İlişki onaylandı'
-              : (proposal.briefMutation ? 'Brief\'e eklendi' : 'Onaylandı');
+            button.textContent = proposal.metricRequirement
+              ? 'Plan girdisine eklendi'
+              : (proposal.spatialRelationship
+                ? 'İlişki onaylandı'
+                : (proposal.briefMutation ? 'Brief\'e eklendi' : 'Onaylandı'));
             button.setAttribute('aria-disabled', 'true');
           } else {
-            button.textContent = proposal.spatialRelationship
-              ? 'Mekânsal ilişkiyi onayla'
-              : (proposal.briefMutation ? 'Brief\'e eklemeyi onayla' : 'Öneriyi onayla');
+            button.textContent = proposal.metricRequirement
+              ? 'Ölçüyü onayla'
+              : (proposal.spatialRelationship
+                ? 'Mekânsal ilişkiyi onayla'
+                : (proposal.briefMutation ? 'Brief\'e eklemeyi onayla' : 'Öneriyi onayla'));
           }
           proposals.appendChild(button);
         });
@@ -552,7 +572,13 @@ class ConversationOrchestrator {
     this.appendAssistantMessage(result.aiResponseText);
   }
 
-  handleStructuredLLMResponse(result, contextFingerprint, generationId = null) {
+  handleStructuredLLMResponse(
+    result,
+    contextFingerprint,
+    generationId = null,
+    authoritativePlanInputStateVersion = null,
+    proposalBriefVersion = null
+  ) {
     const needsSeparateQuestion = result.needs_follow_up
       && result.follow_up_question
       && !result.assistant_message.includes(result.follow_up_question);
@@ -586,6 +612,8 @@ class ConversationOrchestrator {
         id,
         action: actionCopy,
         briefMutation: null,
+        spatialRelationship: null,
+        metricRequirement: null,
         contextFingerprint,
         generationId: proposalGenerationId,
         userMessageText: this.lastUserMessageText || '',
@@ -612,6 +640,7 @@ class ConversationOrchestrator {
         action: null,
         briefMutation: mutationCopy,
         spatialRelationship: null,
+        metricRequirement: null,
         answersCurrentOpenQuestion: result.answers_current_open_question === true,
         contextFingerprint,
         generationId: proposalGenerationId,
@@ -643,6 +672,7 @@ class ConversationOrchestrator {
         action: null,
         briefMutation: null,
         spatialRelationship: relCopy,
+        metricRequirement: null,
         answersCurrentOpenQuestion: result.answers_current_open_question === true,
         contextFingerprint,
         generationId: proposalGenerationId,
@@ -653,7 +683,49 @@ class ConversationOrchestrator {
       return proposal;
     });
 
-    const proposals = [...actionProposals, ...mutationProposals, ...spatialProposals];
+    const proposedMetricReqs = Array.isArray(result.proposed_metric_requirements)
+      ? result.proposed_metric_requirements
+      : [];
+
+    const metricProposals = proposedMetricReqs.map(metricReq => {
+      const metricCopy = JSON.parse(JSON.stringify(metricReq));
+      const existing = Array.from(this.pendingProposals.values()).find(candidate =>
+        candidate.contextFingerprint === contextFingerprint &&
+        candidate.generationId === proposalGenerationId &&
+        candidate.metricRequirement &&
+        JSON.stringify(candidate.metricRequirement) === JSON.stringify(metricCopy)
+      );
+      if (existing) return existing;
+
+      this.proposalSequence += 1;
+      const id = `proposal_${this.proposalSequence}`;
+      const proposal = {
+        id,
+        action: null,
+        briefMutation: null,
+        spatialRelationship: null,
+        metricRequirement: metricCopy,
+        expectedBriefVersion: proposalBriefVersion !== undefined
+          ? proposalBriefVersion
+          : null,
+        expectedPlanInputStateVersion: authoritativePlanInputStateVersion !== undefined
+          ? authoritativePlanInputStateVersion
+          : null,
+        contextFingerprint,
+        generationId: proposalGenerationId,
+        userMessageText: this.lastUserMessageText || '',
+        userMessageRef: this.lastUserMessageRef || 'chatmsg_1'
+      };
+      this.pendingProposals.set(id, proposal);
+      return proposal;
+    });
+
+    const proposals = [
+      ...actionProposals,
+      ...mutationProposals,
+      ...spatialProposals,
+      ...metricProposals
+    ];
     this.appendAssistantMessage(assistantMessage, [], proposals);
   }
 
@@ -667,6 +739,128 @@ class ConversationOrchestrator {
     ) {
       this.appendAssistantMessage('Bağlam değiştiği için bu öneri onaylanamadı.');
       return null;
+    }
+
+    if (proposal.metricRequirement) {
+      if (!this.localLLMGateway) {
+        this.appendAssistantMessage('Yerel LLM ağ geçidi tanımlı değil; ölçü gereksinimi onaylanamadı.');
+        return null;
+      }
+      const activeBrief = this.getActiveBriefSnapshot();
+      if (!activeBrief) {
+        this.appendAssistantMessage('Aktif brief snapshot bulunamadı.');
+        return null;
+      }
+      if (proposal.expectedBriefVersion === null || proposal.expectedBriefVersion === undefined) {
+        this.appendAssistantMessage('Öneri için geçerli brief versiyonu bulunamadı; onaylanamadı.');
+        return null;
+      }
+      const payload = {
+        proposed_requirement: proposal.metricRequirement,
+        current_project_id: current.projectId,
+        expected_brief_version: proposal.expectedBriefVersion,
+        expected_plan_input_state_version: proposal.expectedPlanInputStateVersion,
+        proposal_fingerprint: proposal.contextFingerprint,
+        current_fingerprint: current.contextFingerprint,
+        proposal_generation_id: proposal.generationId,
+        current_generation_id: current.generationId,
+        user_message: proposal.userMessageText || '',
+        source_reference: proposal.userMessageRef || 'chatmsg_1'
+      };
+      const response = await this.localLLMGateway.approveMetricRequirement(current.projectId, payload);
+      if (response && response.success && response.resulting_plan_input_state) {
+        const record = response.approval_record || {
+          proposal_status: 'user_approved',
+          approved_at: new Date().toISOString(),
+          context_fingerprint: current.contextFingerprint,
+          generation_id: current.generationId,
+          proposed_metric_requirement: proposal.metricRequirement,
+          resulting_plan_input_state_version: response.resulting_plan_input_state.state_version
+        };
+        if (!Array.isArray(this.metricRequirementProposalRecords)) {
+          this.metricRequirementProposalRecords = [];
+        }
+        this.metricRequirementProposalRecords.push(record);
+        this.lastPlanInputStateVersion = response.resulting_plan_input_state.state_version;
+        this.pendingProposals.delete(proposalId);
+        this.allChatMessages.forEach(message => {
+          if (!Array.isArray(message.proposedActions)) return;
+          message.proposedActions.forEach(candidate => {
+            if (candidate.id === proposalId) candidate.status = 'approved';
+          });
+        });
+
+        // Invalidate other metric proposals created against the same old expectedPlanInputStateVersion
+        const staleMetricProposals = Array.from(this.pendingProposals.values()).filter(p =>
+          p.metricRequirement &&
+          p.expectedPlanInputStateVersion === proposal.expectedPlanInputStateVersion
+        );
+        staleMetricProposals.forEach(staleP => {
+          this.pendingProposals.delete(staleP.id);
+        });
+
+        const spaceName = this.getSpaceDisplayName(proposal.metricRequirement.space_id);
+        const req = proposal.metricRequirement;
+        const valStr = typeof req.value === 'number'
+          ? String(req.value).replace('.', ',')
+          : String(req.value || '');
+        let confirmationText = '';
+        if (req.requirement_type === 'MIN_AREA') {
+          confirmationText = `${spaceName} için minimum ${valStr} m² gereksinimi plan girdilerine kaydedildi.`;
+        } else if (req.requirement_type === 'MAX_AREA') {
+          confirmationText = `${spaceName} için maksimum ${valStr} m² gereksinimi plan girdilerine kaydedildi.`;
+        } else if (req.requirement_type === 'MIN_CLEAR_WIDTH') {
+          confirmationText = `${spaceName} için minimum ${valStr} m net genişlik gereksinimi plan girdilerine kaydedildi.`;
+        } else {
+          confirmationText = `${spaceName} için ölçü gereksinimi plan girdilerine kaydedildi.`;
+        }
+        this.appendAssistantMessage(confirmationText);
+
+        if (staleMetricProposals.length > 0) {
+          this.appendAssistantMessage(
+            'Plan girdileri değiştiği için diğer ölçü önerileri yeniden değerlendirilmelidir.'
+          );
+        }
+
+        return record;
+      } else {
+        const httpStatus = (response && typeof response.httpStatus === 'number')
+          ? response.httpStatus
+          : null;
+
+        if (httpStatus === 409) {
+          this.appendAssistantMessage(
+            'Bu ölçü önerisi artık güncel proje durumuna ait değil. Yeniden değerlendirilmesi gerekiyor.'
+          );
+        } else if (httpStatus === 422) {
+          this.appendAssistantMessage(
+            'Ölçü gereksinimi geçersiz olduğu için onaylanamadı.'
+          );
+        } else if (httpStatus === 404) {
+          this.appendAssistantMessage(
+            'Proje veya brief verisi bulunamadığı için ölçü gereksinimi onaylanamadı.'
+          );
+        } else if (httpStatus !== null && httpStatus >= 500) {
+          this.appendAssistantMessage(
+            'Ölçü gereksinimi şu anda kaydedilemedi. Sunucu tarafında bir hata oluştu.'
+          );
+        } else if (httpStatus === 0) {
+          if (response && response.failureKind === 'timeout') {
+            this.appendAssistantMessage(
+              'Ölçü onay isteği zaman aşımına uğradı. Lütfen tekrar deneyin.'
+            );
+          } else {
+            this.appendAssistantMessage(
+              'Yerel sunucuya ulaşılamadı. Lütfen bağlantınızı kontrol edin.'
+            );
+          }
+        } else {
+          this.appendAssistantMessage(
+            'Ölçü gereksinimi onaylanamadı.'
+          );
+        }
+        return null;
+      }
     }
 
     if (proposal.spatialRelationship) {
@@ -813,7 +1007,9 @@ class ConversationOrchestrator {
     }
 
     this.pendingProposals.delete(proposalId);
-    if (proposal.spatialRelationship) {
+    if (proposal.metricRequirement) {
+      this.appendAssistantMessage('Ölçü önerisi iptal edildi. Plan girdileri değiştirilmedi.');
+    } else if (proposal.spatialRelationship) {
       this.appendAssistantMessage('Mekânsal ilişki önerisi iptal edildi.');
     } else if (proposal.briefMutation) {
       this.appendAssistantMessage('Brief önerisi iptal edildi; mevcut brief değiştirilmedi.');
@@ -838,7 +1034,8 @@ class ConversationOrchestrator {
       generation_id: proposal.generationId,
       action: proposal.action ? JSON.parse(JSON.stringify(proposal.action)) : null,
       brief_mutation: proposal.briefMutation ? JSON.parse(JSON.stringify(proposal.briefMutation)) : null,
-      spatial_relationship: proposal.spatialRelationship ? JSON.parse(JSON.stringify(proposal.spatialRelationship)) : null
+      spatial_relationship: proposal.spatialRelationship ? JSON.parse(JSON.stringify(proposal.spatialRelationship)) : null,
+      metric_requirement: proposal.metricRequirement ? JSON.parse(JSON.stringify(proposal.metricRequirement)) : null
     }));
   }
 
@@ -856,6 +1053,9 @@ class ConversationOrchestrator {
       if (proposal.spatial_relationship) {
         return `${proposal.status}: ${this.getSpatialRelationshipDescription(proposal.spatial_relationship)}`;
       }
+      if (proposal.metric_requirement) {
+        return `${proposal.status}: ${this.getMetricRequirementDescription(proposal.metric_requirement)}`;
+      }
       return proposal.status;
     });
     return [...transcript, ...pending].join('\n');
@@ -868,6 +1068,9 @@ class ConversationOrchestrator {
       }
       if (record.proposed_brief_mutation) {
         return record.proposal_status + ': Brief mutation v' + record.resulting_brief_version;
+      }
+      if (record.proposed_metric_requirement) {
+        return record.proposal_status + ': Metric requirement v' + record.resulting_plan_input_state_version;
       }
       return record.proposal_status;
     });
@@ -941,7 +1144,13 @@ class ConversationOrchestrator {
     const pending = this.getPendingProposalContext();
     if (pending.length > 0) {
       const descriptions = pending
-        .map(proposal => proposal.action.description)
+        .map(proposal => {
+          if (proposal.action && proposal.action.description) return proposal.action.description;
+          if (proposal.brief_mutation) return this.getBriefMutationDescription(proposal.brief_mutation);
+          if (proposal.spatial_relationship) return this.getSpatialRelationshipDescription(proposal.spatial_relationship);
+          if (proposal.metric_requirement) return this.getMetricRequirementDescription(proposal.metric_requirement);
+          return 'Öneri';
+        })
         .join(' ');
       this.appendAssistantMessage(
         `${reason} Bekleyen öneriniz: ${descriptions} ` +

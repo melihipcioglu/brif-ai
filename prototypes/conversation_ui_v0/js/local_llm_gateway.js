@@ -84,10 +84,16 @@ class LocalLLMGateway {
         return { status: 'invalid', payload };
       }
 
+      const proposalBriefVersion = requestBody && requestBody.brief_snapshot
+        ? requestBody.brief_snapshot.brief_version
+        : null;
+
       this.orchestrator.handleStructuredLLMResponse(
         payload.result,
         payload.context_fingerprint,
-        payload.generation_id
+        payload.generation_id,
+        payload.authoritative_plan_input_state_version,
+        proposalBriefVersion
       );
 
       // Sync resulting_brief_snapshot from server if present
@@ -230,10 +236,42 @@ class LocalLLMGateway {
     if (!Array.isArray(result.proposed_spatial_relationships)) {
       result.proposed_spatial_relationships = [];
     }
+    if (!Array.isArray(result.proposed_metric_requirements)) {
+      result.proposed_metric_requirements = [];
+    }
     const briefMutations = result.proposed_brief_mutations;
     const spatialRels = result.proposed_spatial_relationships;
-    if ((result.proposed_actions.length > 0 || briefMutations.length > 0 || spatialRels.length > 0) && !result.needs_user_confirmation) return false;
-    if (result.intent === 'compare_alternatives' && (briefMutations.length > 0 || spatialRels.length > 0)) return false;
+    const metricReqs = result.proposed_metric_requirements;
+
+    const hasActions = result.proposed_actions.length > 0;
+    const hasBrief = briefMutations.length > 0;
+    const hasSpatial = spatialRels.length > 0;
+    const hasMetrics = metricReqs.length > 0;
+
+    if ((hasActions || hasBrief || hasSpatial || hasMetrics) && !result.needs_user_confirmation) return false;
+    if (result.intent === 'compare_alternatives' && (hasBrief || hasSpatial || hasMetrics)) return false;
+    if (hasMetrics && (hasActions || hasBrief || hasSpatial)) return false;
+
+    const validMetricTypes = new Set(['MIN_AREA', 'MAX_AREA', 'MIN_CLEAR_WIDTH']);
+    const isValidMetricRequirement = (req) => {
+      if (!req || typeof req !== 'object') return false;
+      if (typeof req.proposal_id !== 'string' || !req.proposal_id.trim()) return false;
+      if (typeof req.space_id !== 'string' || !req.space_id.trim()) return false;
+      if (typeof req.value !== 'number' || !Number.isFinite(req.value) || req.value <= 0) return false;
+      if (!validMetricTypes.has(req.requirement_type)) return false;
+      if (
+        (req.requirement_type === 'MIN_AREA' || req.requirement_type === 'MAX_AREA') &&
+        req.unit !== 'SQUARE_METRE'
+      ) {
+        return false;
+      }
+      if (req.requirement_type === 'MIN_CLEAR_WIDTH' && req.unit !== 'METRE') {
+        return false;
+      }
+      return true;
+    };
+
+    if (!metricReqs.every(isValidMetricRequirement)) return false;
 
     const validMutationTypes = new Set(['ADD_BRIEF_ITEM', 'ADD_SPACE_REQUEST', 'ADD_USAGE_SCENARIO']);
     const isValidBriefMutation = (mutation) => {
@@ -354,6 +392,64 @@ class LocalLLMGateway {
       };
     } finally {
       clearTimeout(timeoutId);
+    }
+  }
+
+  async approveMetricRequirement(projectId, payload, options = {}) {
+    const cleanProjectId = typeof projectId === 'string' ? projectId.trim() : '';
+    if (!cleanProjectId) {
+      return {
+        success: false,
+        error: 'Proje kimliği gereklidir.',
+        httpStatus: 400
+      };
+    }
+    const signal = options.signal;
+    const controller = new AbortController();
+    const timeoutMs = typeof options.timeoutMs === 'number' ? options.timeoutMs : this.timeoutMs;
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    const onAbort = () => controller.abort();
+    if (signal) {
+      if (signal.aborted) controller.abort();
+      else signal.addEventListener('abort', onAbort, { once: true });
+    }
+
+    try {
+      const response = await this.fetchFn(
+        `${this.baseUrl}/api/v1/projects/${encodeURIComponent(cleanProjectId)}/plan/input/metrics/approve`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: controller.signal
+        }
+      );
+      const data = await this.readResponse(response);
+      return {
+        ...(data && typeof data === 'object' ? data : { success: false }),
+        httpStatus: response.status
+      };
+    } catch (error) {
+      if (error && error.name === 'AbortError') {
+        return {
+          success: false,
+          httpStatus: 0,
+          failureKind: 'timeout',
+          error: 'İstek zaman aşımına uğradı.'
+        };
+      }
+      return {
+        success: false,
+        httpStatus: 0,
+        failureKind: 'network',
+        error: 'Ağ bağlantısı kurulamadı.'
+      };
+    } finally {
+      clearTimeout(timeoutId);
+      if (signal) {
+        signal.removeEventListener('abort', onAbort);
+      }
     }
   }
 
