@@ -397,8 +397,24 @@ class LocalLLMGateway {
 
   async approveMetricRequirement(projectId, payload, options = {}) {
     const cleanProjectId = typeof projectId === 'string' ? projectId.trim() : '';
+    if (!cleanProjectId) {
+      return {
+        success: false,
+        error: 'Proje kimliği gereklidir.',
+        httpStatus: 400
+      };
+    }
+    const signal = options.signal;
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timeoutMs = typeof options.timeoutMs === 'number' ? options.timeoutMs : this.timeoutMs;
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    const onAbort = () => controller.abort();
+    if (signal) {
+      if (signal.aborted) controller.abort();
+      else signal.addEventListener('abort', onAbort, { once: true });
+    }
+
     try {
       const response = await this.fetchFn(
         `${this.baseUrl}/api/v1/projects/${encodeURIComponent(cleanProjectId)}/plan/input/metrics/approve`,
@@ -409,16 +425,31 @@ class LocalLLMGateway {
           signal: controller.signal
         }
       );
-      return await this.readResponse(response);
+      const data = await this.readResponse(response);
+      return {
+        ...(data && typeof data === 'object' ? data : { success: false }),
+        httpStatus: response.status
+      };
     } catch (error) {
+      if (error && error.name === 'AbortError') {
+        return {
+          success: false,
+          httpStatus: 0,
+          failureKind: 'timeout',
+          error: 'İstek zaman aşımına uğradı.'
+        };
+      }
       return {
         success: false,
-        error: error && error.name === 'AbortError'
-          ? 'Ölçü onay isteği zaman aşımına uğradı.'
-          : 'Ölçü onay servisine ulaşılamadı.'
+        httpStatus: 0,
+        failureKind: 'network',
+        error: 'Ağ bağlantısı kurulamadı.'
       };
     } finally {
       clearTimeout(timeoutId);
+      if (signal) {
+        signal.removeEventListener('abort', onAbort);
+      }
     }
   }
 

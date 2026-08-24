@@ -824,18 +824,39 @@ class ConversationOrchestrator {
 
         return record;
       } else {
-        const errorMsg = (response && typeof response.error === 'string') ? response.error : '';
-        if (/stale|conflict|versiyon|güncel değil|409/i.test(errorMsg)) {
+        const httpStatus = (response && typeof response.httpStatus === 'number')
+          ? response.httpStatus
+          : null;
+
+        if (httpStatus === 409) {
           this.appendAssistantMessage(
             'Bu ölçü önerisi artık güncel proje durumuna ait değil. Yeniden değerlendirilmesi gerekiyor.'
           );
-        } else if (/geçersiz|422|invalid/i.test(errorMsg)) {
+        } else if (httpStatus === 422) {
           this.appendAssistantMessage(
-            `Geçersiz ölçü gereksinimi: ${errorMsg || 'Gereksinim parametreleri doğrulanamadı.'}`
+            'Ölçü gereksinimi geçersiz olduğu için onaylanamadı.'
           );
+        } else if (httpStatus === 404) {
+          this.appendAssistantMessage(
+            'Proje veya brief verisi bulunamadığı için ölçü gereksinimi onaylanamadı.'
+          );
+        } else if (httpStatus !== null && httpStatus >= 500) {
+          this.appendAssistantMessage(
+            'Ölçü gereksinimi şu anda kaydedilemedi. Sunucu tarafında bir hata oluştu.'
+          );
+        } else if (httpStatus === 0) {
+          if (response && response.failureKind === 'timeout') {
+            this.appendAssistantMessage(
+              'Ölçü onay isteği zaman aşımına uğradı. Lütfen tekrar deneyin.'
+            );
+          } else {
+            this.appendAssistantMessage(
+              'Yerel sunucuya ulaşılamadı. Lütfen bağlantınızı kontrol edin.'
+            );
+          }
         } else {
           this.appendAssistantMessage(
-            `Ölçü gereksinimi onaylanamadı: ${errorMsg || 'Sunucu hatası veya servise ulaşılamadı.'}`
+            'Ölçü gereksinimi onaylanamadı.'
           );
         }
         return null;

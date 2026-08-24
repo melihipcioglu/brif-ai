@@ -602,7 +602,7 @@ async function runAllTests() {
     const pending = orchestrator.getActivePendingProposals();
     await orchestrator.approveProposalById(pending[0].id);
     const lastMsg = orchestrator.allChatMessages[orchestrator.allChatMessages.length - 1];
-    assert(lastMsg.text.includes('Geçersiz ölçü gereksinimi'));
+    assert.strictEqual(lastMsg.text, 'Ölçü gereksinimi geçersiz olduğu için onaylanamadı.');
     console.log('✓ 26. 422 safe failure');
   }
 
@@ -640,7 +640,7 @@ async function runAllTests() {
     const pending = orchestrator.getActivePendingProposals();
     await orchestrator.approveProposalById(pending[0].id);
     const lastMsg = orchestrator.allChatMessages[orchestrator.allChatMessages.length - 1];
-    assert(lastMsg.text.includes('Ölçü gereksinimi onaylanamadı'));
+    assert.strictEqual(lastMsg.text, 'Ölçü gereksinimi şu anda kaydedilemedi. Sunucu tarafında bir hata oluştu.');
     console.log('✓ 27. 500 safe failure');
   }
 
@@ -674,7 +674,7 @@ async function runAllTests() {
     const pending = orchestrator.getActivePendingProposals();
     await orchestrator.approveProposalById(pending[0].id);
     const lastMsg = orchestrator.allChatMessages[orchestrator.allChatMessages.length - 1];
-    assert(lastMsg.text.includes('ulaşılamadı'));
+    assert.strictEqual(lastMsg.text, 'Yerel sunucuya ulaşılamadı. Lütfen bağlantınızı kontrol edin.');
     console.log('✓ 28. network failure safe');
   }
 
@@ -1294,7 +1294,251 @@ async function runAllTests() {
     console.log('✓ 47. missing expectedBriefVersion fails safely');
   }
 
-  console.log('\nAll 47 Metric Plan Input UI V0 JS Unit Tests Passed Successfully!');
+  // Test 48 (A): 409 with opaque error text uses HTTP status
+  {
+    let callCount = 0;
+    const { orchestrator } = setupEnvironment('proj_test_123');
+    const gateway = new LocalLLMGateway({
+      fetchFn: async () => {
+        callCount += 1;
+        return {
+          status: 409,
+          json: async () => ({
+            success: false,
+            error: 'Project state mismatch.'
+          })
+        };
+      }
+    });
+    orchestrator.setLocalLLMGateway(gateway);
+
+    orchestrator.handleStructuredLLMResponse({
+      assistant_message: 'Öneri.',
+      intent: 'modify_space',
+      confidence: 0.95,
+      needs_user_confirmation: true,
+      proposed_actions: [],
+      proposed_brief_mutations: [],
+      proposed_spatial_relationships: [],
+      proposed_metric_requirements: [{
+        proposal_id: 'pm_48',
+        space_id: 'sn_living_01',
+        requirement_type: 'MIN_AREA',
+        value: 30.0,
+        unit: 'SQUARE_METRE'
+      }]
+    }, 'fp_test_1', 1, 2, 3);
+
+    const pending = orchestrator.getActivePendingProposals();
+    const res = await orchestrator.approveProposalById(pending[0].id);
+    assert.strictEqual(res, null);
+    assert.strictEqual(callCount, 1);
+    assert.strictEqual(pending[0].expectedPlanInputStateVersion, 2);
+    assert.strictEqual(pending[0].expectedBriefVersion, 3);
+    const lastMsg = orchestrator.allChatMessages[orchestrator.allChatMessages.length - 1];
+    assert.strictEqual(
+      lastMsg.text,
+      'Bu ölçü önerisi artık güncel proje durumuna ait değil. Yeniden değerlendirilmesi gerekiyor.'
+    );
+    console.log('✓ 48 (A). 409 with opaque error text uses HTTP status');
+  }
+
+  // Test 49 (B): 422 with sensitive-looking error hides raw error text
+  {
+    const { orchestrator } = setupEnvironment('proj_test_123');
+    const gateway = new LocalLLMGateway({
+      fetchFn: async () => ({
+        status: 422,
+        json: async () => ({
+          success: false,
+          error: 'Validation internals: /srv/brif_ai/foo.py line 42 trace crash'
+        })
+      })
+    });
+    orchestrator.setLocalLLMGateway(gateway);
+
+    orchestrator.handleStructuredLLMResponse({
+      assistant_message: 'Öneri.',
+      intent: 'modify_space',
+      confidence: 0.95,
+      needs_user_confirmation: true,
+      proposed_actions: [],
+      proposed_brief_mutations: [],
+      proposed_spatial_relationships: [],
+      proposed_metric_requirements: [{
+        proposal_id: 'pm_49',
+        space_id: 'sn_living_01',
+        requirement_type: 'MIN_AREA',
+        value: 30.0,
+        unit: 'SQUARE_METRE'
+      }]
+    }, 'fp_test_1', 1, 2, 3);
+
+    const pending = orchestrator.getActivePendingProposals();
+    const res = await orchestrator.approveProposalById(pending[0].id);
+    assert.strictEqual(res, null);
+    const lastMsg = orchestrator.allChatMessages[orchestrator.allChatMessages.length - 1];
+    assert.strictEqual(lastMsg.text, 'Ölçü gereksinimi geçersiz olduğu için onaylanamadı.');
+    assert(!lastMsg.text.includes('/srv/'));
+    assert(!lastMsg.text.includes('foo.py'));
+    assert(!lastMsg.text.includes('Validation internals'));
+    console.log('✓ 49 (B). 422 with sensitive-looking error hides raw error text');
+  }
+
+  // Test 50 (C): 500 with sensitive-looking internal error hides raw error text
+  {
+    const { orchestrator } = setupEnvironment('proj_test_123');
+    const gateway = new LocalLLMGateway({
+      fetchFn: async () => ({
+        status: 500,
+        json: async () => ({
+          success: false,
+          error: 'sqlite write failed at C:\\secret\\plan-input.json with password secret123'
+        })
+      })
+    });
+    orchestrator.setLocalLLMGateway(gateway);
+
+    orchestrator.handleStructuredLLMResponse({
+      assistant_message: 'Öneri.',
+      intent: 'modify_space',
+      confidence: 0.95,
+      needs_user_confirmation: true,
+      proposed_actions: [],
+      proposed_brief_mutations: [],
+      proposed_spatial_relationships: [],
+      proposed_metric_requirements: [{
+        proposal_id: 'pm_50',
+        space_id: 'sn_living_01',
+        requirement_type: 'MIN_AREA',
+        value: 30.0,
+        unit: 'SQUARE_METRE'
+      }]
+    }, 'fp_test_1', 1, 2, 3);
+
+    const pending = orchestrator.getActivePendingProposals();
+    const res = await orchestrator.approveProposalById(pending[0].id);
+    assert.strictEqual(res, null);
+    const lastMsg = orchestrator.allChatMessages[orchestrator.allChatMessages.length - 1];
+    assert.strictEqual(
+      lastMsg.text,
+      'Ölçü gereksinimi şu anda kaydedilemedi. Sunucu tarafında bir hata oluştu.'
+    );
+    assert(!lastMsg.text.includes('sqlite'));
+    assert(!lastMsg.text.includes('C:\\secret'));
+    assert(!lastMsg.text.includes('plan-input.json'));
+    assert(!lastMsg.text.includes('secret123'));
+    console.log('✓ 50 (C). 500 with sensitive-looking internal error hides raw error text');
+  }
+
+  // Test 51 (D): Gateway preserves actual HTTP status
+  {
+    const makeGateway = (status, payload) => new LocalLLMGateway({
+      fetchFn: async () => ({
+        status,
+        json: async () => payload
+      })
+    });
+
+    const gw409 = makeGateway(409, { success: false, error: 'Opaque 409' });
+    const res409 = await gw409.approveMetricRequirement('proj_test_123', {});
+    assert.strictEqual(res409.httpStatus, 409);
+
+    const gw422 = makeGateway(422, { success: false, error: 'Opaque 422' });
+    const res422 = await gw422.approveMetricRequirement('proj_test_123', {});
+    assert.strictEqual(res422.httpStatus, 422);
+
+    const gw500 = makeGateway(500, { success: false, error: 'Opaque 500' });
+    const res500 = await gw500.approveMetricRequirement('proj_test_123', {});
+    assert.strictEqual(res500.httpStatus, 500);
+
+    console.log('✓ 51 (D). gateway preserves actual HTTP status (409, 422, 500)');
+  }
+
+  // Test 52 (E): Network failure hides raw exception message
+  {
+    const { orchestrator } = setupEnvironment('proj_test_123');
+    const gateway = new LocalLLMGateway({
+      fetchFn: async () => {
+        throw new Error('connection details: 192.168.1.100 failed password secret_token');
+      }
+    });
+    orchestrator.setLocalLLMGateway(gateway);
+
+    const gwRes = await gateway.approveMetricRequirement('proj_test_123', {});
+    assert.strictEqual(gwRes.httpStatus, 0);
+    assert.strictEqual(gwRes.failureKind, 'network');
+
+    orchestrator.handleStructuredLLMResponse({
+      assistant_message: 'Öneri.',
+      intent: 'modify_space',
+      confidence: 0.95,
+      needs_user_confirmation: true,
+      proposed_actions: [],
+      proposed_brief_mutations: [],
+      proposed_spatial_relationships: [],
+      proposed_metric_requirements: [{
+        proposal_id: 'pm_52',
+        space_id: 'sn_living_01',
+        requirement_type: 'MIN_AREA',
+        value: 30.0,
+        unit: 'SQUARE_METRE'
+      }]
+    }, 'fp_test_1', 1, 2, 3);
+
+    const pending = orchestrator.getActivePendingProposals();
+    const res = await orchestrator.approveProposalById(pending[0].id);
+    assert.strictEqual(res, null);
+    const lastMsg = orchestrator.allChatMessages[orchestrator.allChatMessages.length - 1];
+    assert.strictEqual(lastMsg.text, 'Yerel sunucuya ulaşılamadı. Lütfen bağlantınızı kontrol edin.');
+    assert(!lastMsg.text.includes('192.168.1.100'));
+    assert(!lastMsg.text.includes('password'));
+    assert(!lastMsg.text.includes('secret_token'));
+    console.log('✓ 52 (E). network failure hides raw exception message');
+  }
+
+  // Test 53 (F): Timeout failure returns safe timeout message
+  {
+    const { orchestrator } = setupEnvironment('proj_test_123');
+    const gateway = new LocalLLMGateway({
+      fetchFn: async () => {
+        const err = new Error('The operation was aborted');
+        err.name = 'AbortError';
+        throw err;
+      }
+    });
+    orchestrator.setLocalLLMGateway(gateway);
+
+    const gwRes = await gateway.approveMetricRequirement('proj_test_123', {});
+    assert.strictEqual(gwRes.httpStatus, 0);
+    assert.strictEqual(gwRes.failureKind, 'timeout');
+
+    orchestrator.handleStructuredLLMResponse({
+      assistant_message: 'Öneri.',
+      intent: 'modify_space',
+      confidence: 0.95,
+      needs_user_confirmation: true,
+      proposed_actions: [],
+      proposed_brief_mutations: [],
+      proposed_spatial_relationships: [],
+      proposed_metric_requirements: [{
+        proposal_id: 'pm_53',
+        space_id: 'sn_living_01',
+        requirement_type: 'MIN_AREA',
+        value: 30.0,
+        unit: 'SQUARE_METRE'
+      }]
+    }, 'fp_test_1', 1, 2, 3);
+
+    const pending = orchestrator.getActivePendingProposals();
+    const res = await orchestrator.approveProposalById(pending[0].id);
+    assert.strictEqual(res, null);
+    const lastMsg = orchestrator.allChatMessages[orchestrator.allChatMessages.length - 1];
+    assert.strictEqual(lastMsg.text, 'Ölçü onay isteği zaman aşımına uğradı. Lütfen tekrar deneyin.');
+    console.log('✓ 53 (F). timeout failure returns safe timeout message');
+  }
+
+  console.log('\nAll 53 Metric Plan Input UI V0 JS Unit Tests Passed Successfully!');
 }
 
 runAllTests().catch(err => {
