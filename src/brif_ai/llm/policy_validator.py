@@ -27,6 +27,10 @@ from brif_ai.spatial.metrics.models import (
     ProposedMetricRequirement,
 )
 from brif_ai.spatial.models import project_space_requests_to_spatial_nodes
+from brif_ai.spatial.site.source_binding import (
+    SiteSourceBindingError,
+    validate_site_geometry_source_binding,
+)
 
 _TURKISH_WORD_BOUND_PRE = r"(?<![\wıişğüçÖÇŞİĞÜ])"
 _TURKISH_WORD_BOUND_POST = r"(?=[^\wıişğüçÖÇŞİĞÜ]|$)"
@@ -1640,6 +1644,13 @@ class ArchitecturalIntentPolicyValidator:
             for m in result.proposed_metric_requirements[:3]
         ]
 
+        sanitized_site_geoms = [
+            g.model_copy(
+                update={"rationale": _clean(g.rationale) if g.rationale is not None else None}
+            )
+            for g in result.proposed_site_geometries[:1]
+        ]
+
         updates: dict[str, Any] = {
             "assistant_message": _clean(result.assistant_message),
             "follow_up_question": (
@@ -1653,9 +1664,16 @@ class ArchitecturalIntentPolicyValidator:
             "proposed_brief_mutations": sanitized_mutations,
             "proposed_spatial_relationships": sanitized_spatial_rels,
             "proposed_metric_requirements": sanitized_metric_reqs,
+            "proposed_site_geometries": sanitized_site_geoms,
             "warnings": [_clean(text) for text in result.warnings],
         }
-        if sanitized_mutations or sanitized_spatial_rels or sanitized_metric_reqs or actions:
+        if (
+            sanitized_mutations
+            or sanitized_spatial_rels
+            or sanitized_metric_reqs
+            or sanitized_site_geoms
+            or actions
+        ):
             updates["needs_user_confirmation"] = True
 
         if (
@@ -1719,7 +1737,13 @@ class ArchitecturalIntentPolicyValidator:
                 if not has_spatial_match and not has_matching:
                     updates["answers_current_open_question"] = False
 
-        if sanitized_mutations or sanitized_spatial_rels or sanitized_metric_reqs or actions:
+        if (
+            sanitized_mutations
+            or sanitized_spatial_rels
+            or sanitized_metric_reqs
+            or sanitized_site_geoms
+            or actions
+        ):
             updates["needs_user_confirmation"] = True
 
         if sanitized_spatial_rels:
@@ -1730,6 +1754,7 @@ class ArchitecturalIntentPolicyValidator:
             updates["proposed_actions"] = []
             updates["proposed_brief_mutations"] = []
             updates["proposed_metric_requirements"] = []
+            updates["proposed_site_geometries"] = []
             updates["missing_information"] = []
             updates["interpreted_priorities"] = []
             updates["constraints_to_check"] = []
@@ -1752,6 +1777,21 @@ class ArchitecturalIntentPolicyValidator:
             updates["proposed_actions"] = []
             updates["proposed_brief_mutations"] = []
             updates["proposed_spatial_relationships"] = []
+            updates["proposed_site_geometries"] = []
+            updates["missing_information"] = []
+            updates["interpreted_priorities"] = []
+            updates["constraints_to_check"] = []
+            updates["warnings"] = []
+
+        if sanitized_site_geoms:
+            updates["needs_user_confirmation"] = True
+            updates["needs_follow_up"] = False
+            updates["follow_up_question"] = None
+            updates["follow_up_topic"] = None
+            updates["proposed_actions"] = []
+            updates["proposed_brief_mutations"] = []
+            updates["proposed_spatial_relationships"] = []
+            updates["proposed_metric_requirements"] = []
             updates["missing_information"] = []
             updates["interpreted_priorities"] = []
             updates["constraints_to_check"] = []
@@ -1798,6 +1838,7 @@ class ArchitecturalIntentPolicyValidator:
                 "proposed_brief_mutations": [],
                 "proposed_spatial_relationships": [],
                 "proposed_metric_requirements": [],
+                "proposed_site_geometries": [],
                 "warnings": [_clean(text) for text in result.warnings],
             }
         )
@@ -1857,6 +1898,10 @@ class ArchitecturalIntentPolicyValidator:
                     raise PolicyValidationError(
                         "Aktif elicitation sırasında metrik önerisi sunulamaz."
                     )
+                if result.proposed_site_geometries:
+                    raise PolicyValidationError(
+                        "Aktif elicitation sırasında site geometri önerisi sunulamaz."
+                    )
                 if result.answers_current_open_question:
                     if (
                         not result.proposed_brief_mutations
@@ -1898,6 +1943,7 @@ class ArchitecturalIntentPolicyValidator:
                     or result.proposed_brief_mutations
                     or result.proposed_spatial_relationships
                     or result.proposed_metric_requirements
+                    or result.proposed_site_geometries
                 ):
                     raise PolicyValidationError(
                         "neutral elicitation starter cannot produce proposals"
@@ -1932,6 +1978,46 @@ class ArchitecturalIntentPolicyValidator:
             raise PolicyValidationError(
                 "Bir mesajda en fazla 3 metrik gereksinim önerisi sunulabilir."
             )
+
+        if len(result.proposed_site_geometries) > 1:
+            raise PolicyValidationError("Bir mesajda en fazla 1 site geometri önerisi sunulabilir.")
+
+        # Validate site geometry proposal scope and source-binding integrity
+        if result.proposed_site_geometries:
+            if result.proposed_actions:
+                raise PolicyValidationError(
+                    "Site geometri önerileri plan eylemleri ile karıştırılamaz."
+                )
+            if result.proposed_brief_mutations:
+                raise PolicyValidationError(
+                    "Site geometri önerileri brief mutasyonları ile karıştırılamaz."
+                )
+            if result.proposed_spatial_relationships:
+                raise PolicyValidationError(
+                    "Site geometri önerileri mekânsal ilişkiler ile karıştırılamaz."
+                )
+            if result.proposed_metric_requirements:
+                raise PolicyValidationError(
+                    "Site geometri önerileri metrik gereksinimler ile karıştırılamaz."
+                )
+            if not result.needs_user_confirmation:
+                raise PolicyValidationError("Site geometri önerileri kullanıcı onayı gerektirir.")
+            if result.needs_follow_up:
+                raise PolicyValidationError(
+                    "Site geometri önerileri varken takip sorusu üretilemez."
+                )
+
+            for s_geom in result.proposed_site_geometries:
+                try:
+                    validate_site_geometry_source_binding(
+                        user_message=request.message,
+                        proposed_role=s_geom.role,
+                        proposed_vertices=s_geom.vertices,
+                    )
+                except SiteSourceBindingError as err:
+                    raise PolicyValidationError(
+                        f"Site geometri kaynak doğrulaması başarısız: {err}"
+                    ) from err
 
         # Validate metric proposal scope, type, unit, and value integrity
         if result.proposed_metric_requirements:
@@ -2059,6 +2145,7 @@ class ArchitecturalIntentPolicyValidator:
             *(action.description for action in result.proposed_actions),
             *mutation_texts,
             *(m.rationale for m in result.proposed_metric_requirements if m.rationale),
+            *(g.rationale for g in result.proposed_site_geometries if g.rationale),
         ]
         combined = " ".join(public_texts).casefold()
         for pattern in _FORBIDDEN_SYSTEM_PATTERNS:
@@ -2097,6 +2184,9 @@ class ArchitecturalIntentPolicyValidator:
                     ),
                     "proposed_actions": [],
                     "proposed_brief_mutations": [],
+                    "proposed_spatial_relationships": [],
+                    "proposed_metric_requirements": [],
+                    "proposed_site_geometries": [],
                     "needs_user_confirmation": False,
                     "needs_follow_up": False,
                     "follow_up_question": None,

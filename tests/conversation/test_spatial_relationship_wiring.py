@@ -287,7 +287,10 @@ def test_pending_proposal_context_xor_validation() -> None:
     # Invalid with both spatial and action
     with pytest.raises(
         ValidationError,
-        match="Exactly one of action, brief_mutation, spatial_relationship, or metric_requirement",
+        match=(
+            "Exactly one of action, brief_mutation, spatial_relationship, "
+            "metric_requirement, or site_geometry"
+        ),
     ):
         PendingProposalContext(
             context_fingerprint="ctx_1",
@@ -299,7 +302,10 @@ def test_pending_proposal_context_xor_validation() -> None:
     # Invalid with none
     with pytest.raises(
         ValidationError,
-        match="Exactly one of action, brief_mutation, spatial_relationship, or metric_requirement",
+        match=(
+            "Exactly one of action, brief_mutation, spatial_relationship, "
+            "metric_requirement, or site_geometry"
+        ),
     ):
         PendingProposalContext(
             context_fingerprint="ctx_1",
