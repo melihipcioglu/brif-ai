@@ -84,10 +84,16 @@ class LocalLLMGateway {
         return { status: 'invalid', payload };
       }
 
+      const proposalBriefVersion = requestBody && requestBody.brief_snapshot
+        ? requestBody.brief_snapshot.brief_version
+        : null;
+
       this.orchestrator.handleStructuredLLMResponse(
         payload.result,
         payload.context_fingerprint,
-        payload.generation_id
+        payload.generation_id,
+        payload.authoritative_plan_input_state_version,
+        proposalBriefVersion
       );
 
       // Sync resulting_brief_snapshot from server if present
@@ -230,10 +236,42 @@ class LocalLLMGateway {
     if (!Array.isArray(result.proposed_spatial_relationships)) {
       result.proposed_spatial_relationships = [];
     }
+    if (!Array.isArray(result.proposed_metric_requirements)) {
+      result.proposed_metric_requirements = [];
+    }
     const briefMutations = result.proposed_brief_mutations;
     const spatialRels = result.proposed_spatial_relationships;
-    if ((result.proposed_actions.length > 0 || briefMutations.length > 0 || spatialRels.length > 0) && !result.needs_user_confirmation) return false;
-    if (result.intent === 'compare_alternatives' && (briefMutations.length > 0 || spatialRels.length > 0)) return false;
+    const metricReqs = result.proposed_metric_requirements;
+
+    const hasActions = result.proposed_actions.length > 0;
+    const hasBrief = briefMutations.length > 0;
+    const hasSpatial = spatialRels.length > 0;
+    const hasMetrics = metricReqs.length > 0;
+
+    if ((hasActions || hasBrief || hasSpatial || hasMetrics) && !result.needs_user_confirmation) return false;
+    if (result.intent === 'compare_alternatives' && (hasBrief || hasSpatial || hasMetrics)) return false;
+    if (hasMetrics && (hasActions || hasBrief || hasSpatial)) return false;
+
+    const validMetricTypes = new Set(['MIN_AREA', 'MAX_AREA', 'MIN_CLEAR_WIDTH']);
+    const isValidMetricRequirement = (req) => {
+      if (!req || typeof req !== 'object') return false;
+      if (typeof req.proposal_id !== 'string' || !req.proposal_id.trim()) return false;
+      if (typeof req.space_id !== 'string' || !req.space_id.trim()) return false;
+      if (typeof req.value !== 'number' || !Number.isFinite(req.value) || req.value <= 0) return false;
+      if (!validMetricTypes.has(req.requirement_type)) return false;
+      if (
+        (req.requirement_type === 'MIN_AREA' || req.requirement_type === 'MAX_AREA') &&
+        req.unit !== 'SQUARE_METRE'
+      ) {
+        return false;
+      }
+      if (req.requirement_type === 'MIN_CLEAR_WIDTH' && req.unit !== 'METRE') {
+        return false;
+      }
+      return true;
+    };
+
+    if (!metricReqs.every(isValidMetricRequirement)) return false;
 
     const validMutationTypes = new Set(['ADD_BRIEF_ITEM', 'ADD_SPACE_REQUEST', 'ADD_USAGE_SCENARIO']);
     const isValidBriefMutation = (mutation) => {
@@ -351,6 +389,33 @@ class LocalLLMGateway {
         error: error && error.name === 'AbortError'
           ? 'Mekânsal ilişki onay isteği zaman aşımına uğradı.'
           : 'Mekânsal ilişki onay servisine ulaşılamadı.'
+      };
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  async approveMetricRequirement(projectId, payload, options = {}) {
+    const cleanProjectId = typeof projectId === 'string' ? projectId.trim() : '';
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const response = await this.fetchFn(
+        `${this.baseUrl}/api/v1/projects/${encodeURIComponent(cleanProjectId)}/plan/input/metrics/approve`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: controller.signal
+        }
+      );
+      return await this.readResponse(response);
+    } catch (error) {
+      return {
+        success: false,
+        error: error && error.name === 'AbortError'
+          ? 'Ölçü onay isteği zaman aşımına uğradı.'
+          : 'Ölçü onay servisine ulaşılamadı.'
       };
     } finally {
       clearTimeout(timeoutId);
