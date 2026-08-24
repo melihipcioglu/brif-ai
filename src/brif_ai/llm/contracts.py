@@ -318,9 +318,7 @@ class ArchitecturalIntentResult(StrictContract):
             if self.proposed_actions:
                 raise ValueError("cannot mix proposed floor plates with proposed actions")
             if self.proposed_brief_mutations:
-                raise ValueError(
-                    "cannot mix proposed floor plates with proposed brief mutations"
-                )
+                raise ValueError("cannot mix proposed floor plates with proposed brief mutations")
             if self.proposed_spatial_relationships:
                 raise ValueError(
                     "cannot mix proposed floor plates with proposed spatial relationships"
@@ -330,9 +328,7 @@ class ArchitecturalIntentResult(StrictContract):
                     "cannot mix proposed floor plates with proposed metric requirements"
                 )
             if self.proposed_site_geometries:
-                raise ValueError(
-                    "cannot mix proposed floor plates with proposed site geometries"
-                )
+                raise ValueError("cannot mix proposed floor plates with proposed site geometries")
 
         # Invariant: Maximum one site geometry proposal
         if len(self.proposed_site_geometries) > 1:
@@ -359,9 +355,7 @@ class ArchitecturalIntentResult(StrictContract):
                     "cannot mix proposed site geometries with proposed metric requirements"
                 )
             if self.proposed_floor_plates:
-                raise ValueError(
-                    "cannot mix proposed site geometries with proposed floor plates"
-                )
+                raise ValueError("cannot mix proposed site geometries with proposed floor plates")
 
         # Invariant: If spatial relationships are present, enforce safety invariants
         if self.proposed_spatial_relationships:

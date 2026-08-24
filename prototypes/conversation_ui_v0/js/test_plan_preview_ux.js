@@ -129,6 +129,15 @@ class MockDOMNode {
     }
   }
 
+  closest(selector) {
+    let current = this;
+    while (current) {
+      if (matchesSelector(current, selector)) return current;
+      current = current.parentElement;
+    }
+    return null;
+  }
+
   querySelector(selector) {
     return this.querySelectorAll(selector)[0] || null;
   }
@@ -1162,7 +1171,265 @@ async function runTests() {
     console.log('✓ 34. no brief or spatial mutation occurs');
   }
 
-  console.log('\nAll 36 Project Plan Preview Integration V1 JS Unit Tests Passed Successfully!');
+  // Test 35: isExplicitPlanPreviewRequest positive examples
+  {
+    const { orchestrator } = createTestHarness();
+    const positives = [
+      'Taslak planı göster',
+      'Planı göster',
+      'Taslak planı hazırla',
+      'Plan taslağını göster',
+      'Plan önizlemesini göster',
+      'Taslak planı çiz',
+      'Taslak plan oluştur',
+      'Lütfen planı göster',
+      'Planı göster lütfen',
+      'taslak plan göster'
+    ];
+    for (const phrase of positives) {
+      assert.strictEqual(
+        orchestrator.isExplicitPlanPreviewRequest(phrase),
+        true,
+        `Positive phrase "${phrase}" must return true`
+      );
+    }
+    console.log('✓ 35. isExplicitPlanPreviewRequest accepts all positive preview commands');
+  }
+
+  // Test 36: isExplicitPlanPreviewRequest negative examples
+  {
+    const { orchestrator } = createTestHarness();
+    const negatives = [
+      'Planı gösterme',
+      'Planı daha sonra göster',
+      'Plan nasıl gösteriliyor?',
+      'Plan hakkında konuşalım',
+      'Planı değiştirelim',
+      'Taslak plan göstermek istemiyorum',
+      'Plan hazır mı?',
+      'Taslak plan ne zaman gösterilecek?',
+      'Planı inceleyelim',
+      'Mutfak planı ne kadar?'
+    ];
+    for (const phrase of negatives) {
+      assert.strictEqual(
+        orchestrator.isExplicitPlanPreviewRequest(phrase),
+        false,
+        `Negative phrase "${phrase}" must return false`
+      );
+    }
+    console.log('✓ 36. isExplicitPlanPreviewRequest rejects all negative and conversational query phrases');
+  }
+
+  // Test 37: Conversational chat "Taslak planı göster" triggers 1 preview call and 0 LLM calls
+  {
+    let previewCallCount = 0;
+    let llmCallCount = 0;
+    const { orchestrator, gateway } = createTestHarness();
+
+    gateway.previewProjectPlan = async (pid) => {
+      previewCallCount++;
+      return {
+        ok: true, status: 200, kind: 'success', projectId: pid, solution: mockSuccessSolution, document: mockSuccessSvgDocument
+      };
+    };
+    gateway.interpret = async () => {
+      llmCallCount++;
+      return { status: 'success' };
+    };
+
+    const res = await orchestrator.handleUserMessage('Taslak planı göster');
+    assert.strictEqual(previewCallCount, 1, 'Exact 1 preview request must be made');
+    assert.strictEqual(llmCallCount, 0, 'Zero LLM interpret calls must be made');
+    assert.strictEqual(res.status, 'plan_preview_requested');
+    console.log('✓ 37. conversational chat "Taslak planı göster" triggers 1 preview call and 0 LLM calls');
+  }
+
+  // Test 38: Conversational chat negative phrases trigger 0 preview calls and continue to LLM flow
+  {
+    const { orchestrator, gateway } = createTestHarness();
+    orchestrator.loadProjectBrief = async () => true;
+    const negatives = [
+      'Planı gösterme',
+      'Planı daha sonra göster',
+      'Plan nasıl gösteriliyor?',
+      'Plan hakkında konuşalım',
+      'Planı değiştirelim',
+      'Taslak plan göstermek istemiyorum',
+      'Plan hazır mı?'
+    ];
+
+    for (const phrase of negatives) {
+      let previewCalled = false;
+      let llmCalled = false;
+
+      gateway.previewProjectPlan = async () => {
+        previewCalled = true;
+        return { ok: true };
+      };
+      gateway.interpret = async () => {
+        llmCalled = true;
+        return {
+          assistant_message: 'Konuşma yanıtı',
+          needs_user_confirmation: false,
+          proposed_actions: []
+        };
+      };
+
+      await orchestrator.handleUserMessage(phrase);
+      assert.strictEqual(previewCalled, false, `Negative phrase "${phrase}" must NOT trigger preview`);
+      assert.strictEqual(llmCalled, true, `Negative phrase "${phrase}" must proceed to normal LLM conversation flow`);
+    }
+    console.log('✓ 38. all negative preview phrases bypass preview endpoint and proceed to normal LLM flow');
+  }
+
+  // Test 39: Conversational preview when blocked appends friendly Turkish message without class names
+  {
+    const { orchestrator, gateway } = createTestHarness();
+    gateway.previewProjectPlan = async (pid) => ({
+      ok: false,
+      status: 409,
+      kind: 'not_ready',
+      projectId: pid,
+      readiness: {
+        schema_version: 'project_plan_preview_readiness.v0',
+        project_id: pid,
+        ready_for_preview: false,
+        project_blockers: [],
+        preparation: {
+          ready_for_preview: false,
+          blockers: [
+            {
+              code: 'FLOOR_PLATE_INPUT_MISSING',
+              message: 'Taban oturumu girdisi (FloorPlateInput) eksik.'
+            }
+          ]
+        }
+      },
+      blockers: ['Taban oturumu girdisi (FloorPlateInput) eksik.']
+    });
+
+    await orchestrator.handleUserMessage('Taslak planı göster');
+    const lastMsg = orchestrator.allChatMessages[orchestrator.allChatMessages.length - 1];
+    assert(lastMsg && lastMsg.role === 'assistant', 'Must append assistant message on not_ready');
+    assert(lastMsg.text.includes('bina taban oturumu henüz onaylanmadı'), 'Must contain natural Turkish message');
+    assert(!lastMsg.text.includes('FloorPlateInput'), 'Must NEVER leak technical class name FloorPlateInput');
+    console.log('✓ 39. blocked preview appends friendly Turkish message without class names to chat');
+  }
+
+  // Test 40: Zero auto-preview on proposal approvals (FloorPlate, Metric, Site, Brief, Spatial)
+  {
+    const { orchestrator, gateway } = createTestHarness();
+    let previewCallCount = 0;
+    gateway.previewProjectPlan = async () => {
+      previewCallCount++;
+      return { ok: true };
+    };
+
+    // 1. Brief approval
+    orchestrator.pendingProposals.set('prop_brief', {
+      id: 'prop_brief',
+      contextFingerprint: 'fp_test',
+      generationId: 1,
+      expectedBriefVersion: 1,
+      briefMutation: { mutation_type: 'add_space', payload: { space_id: 's1' } }
+    });
+    gateway.approveBriefMutation = async () => ({
+      success: true,
+      resulting_snapshot: { project_id: 'proj_house_2story', brief_version: 2 }
+    });
+    await orchestrator.approveProposalById('prop_brief');
+    assert.strictEqual(previewCallCount, 0, 'Brief approval must not trigger preview');
+
+    // 2. Metric approval
+    orchestrator.pendingProposals.set('prop_metric', {
+      id: 'prop_metric',
+      contextFingerprint: 'fp_test',
+      generationId: 1,
+      expectedBriefVersion: 2,
+      expectedPlanInputStateVersion: 1,
+      metricRequirement: { space_id: 's1', requirement_type: 'MIN_AREA', value: 20, unit: 'M2' }
+    });
+    gateway.approveMetricRequirement = async () => ({
+      success: true,
+      resulting_plan_input_state: { state_version: 2 }
+    });
+    await orchestrator.approveProposalById('prop_metric');
+    assert.strictEqual(previewCallCount, 0, 'Metric approval must not trigger preview');
+
+    // 3. Site approval
+    orchestrator.pendingProposals.set('prop_site', {
+      id: 'prop_site',
+      contextFingerprint: 'fp_test',
+      generationId: 1,
+      expectedBriefVersion: 2,
+      expectedPlanInputStateVersion: 2,
+      siteGeometry: { vertices: [{ x_m: 0, y_m: 0 }, { x_m: 20, y_m: 0 }, { x_m: 20, y_m: 30 }, { x_m: 0, y_m: 30 }] }
+    });
+    gateway.approveSiteGeometry = async () => ({
+      success: true,
+      resulting_plan_input_state: { state_version: 3 }
+    });
+    await orchestrator.approveProposalById('prop_site');
+    assert.strictEqual(previewCallCount, 0, 'Site approval must not trigger preview');
+
+    // 4. Floor plate approval
+    orchestrator.pendingProposals.set('prop_fp', {
+      id: 'prop_fp',
+      contextFingerprint: 'fp_test',
+      generationId: 1,
+      expectedBriefVersion: 2,
+      expectedPlanInputStateVersion: 3,
+      userMessageText: 'Taban oturumu',
+      userMessageRef: 'chatmsg_1',
+      floorPlate: { proposal_id: 'prop_fp', vertices: [{ x_m: 0, y_m: 0 }, { x_m: 12, y_m: 0 }, { x_m: 12, y_m: 18 }, { x_m: 0, y_m: 18 }] }
+    });
+    gateway.approveFloorPlate = async () => ({
+      success: true,
+      resulting_plan_input_state: { state_version: 4 }
+    });
+    await orchestrator.approveProposalById('prop_fp');
+    assert.strictEqual(previewCallCount, 0, 'FloorPlate approval must not trigger preview');
+
+    console.log('✓ 40. zero auto-preview on all proposal approvals (Brief, Metric, Site, FloorPlate)');
+  }
+
+  // Test 41: formatUserFacingBlocker maps all known blocker codes without class names
+  {
+    const { orchestrator } = createTestHarness();
+    const codes = [
+      'FLOOR_PLATE_INPUT_MISSING',
+      'METRIC_REQUIREMENTS_MISSING',
+      'SITE_ENVELOPE_MISSING',
+      'SPATIAL_GRAPH_MISSING',
+      'PLAN_INPUT_STATE_MISSING',
+      'PLAN_INPUT_STATE_STALE',
+      'SPATIAL_GRAPH_STALE',
+      'BRIEF_MISSING',
+      'BRIEF_NOT_READY',
+      'DIRECTIVE_SET_MISSING',
+      'DIRECTIVE_DERIVATION_FAILED',
+      'SOLVER_CONFIG_MISSING',
+      'SOLVER_INPUT_INVALID',
+      'FLOOR_PLATE_INVALID'
+    ];
+    for (const code of codes) {
+      const msg = orchestrator.formatUserFacingBlocker({ code, message: 'Technical ' + code });
+      assert(typeof msg === 'string' && msg.length > 5, `Code ${code} must map to friendly message`);
+      assert(!msg.includes('FloorPlateInput'), `Message for ${code} must not contain FloorPlateInput`);
+      assert(!msg.includes('MetricSpatialRequirements'), `Message for ${code} must not contain MetricSpatialRequirements`);
+      assert(!msg.includes('SiteBuildableEnvelope'), `Message for ${code} must not contain SiteBuildableEnvelope`);
+      assert(!msg.includes('SolverDirectiveSet'), `Message for ${code} must not contain SolverDirectiveSet`);
+      assert(!msg.includes('RoomGeometrySolverConfig'), `Message for ${code} must not contain RoomGeometrySolverConfig`);
+    }
+
+    // Generic fallback for unknown code
+    const fallback = orchestrator.formatUserFacingBlocker({ code: 'UNKNOWN_NEW_BLOCKER', message: 'Unknown' });
+    assert.strictEqual(fallback, 'Plan taslağını oluşturmak için bazı proje girdileri henüz hazır değil.');
+    console.log('✓ 41. formatUserFacingBlocker maps all known blocker codes and uses safe generic fallback');
+  }
+
+  console.log('\nAll 43 Project Plan Preview Integration V1 JS Unit Tests Passed Successfully!');
 }
 
 if (require.main === module) {
