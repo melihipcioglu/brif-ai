@@ -39,6 +39,9 @@ from brif_ai.llm.contracts import (
     ConversationInterpretationResponse,
     ConversationRequest,
     ExistingMetricRequirementContext,
+    FloorPlateApprovalRecord,
+    FloorPlateApprovalRequest,
+    FloorPlateApprovalResponse,
     HealthResponse,
     LocalModelInfo,
     MetricConversationContext,
@@ -65,6 +68,14 @@ from brif_ai.llm.provider import (
 )
 from brif_ai.llm.service import LocalLLMConversationService, StaleContextError
 from brif_ai.llm.settings import LocalLLMSettings
+from brif_ai.spatial.floor_plate import (
+    FloorPlateInput,
+    FloorPlateOutsideBuildableEnvelopeError,
+    FloorPlateSourceBindingError,
+    generate_floor_plate_id,
+    validate_floor_plate_inside_buildable_envelope,
+    validate_floor_plate_source_binding,
+)
 from brif_ai.spatial.metrics.builder import MetricSpatialRequirementsBuilder
 from brif_ai.spatial.metrics.errors import (
     DuplicateMetricRequirementError,
@@ -143,6 +154,7 @@ from brif_ai.spatial.site.errors import (
     SitePolygonDegenerateError,
     SitePolygonSelfIntersectionError,
 )
+from brif_ai.spatial.site.geometry import validate_polygon_geometry
 from brif_ai.spatial.site.models import SiteGeometryRole, SitePolygonInput
 from brif_ai.spatial.site.source_binding import (
     SiteSourceBindingError,
@@ -1780,6 +1792,268 @@ def create_app(
             return JSONResponse(
                 status_code=500,
                 content=SiteGeometryApprovalResponse(
+                    success=False,
+                    resulting_plan_input_state=None,
+                    approval_record=None,
+                    error="Sunucu içi beklenmeyen bir hata oluştu.",
+                ).model_dump(mode="json"),
+            )
+
+    @application.post(
+        "/api/v1/projects/{project_id}/plan/input/floor-plate/approve",
+        response_model=FloorPlateApprovalResponse,
+    )
+    async def approve_floor_plate(
+        project_id: str,
+        request: FloorPlateApprovalRequest,
+    ) -> Any:
+        try:
+            clean_project_id = _validate_project_id_param(project_id)
+            if request.current_project_id != clean_project_id:
+                raise PolicyValidationError(
+                    f"Route project_id '{clean_project_id}' does not match "
+                    f"payload current_project_id '{request.current_project_id}'."
+                )
+
+            if request.proposal_fingerprint != request.current_fingerprint:
+                raise StaleContextError("Farklı bağlama ait öneri onaylanamaz.")
+            if request.proposal_generation_id != request.current_generation_id:
+                raise StaleContextError("Eski jenerasyona ait öneri onaylanamaz.")
+
+            # 1. Fetch authoritative persisted BriefSnapshot
+            persisted_brief = persistent_brief_service.get_latest_brief(clean_project_id)
+            if persisted_brief is None:
+                raise BriefNotFoundError(
+                    f"Cannot approve floor plate: Project '{clean_project_id}' "
+                    "brief is not initialized."
+                )
+
+            if persisted_brief.brief_version != request.expected_brief_version:
+                raise BriefVersionConflictError(
+                    f"Stale brief approval: Current persisted brief version for "
+                    f"'{clean_project_id}' is {persisted_brief.brief_version}, "
+                    f"but client expected version {request.expected_brief_version}."
+                )
+
+            # 2. Strict source re-validation
+            if not request.user_message or not request.user_message.strip():
+                raise PolicyValidationError(
+                    "Kullanıcı mesajı (user_message) taban oturumu onayı için zorunludur."
+                )
+            prop = request.proposed_floor_plate
+            try:
+                validate_floor_plate_source_binding(
+                    user_message=request.user_message,
+                    proposed_vertices=prop.vertices,
+                )
+            except FloorPlateSourceBindingError as err:
+                raise PolicyValidationError(f"Kaynak doğrulama hatası: {err}") from err
+
+            now = datetime.now(UTC)
+
+            # 3. Fetch authoritative plan input state
+            current_plan_input_state = persistent_plan_input_service.get_latest_state(
+                project_id=clean_project_id,
+            )
+
+            # 4. Semantic Replay Check (Exact Replay Idempotence)
+            if (
+                current_plan_input_state is not None
+                and current_plan_input_state.floor_plate_input is not None
+            ):
+                cur_fp = current_plan_input_state.floor_plate_input
+                if (
+                    cur_fp.provenance == RelationshipProvenance.USER_CONFIRMED
+                    and cur_fp.rationale == prop.rationale
+                ):
+                    cur_v = cur_fp.vertices
+                    prop_v = prop.vertices
+                    if len(cur_v) == len(prop_v) and all(
+                        Decimal(str(cv.x_m)) == Decimal(str(pv.x_m))
+                        and Decimal(str(cv.y_m)) == Decimal(str(pv.y_m))
+                        for cv, pv in zip(cur_v, prop_v, strict=True)
+                    ):
+                        floor_plate_id = generate_floor_plate_id(clean_project_id)
+                        record = FloorPlateApprovalRecord(
+                            proposal_status="user_approved",
+                            approved_at=now,
+                            project_id=clean_project_id,
+                            proposal_id=prop.proposal_id,
+                            floor_plate_id=floor_plate_id,
+                            resulting_state_version=current_plan_input_state.state_version,
+                            context_fingerprint=request.current_fingerprint,
+                            generation_id=request.current_generation_id,
+                        )
+                        return FloorPlateApprovalResponse(
+                            success=True,
+                            resulting_plan_input_state=current_plan_input_state,
+                            approval_record=record,
+                            error=None,
+                        )
+
+            # 5. Validate expected plan input state version
+            if request.expected_plan_input_state_version is None:
+                if current_plan_input_state is not None:
+                    raise PlanInputStateVersionConflictError(
+                        f"Expected plan input state to be uninitialized, but version "
+                        f"{current_plan_input_state.state_version} exists."
+                    )
+            else:
+                if current_plan_input_state is None:
+                    raise PlanInputStateVersionConflictError(
+                        f"Expected plan input state version "
+                        f"{request.expected_plan_input_state_version}, "
+                        "but plan input state does not exist."
+                    )
+                if (
+                    current_plan_input_state.state_version
+                    != request.expected_plan_input_state_version
+                ):
+                    raise PlanInputStateVersionConflictError(
+                        f"Stale plan input state: expected "
+                        f"{request.expected_plan_input_state_version}, "
+                        f"but latest version is {current_plan_input_state.state_version}."
+                    )
+
+            # 6. Validate polygon geometry (minimum 3, simplicity, finite coords)
+            try:
+                validate_polygon_geometry(prop.vertices)
+            except (
+                SiteInvalidCoordinateError,
+                SitePolygonDegenerateError,
+                SitePolygonSelfIntersectionError,
+                ValueError,
+            ) as err:
+                raise PolicyValidationError(f"Taban oturumu geometrisi geçersiz: {err}") from err
+
+            # 7. Check containment inside buildable envelope IF buildable envelope is present
+            if (
+                current_plan_input_state is not None
+                and current_plan_input_state.site_envelope is not None
+                and current_plan_input_state.site_envelope.buildable_envelope is not None
+            ):
+                env_v = current_plan_input_state.site_envelope.buildable_envelope.vertices
+                validate_floor_plate_inside_buildable_envelope(
+                    floor_plate_vertices=prop.vertices,
+                    envelope_vertices=env_v,
+                )
+
+            # 8. Persist floor plate evidence record
+            evidence = persistent_site_evidence_repository.save_site_evidence(
+                project_id=clean_project_id,
+                source_reference=request.source_reference,
+                user_message=request.user_message,
+            )
+
+            # 9. Construct authoritative FloorPlateInput
+            floor_plate_input = FloorPlateInput(
+                vertices=prop.vertices,
+                provenance=RelationshipProvenance.USER_CONFIRMED,
+                evidence_ids=[evidence.id],
+                rationale=prop.rationale,
+            )
+
+            # 10. Persist AuthoritativePlanInputState (advance version N -> N+1)
+            if current_plan_input_state is None:
+                new_state = persistent_plan_input_service.initialize_state(
+                    project_id=clean_project_id,
+                    source_brief_version=persisted_brief.brief_version,
+                    floor_plate_input=floor_plate_input,
+                    created_at=now,
+                )
+            else:
+                new_state = persistent_plan_input_service.update_state(
+                    project_id=clean_project_id,
+                    expected_state_version=current_plan_input_state.state_version,
+                    source_brief_version=persisted_brief.brief_version,
+                    floor_plate_input=floor_plate_input,
+                    created_at=now,
+                )
+
+            floor_plate_id = generate_floor_plate_id(clean_project_id)
+            record = FloorPlateApprovalRecord(
+                proposal_status="user_approved",
+                approved_at=now,
+                project_id=clean_project_id,
+                proposal_id=prop.proposal_id,
+                floor_plate_id=floor_plate_id,
+                resulting_state_version=new_state.state_version,
+                context_fingerprint=request.current_fingerprint,
+                generation_id=request.current_generation_id,
+            )
+            return FloorPlateApprovalResponse(
+                success=True,
+                resulting_plan_input_state=new_state,
+                approval_record=record,
+                error=None,
+            )
+        except (
+            BriefVersionConflictError,
+            PlanInputStateVersionConflictError,
+            StaleContextError,
+        ) as error:
+            return JSONResponse(
+                status_code=409,
+                content=FloorPlateApprovalResponse(
+                    success=False,
+                    resulting_plan_input_state=None,
+                    approval_record=None,
+                    error=str(error),
+                ).model_dump(mode="json"),
+            )
+        except (
+            BriefNotFoundError,
+            PlanInputStateNotFoundError,
+        ) as error:
+            return JSONResponse(
+                status_code=404,
+                content=FloorPlateApprovalResponse(
+                    success=False,
+                    resulting_plan_input_state=None,
+                    approval_record=None,
+                    error=str(error),
+                ).model_dump(mode="json"),
+            )
+        except (
+            PolicyValidationError,
+            InvalidProjectIdError,
+            FloorPlateOutsideBuildableEnvelopeError,
+            SiteInvalidCoordinateError,
+            SitePolygonDegenerateError,
+            SitePolygonSelfIntersectionError,
+            FloorPlateSourceBindingError,
+            PlanInputStateValidationError,
+            PlanInputStateBriefVersionMismatchError,
+            PlanInputStateProjectMismatchError,
+            ValueError,
+        ) as error:
+            return JSONResponse(
+                status_code=422,
+                content=FloorPlateApprovalResponse(
+                    success=False,
+                    resulting_plan_input_state=None,
+                    approval_record=None,
+                    error=str(error),
+                ).model_dump(mode="json"),
+            )
+        except (
+            BriefPersistenceError,
+            PlanInputStatePersistenceError,
+            SiteEvidencePersistenceError,
+        ):
+            return JSONResponse(
+                status_code=500,
+                content=FloorPlateApprovalResponse(
+                    success=False,
+                    resulting_plan_input_state=None,
+                    approval_record=None,
+                    error="Kalıcı depolama hatası oluştu.",
+                ).model_dump(mode="json"),
+            )
+        except Exception:
+            return JSONResponse(
+                status_code=500,
+                content=FloorPlateApprovalResponse(
                     success=False,
                     resulting_plan_input_state=None,
                     approval_record=None,

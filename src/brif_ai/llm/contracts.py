@@ -232,6 +232,12 @@ class ProposedSiteGeometry(StrictContract):
     rationale: str | None = None
 
 
+class ProposedFloorPlate(StrictContract):
+    proposal_id: NonEmptyString
+    vertices: list[SitePoint] = Field(min_length=3)
+    rationale: str | None = None
+
+
 class PendingProposalContext(StrictContract):
     status: Literal["pending_user_confirmation"] = "pending_user_confirmation"
     context_fingerprint: NonEmptyString
@@ -241,6 +247,7 @@ class PendingProposalContext(StrictContract):
     spatial_relationship: ProposedSpatialRelationship | None = None
     metric_requirement: ProposedMetricRequirement | None = None
     site_geometry: ProposedSiteGeometry | None = None
+    floor_plate: ProposedFloorPlate | None = None
 
     @model_validator(mode="after")
     def validate_proposal_content_xor(self) -> PendingProposalContext:
@@ -250,12 +257,14 @@ class PendingProposalContext(StrictContract):
             self.spatial_relationship,
             self.metric_requirement,
             self.site_geometry,
+            self.floor_plate,
         ]
         non_none_count = sum(1 for p in proposals if p is not None)
         if non_none_count != 1:
             raise ValueError(
                 "Exactly one of action, brief_mutation, spatial_relationship, "
-                "metric_requirement, or site_geometry must be populated in PendingProposalContext"
+                "metric_requirement, site_geometry, or floor_plate must be populated "
+                "in PendingProposalContext"
             )
         return self
 
@@ -273,6 +282,7 @@ class ArchitecturalIntentResult(StrictContract):
     proposed_spatial_relationships: list[ProposedSpatialRelationship] = Field(default_factory=list)
     proposed_metric_requirements: list[ProposedMetricRequirement] = Field(default_factory=list)
     proposed_site_geometries: list[ProposedSiteGeometry] = Field(default_factory=list)
+    proposed_floor_plates: list[ProposedFloorPlate] = Field(default_factory=list)
     household_composition: HouseholdComposition | None = None
     answers_current_open_question: bool = False
     needs_follow_up: bool
@@ -294,6 +304,35 @@ class ArchitecturalIntentResult(StrictContract):
                 raise ValueError("follow_up_topic must be None when needs_follow_up is false")
             if self.follow_up_question is not None:
                 raise ValueError("follow_up_question must be None when needs_follow_up is false")
+
+        # Invariant: Maximum one floor plate proposal
+        if len(self.proposed_floor_plates) > 1:
+            raise ValueError("maximum one floor plate proposal allowed")
+
+        # Invariant: If floor plate proposals are present, enforce safety invariants
+        if self.proposed_floor_plates:
+            if not self.needs_user_confirmation:
+                raise ValueError("proposed floor plates require user confirmation")
+            if self.needs_follow_up:
+                raise ValueError("needs_follow_up must be false when floor plates are present")
+            if self.proposed_actions:
+                raise ValueError("cannot mix proposed floor plates with proposed actions")
+            if self.proposed_brief_mutations:
+                raise ValueError(
+                    "cannot mix proposed floor plates with proposed brief mutations"
+                )
+            if self.proposed_spatial_relationships:
+                raise ValueError(
+                    "cannot mix proposed floor plates with proposed spatial relationships"
+                )
+            if self.proposed_metric_requirements:
+                raise ValueError(
+                    "cannot mix proposed floor plates with proposed metric requirements"
+                )
+            if self.proposed_site_geometries:
+                raise ValueError(
+                    "cannot mix proposed floor plates with proposed site geometries"
+                )
 
         # Invariant: Maximum one site geometry proposal
         if len(self.proposed_site_geometries) > 1:
@@ -319,6 +358,10 @@ class ArchitecturalIntentResult(StrictContract):
                 raise ValueError(
                     "cannot mix proposed site geometries with proposed metric requirements"
                 )
+            if self.proposed_floor_plates:
+                raise ValueError(
+                    "cannot mix proposed site geometries with proposed floor plates"
+                )
 
         # Invariant: If spatial relationships are present, enforce safety invariants
         if self.proposed_spatial_relationships:
@@ -341,6 +384,10 @@ class ArchitecturalIntentResult(StrictContract):
             if self.proposed_site_geometries:
                 raise ValueError(
                     "cannot mix proposed spatial relationships with proposed site geometries"
+                )
+            if self.proposed_floor_plates:
+                raise ValueError(
+                    "cannot mix proposed spatial relationships with proposed floor plates"
                 )
 
         # Invariant: If metric requirements are present, enforce safety invariants
@@ -365,6 +412,10 @@ class ArchitecturalIntentResult(StrictContract):
                 raise ValueError(
                     "cannot mix proposed metric requirements with proposed site geometries"
                 )
+            if self.proposed_floor_plates:
+                raise ValueError(
+                    "cannot mix proposed metric requirements with proposed floor plates"
+                )
 
         # Enforce single proposal category in V0 (mutations vs actions)
         if self.proposed_brief_mutations and self.proposed_actions:
@@ -377,6 +428,7 @@ class ArchitecturalIntentResult(StrictContract):
             or self.proposed_spatial_relationships
             or self.proposed_metric_requirements
             or self.proposed_site_geometries
+            or self.proposed_floor_plates
         ) and self.needs_follow_up:
             raise ValueError("needs_follow_up must be false when proposals are present")
 
@@ -393,6 +445,8 @@ class ArchitecturalIntentResult(StrictContract):
                 )
             if self.proposed_site_geometries:
                 raise ValueError("compare_alternatives cannot produce site geometry proposals")
+            if self.proposed_floor_plates:
+                raise ValueError("compare_alternatives cannot produce floor plate proposals")
 
         for action in self.proposed_actions:
             if action.action_type in PLAN_CHANGE_ACTIONS:
@@ -413,11 +467,13 @@ class ArchitecturalIntentResult(StrictContract):
                 and not self.proposed_spatial_relationships
                 and not self.proposed_metric_requirements
                 and not self.proposed_site_geometries
+                and not self.proposed_floor_plates
             ):
                 raise ValueError(
                     "answers_current_open_question requires at least one "
                     "proposed_brief_mutation, proposed_spatial_relationship, "
-                    "proposed_metric_requirement, or proposed_site_geometry"
+                    "proposed_metric_requirement, proposed_site_geometry, "
+                    "or proposed_floor_plate"
                 )
             if self.needs_follow_up:
                 raise ValueError(
@@ -635,4 +691,41 @@ class SiteGeometryApprovalResponse(StrictContract):
     success: bool
     resulting_plan_input_state: AuthoritativePlanInputState | None = None
     approval_record: SiteGeometryApprovalRecord | None = None
+    error: str | None = None
+
+
+class FloorPlateApprovalRecord(StrictContract):
+    proposal_status: Literal["user_approved"] = "user_approved"
+    approved_at: datetime
+    project_id: NonEmptyString
+    proposal_id: NonEmptyString
+    floor_plate_id: NonEmptyString
+    resulting_state_version: int = Field(ge=1)
+    context_fingerprint: NonEmptyString
+    generation_id: int = Field(ge=0)
+
+
+class FloorPlateApprovalRequest(StrictContract):
+    proposed_floor_plate: ProposedFloorPlate
+    current_project_id: NonEmptyString
+    expected_brief_version: int = Field(ge=1)
+    expected_plan_input_state_version: int | None = None
+    proposal_fingerprint: NonEmptyString
+    current_fingerprint: NonEmptyString
+    proposal_generation_id: int = Field(ge=0)
+    current_generation_id: int = Field(ge=0)
+    user_message: NonEmptyString
+    source_reference: NonEmptyString
+
+    @model_validator(mode="after")
+    def validate_proposal(self) -> FloorPlateApprovalRequest:
+        if self.proposed_floor_plate.proposal_id.strip() == "":
+            raise ValueError("proposal_id cannot be empty")
+        return self
+
+
+class FloorPlateApprovalResponse(StrictContract):
+    success: bool
+    resulting_plan_input_state: AuthoritativePlanInputState | None = None
+    approval_record: FloorPlateApprovalRecord | None = None
     error: str | None = None

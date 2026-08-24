@@ -248,27 +248,60 @@ class LocalLLMGateway {
     if (!Array.isArray(result.proposed_site_geometries)) {
       result.proposed_site_geometries = [];
     }
+    if (!Array.isArray(result.proposed_floor_plates)) {
+      result.proposed_floor_plates = [];
+    }
     const briefMutations = result.proposed_brief_mutations;
     const spatialRels = result.proposed_spatial_relationships;
     const metricReqs = result.proposed_metric_requirements;
     const siteGeoms = result.proposed_site_geometries;
+    const floorPlates = result.proposed_floor_plates;
 
     const hasActions = result.proposed_actions.length > 0;
     const hasBrief = briefMutations.length > 0;
     const hasSpatial = spatialRels.length > 0;
     const hasMetrics = metricReqs.length > 0;
     const hasSite = siteGeoms.length > 0;
+    const hasFloorPlate = floorPlates.length > 0;
 
-    if ((hasActions || hasBrief || hasSpatial || hasMetrics || hasSite) && !result.needs_user_confirmation) return false;
-    if (result.intent === 'compare_alternatives' && (hasBrief || hasSpatial || hasMetrics || hasSite)) return false;
-    if (hasMetrics && (hasActions || hasBrief || hasSpatial || hasSite)) return false;
-    if (hasSite && (hasActions || hasBrief || hasSpatial || hasMetrics)) return false;
+    if ((hasActions || hasBrief || hasSpatial || hasMetrics || hasSite || hasFloorPlate) && !result.needs_user_confirmation) return false;
+    if (result.intent === 'compare_alternatives' && (hasBrief || hasSpatial || hasMetrics || hasSite || hasFloorPlate)) return false;
+    if (hasMetrics && (hasActions || hasBrief || hasSpatial || hasSite || hasFloorPlate)) return false;
+    if (hasSite && (hasActions || hasBrief || hasSpatial || hasMetrics || hasFloorPlate)) return false;
+    if (hasFloorPlate && (hasActions || hasBrief || hasSpatial || hasMetrics || hasSite)) return false;
     if (hasSite && result.needs_follow_up) return false;
+    if (hasFloorPlate && result.needs_follow_up) return false;
     if (siteGeoms.length > 1) return false;
+    if (floorPlates.length > 1) return false;
+
+    const allowedVertexKeys = new Set(['x_m', 'y_m']);
+    const allowedFloorPlateKeys = new Set(['proposal_id', 'vertices', 'rationale']);
+    const isValidFloorPlate = (fp) => {
+      if (!fp || typeof fp !== 'object' || Array.isArray(fp)) return false;
+      const fpKeys = Object.keys(fp);
+      if (fpKeys.some(k => !allowedFloorPlateKeys.has(k))) return false;
+      if (typeof fp.proposal_id !== 'string' || !fp.proposal_id.trim()) return false;
+      if (!Array.isArray(fp.vertices) || fp.vertices.length < 3) return false;
+      const validVertices = fp.vertices.every(v => {
+        if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
+        const vKeys = Object.keys(v);
+        if (vKeys.some(k => !allowedVertexKeys.has(k))) return false;
+        return (
+          typeof v.x_m === 'number' && Number.isFinite(v.x_m) &&
+          typeof v.y_m === 'number' && Number.isFinite(v.y_m)
+        );
+      });
+      if (!validVertices) return false;
+      if (fp.rationale !== null && fp.rationale !== undefined && typeof fp.rationale !== 'string') {
+        return false;
+      }
+      return true;
+    };
+
+    if (!floorPlates.every(isValidFloorPlate)) return false;
 
     const validSiteRoles = new Set(['PARCEL_BOUNDARY', 'BUILDABLE_ENVELOPE']);
     const allowedSiteKeys = new Set(['proposal_id', 'role', 'vertices', 'rationale']);
-    const allowedVertexKeys = new Set(['x_m', 'y_m']);
     const isValidSiteGeometry = (geom) => {
       if (!geom || typeof geom !== 'object' || Array.isArray(geom)) return false;
       const geomKeys = Object.keys(geom);
@@ -344,7 +377,7 @@ class LocalLLMGateway {
     if (!briefMutations.every(isValidBriefMutation)) return false;
 
     const visibleIds = new Set(
-      (requestBody.visible_entities || []).map(entity => entity.entity_id)
+      ((requestBody && requestBody.visible_entities) || []).map(entity => entity.entity_id)
     );
     if (result.target && result.target.entity_id
       && !visibleIds.has(result.target.entity_id)) return false;
@@ -518,6 +551,64 @@ class LocalLLMGateway {
     try {
       const response = await this.fetchFn(
         `${this.baseUrl}/api/v1/projects/${encodeURIComponent(cleanProjectId)}/plan/input/site/approve`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: controller.signal
+        }
+      );
+      const data = await this.readResponse(response);
+      return {
+        ...(data && typeof data === 'object' ? data : { success: false }),
+        httpStatus: response.status
+      };
+    } catch (error) {
+      if (error && error.name === 'AbortError') {
+        return {
+          success: false,
+          httpStatus: 0,
+          failureKind: 'timeout',
+          error: 'İstek zaman aşımına uğradı.'
+        };
+      }
+      return {
+        success: false,
+        httpStatus: 0,
+        failureKind: 'network',
+        error: 'Ağ bağlantısı kurulamadı.'
+      };
+    } finally {
+      clearTimeout(timeoutId);
+      if (signal) {
+        signal.removeEventListener('abort', onAbort);
+      }
+    }
+  }
+
+  async approveFloorPlate(projectId, payload, options = {}) {
+    const cleanProjectId = typeof projectId === 'string' ? projectId.trim() : '';
+    if (!cleanProjectId) {
+      return {
+        success: false,
+        error: 'Proje kimliği gereklidir.',
+        httpStatus: 400
+      };
+    }
+    const signal = options.signal;
+    const controller = new AbortController();
+    const timeoutMs = typeof options.timeoutMs === 'number' ? options.timeoutMs : this.timeoutMs;
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    const onAbort = () => controller.abort();
+    if (signal) {
+      if (signal.aborted) controller.abort();
+      else signal.addEventListener('abort', onAbort, { once: true });
+    }
+
+    try {
+      const response = await this.fetchFn(
+        `${this.baseUrl}/api/v1/projects/${encodeURIComponent(cleanProjectId)}/plan/input/floor-plate/approve`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
