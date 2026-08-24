@@ -70,9 +70,7 @@ def extract_floor_plate_coordinates_from_text(
     for idx, match in enumerate(parenthesized_matches):
         raw_inner = match.group(1).strip()
         if not raw_inner:
-            raise FloorPlateSourceBindingError(
-                f"{idx + 1}. parantez içi boş koordinat içeriyor."
-            )
+            raise FloorPlateSourceBindingError(f"{idx + 1}. parantez içi boş koordinat içeriyor.")
 
         if ";" in raw_inner:
             parts = raw_inner.split(";")

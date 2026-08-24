@@ -279,10 +279,7 @@ def test_approve_floor_plate_success_explicit_coordinates(api_test_env: ApiTestE
     assert data["error"] is None
     assert data["resulting_plan_input_state"]["state_version"] == 1
     assert data["resulting_plan_input_state"]["floor_plate_input"] is not None
-    assert (
-        data["resulting_plan_input_state"]["floor_plate_input"]["provenance"]
-        == "USER_CONFIRMED"
-    )
+    assert data["resulting_plan_input_state"]["floor_plate_input"]["provenance"] == "USER_CONFIRMED"
     assert len(data["resulting_plan_input_state"]["floor_plate_input"]["evidence_ids"]) == 1
     assert data["approval_record"]["proposal_status"] == "user_approved"
     assert data["approval_record"]["floor_plate_id"] == generate_floor_plate_id(project_id)
@@ -369,9 +366,7 @@ def test_approve_floor_plate_exact_replay_idempotence(api_test_env: ApiTestEnv) 
     assert resp1.json()["resulting_plan_input_state"]["state_version"] == 1
 
     # Second approval (replay) -> version stays 1 (N -> N)
-    payload_replay = payload.model_copy(
-        update={"expected_plan_input_state_version": 1}
-    )
+    payload_replay = payload.model_copy(update={"expected_plan_input_state_version": 1})
     resp2 = client.post(
         f"/api/v1/projects/{project_id}/plan/input/floor-plate/approve",
         json=payload_replay.model_dump(mode="json"),
@@ -991,9 +986,7 @@ def test_approve_floor_plate_rationale_exact_replay_vs_mutation(
     evidence_count_1 = len(state1["floor_plate_input"]["evidence_ids"])
 
     # 2. Exact replay: same vertices AND same rationale -> stays version 1 (N -> N), no new evidence
-    payload_exact_replay = payload1.model_copy(
-        update={"expected_plan_input_state_version": 1}
-    )
+    payload_exact_replay = payload1.model_copy(update={"expected_plan_input_state_version": 1})
     resp2 = client.post(
         f"/api/v1/projects/{project_id}/plan/input/floor-plate/approve",
         json=payload_exact_replay.model_dump(mode="json"),

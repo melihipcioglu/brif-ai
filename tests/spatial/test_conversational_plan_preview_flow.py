@@ -394,9 +394,7 @@ def test_03_missing_floor_plate_returns_409_and_solver_call_count_zero(tmp_path:
 
 def test_04_missing_metrics_returns_409_and_solver_call_count_zero(tmp_path: Path) -> None:
     """Missing metrics returns 409 Conflict and solver call count == 0."""
-    brief_repo, spatial_repo, plan_repo, _, _ = _setup_test_project(
-        tmp_path, include_metrics=False
-    )
+    brief_repo, spatial_repo, plan_repo, _, _ = _setup_test_project(tmp_path, include_metrics=False)
     app = create_app(
         brief_repository=brief_repo,
         spatial_repository=spatial_repo,
