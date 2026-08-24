@@ -24,16 +24,20 @@ SYSTEM_PROMPT = (
     "Aktif bağlamda olmayan yön, ölçü/konum uydurma.\n"
     "Plan proposed_actions, brief proposed_brief_mutations, "
     "mekânsal ilişkiler proposed_spatial_relationships, "
-    "alan/ölçü gereksinimleri proposed_metric_requirements ile verilir.\n"
+    "alan/ölçü gereksinimleri proposed_metric_requirements, "
+    "parsel ve yapılaşma zarfı proposed_site_geometries ile verilir.\n"
+    "Her öneride diğer öneri listeleri boş olsun.\n"
     "Mekânsal ilişkide active_brief.spatial_nodes kimliklerini "
-    "ve canonical relation_type ile USER_STATED provenance kullan; "
-    "proposed_brief_mutations=[], proposed_metric_requirements=[] ve proposed_actions=[] olsun.\n"
+    "ve canonical relation_type ile USER_STATED provenance kullan.\n"
     "Metrik gereksiniminde (MIN_AREA, MAX_AREA, MIN_CLEAR_WIDTH) metric_context.spaces "
     "içindeki space_id kimliğini kullan; kesin min/max "
     "('en az 30 m²', 'en fazla 20 m²', 'en az 1.20 m') dışında metrik önerme; "
-    "yaklaşık/belirsiz ifadelerde açıklama iste; TARGET_AREA kullanma; "
-    "proposed_brief_mutations=[], proposed_spatial_relationships=[] ve proposed_actions=[] olsun.\n"
-    "Plan değişikliği, ilişki veya metrik önerisi requires_user_confirmation=true gerektirir.\n"
+    "yaklaşık/belirsiz ifadelerde açıklama iste; TARGET_AREA kullanma.\n"
+    "Site geometrisinde (PARCEL_BOUNDARY, BUILDABLE_ENVELOPE) yalnız açık "
+    "koordinat listesini ((x;y) veya (x,y)) birebir kullan; "
+    "boyut/alan/çekmeden üretme.\n"
+    "Plan değişikliği, ilişki, metrik veya site geometri önerisi "
+    "requires_user_confirmation=true gerektirir.\n"
     "Bekleyen öneri henüz onaylanmış karar değildir; ilk analizi tekrarlama, "
     "onaylama, ayrıntılandırma veya vazgeçme seçeneklerini doğal Türkçe sun.\n"
     'Makine kimliği, iç alan veya enum adlarını, "entity", "target", "öğe bilgisi" gösterme.\n'
@@ -56,6 +60,7 @@ Aşağıdaki kurallara KESİNLİKLE UY:
 - İngilizce kelime kullanma; tüm anlatım öz Türkçe ve doğal olsun.
 - Karşılaştırmada intent=compare_alternatives, target tüm alanları null,
   proposed_actions=[], proposed_brief_mutations=[], proposed_metric_requirements=[],
+  proposed_site_geometries=[],
   needs_user_confirmation=false, needs_follow_up=false, follow_up_question=null yap.
 - assistant_message içinde kesin yön ve konum belirtmeden şu 3 bölümü eksiksiz üret:
   Alternatif 1 - <Türkçe kısa ad>: <tek veya iki kısa cümle>
@@ -69,16 +74,19 @@ Aşağıdaki kurallara KESİNLİKLE UY:
 - target her zaman bir JSON nesnesi olsun; bilinmeyen alt alanlarda null kullan.
 - user_requirements, interpreted_priorities, constraints_to_check,
   missing_information, proposed_actions, proposed_brief_mutations,
-  proposed_spatial_relationships, proposed_metric_requirements ve warnings
+  proposed_spatial_relationships, proposed_metric_requirements,
+  proposed_site_geometries ve warnings
   her zaman JSON dizisi olsun; null veya metin kullanma.
 - needs_follow_up=true ise follow_up_question dolu bir metin olsun ve follow_up_topic
   girdideki elicitation.allowed_follow_up_topic ile birebir aynı olsun.
 - needs_follow_up=false ise follow_up_question=null ve follow_up_topic=null olsun.
 - elicitation.allowed_follow_up_topic=null ise needs_follow_up=false olsun.
-- proposed_actions, proposed_brief_mutations, proposed_spatial_relationships veya
-  proposed_metric_requirements boş değilse needs_follow_up=false olsun.
-- proposed_actions, proposed_brief_mutations, proposed_spatial_relationships veya
-  proposed_metric_requirements boş değilse needs_user_confirmation=true olsun.
+- proposed_actions, proposed_brief_mutations, proposed_spatial_relationships,
+  proposed_metric_requirements veya proposed_site_geometries
+  boş değilse needs_follow_up=false olsun.
+- proposed_actions, proposed_brief_mutations, proposed_spatial_relationships,
+  proposed_metric_requirements veya proposed_site_geometries
+  boş değilse needs_user_confirmation=true olsun.
 - Plan değişikliği eyleminde yalnız görünür kapsamdaki gerçek target_entity_id değerini kullan;
   hedef bilinmiyorsa eylem üretme, takip sorusu sor.
 - confidence 0 ile 1 arasında bir sayı olsun; şema dışı hiçbir alan ekleme.

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -44,6 +45,9 @@ from brif_ai.llm.contracts import (
     MetricRequirementApprovalRecord,
     MetricRequirementApprovalRequest,
     MetricRequirementApprovalResponse,
+    SiteGeometryApprovalRecord,
+    SiteGeometryApprovalRequest,
+    SiteGeometryApprovalResponse,
     SpaceMetricContext,
     SpatialRelationshipApprovalRecord,
     SpatialRelationshipApprovalRequest,
@@ -127,6 +131,23 @@ from brif_ai.spatial.room_solver import (
     RoomGeometryUnsupportedOptionalSpaceError,
 )
 from brif_ai.spatial.service import PersistentSpatialService
+from brif_ai.spatial.site.approval_evidence import (
+    SiteApprovalEvidenceRepository,
+    SiteEvidencePersistenceError,
+)
+from brif_ai.spatial.site.builder import SiteBuildableEnvelopeBuilder
+from brif_ai.spatial.site.errors import (
+    SiteEnvelopeOutsideParcelError,
+    SiteEnvelopeWithoutParcelError,
+    SiteInvalidCoordinateError,
+    SitePolygonDegenerateError,
+    SitePolygonSelfIntersectionError,
+)
+from brif_ai.spatial.site.models import SiteGeometryRole, SitePolygonInput
+from brif_ai.spatial.site.source_binding import (
+    SiteSourceBindingError,
+    validate_site_geometry_source_binding,
+)
 from brif_ai.spatial.svg_plan import (
     SvgPlanInputMismatchError,
     SvgPlanInvalidGeometryError,
@@ -252,6 +273,7 @@ def create_app(
     brief_repository: BriefRepository | None = None,
     spatial_repository: SpatialRelationshipRepository | None = None,
     plan_input_repository: PlanInputStateRepository | None = None,
+    site_evidence_repository: SiteApprovalEvidenceRepository | None = None,
 ) -> FastAPI:
     resolved_settings = settings or LocalLLMSettings.from_env()
     resolved_provider = provider or OllamaProvider(resolved_settings)
@@ -261,6 +283,9 @@ def create_app(
     persistent_spatial_service = PersistentSpatialService(resolved_spatial_repo)
     resolved_plan_input_repo = plan_input_repository or JSONPlanInputStateRepository()
     persistent_plan_input_service = PlanInputStateService(resolved_plan_input_repo)
+    persistent_site_evidence_repository = (
+        site_evidence_repository or SiteApprovalEvidenceRepository()
+    )
     project_readiness_service = ProjectPlanPreviewReadinessService(
         brief_service=persistent_brief_service,
         spatial_service=persistent_spatial_service,
@@ -1403,6 +1428,362 @@ def create_app(
                     resulting_plan_input_state=None,
                     approval_record=None,
                     error=str(error),
+                ).model_dump(mode="json"),
+            )
+
+    @application.post(
+        "/api/v1/projects/{project_id}/plan/input/site/approve",
+        response_model=SiteGeometryApprovalResponse,
+    )
+    async def approve_site_geometry(
+        project_id: str,
+        request: SiteGeometryApprovalRequest,
+    ) -> Any:
+        try:
+            clean_project_id = _validate_project_id_param(project_id)
+            if request.current_project_id != clean_project_id:
+                raise PolicyValidationError(
+                    f"Route project_id '{clean_project_id}' does not match "
+                    f"payload current_project_id '{request.current_project_id}'."
+                )
+
+            if request.proposal_fingerprint != request.current_fingerprint:
+                raise StaleContextError("Farklı bağlama ait öneri onaylanamaz.")
+            if request.proposal_generation_id != request.current_generation_id:
+                raise StaleContextError("Eski jenerasyona ait öneri onaylanamaz.")
+
+            # 1. Fetch authoritative persisted BriefSnapshot
+            persisted_brief = persistent_brief_service.get_latest_brief(clean_project_id)
+            if persisted_brief is None:
+                raise BriefNotFoundError(
+                    f"Cannot approve site geometry: Project '{clean_project_id}' "
+                    "brief is not initialized."
+                )
+
+            if persisted_brief.brief_version != request.expected_brief_version:
+                raise BriefVersionConflictError(
+                    f"Stale brief approval: Current persisted brief version for "
+                    f"'{clean_project_id}' is {persisted_brief.brief_version}, "
+                    f"but client expected version {request.expected_brief_version}."
+                )
+
+            # 2. Strict source re-validation
+            if not request.user_message or not request.user_message.strip():
+                raise PolicyValidationError(
+                    "Kullanıcı mesajı (user_message) site onayı için zorunludur."
+                )
+            try:
+                validate_site_geometry_source_binding(
+                    user_message=request.user_message,
+                    proposed_role=request.proposed_geometry.role,
+                    proposed_vertices=request.proposed_geometry.vertices,
+                )
+            except SiteSourceBindingError as err:
+                raise PolicyValidationError(f"Kaynak doğrulama hatası: {err}") from err
+
+            # 3. Fetch authoritative spatial graph & build SpatialProgram
+            persisted_graph = persistent_spatial_service.get_latest_graph(clean_project_id)
+            if persisted_graph is None:
+                raise SpatialProgramMissingInputError(
+                    f"Spatial relationship graph for project '{clean_project_id}' not found."
+                )
+            if persisted_graph.project_id != clean_project_id:
+                raise SpatialProgramProjectMismatchError(
+                    snapshot_project_id=clean_project_id,
+                    graph_project_id=persisted_graph.project_id,
+                )
+            if persisted_graph.source_brief_version != persisted_brief.brief_version:
+                raise SpatialProgramVersionMismatchError(
+                    snapshot_version=persisted_brief.brief_version,
+                    graph_source_version=persisted_graph.source_brief_version,
+                )
+
+            program = SpatialProgramBuilder().build(persisted_brief, persisted_graph)
+            prop = request.proposed_geometry
+            now = datetime.now(UTC)
+
+            # 4. Fetch authoritative plan input state
+            current_plan_input_state = persistent_plan_input_service.get_latest_state(
+                clean_project_id
+            )
+
+            # 5. Idempotent semantic replay check
+            if (
+                current_plan_input_state is not None
+                and current_plan_input_state.site_envelope is not None
+            ):
+                cur_env = current_plan_input_state.site_envelope
+                if prop.role == SiteGeometryRole.PARCEL_BOUNDARY:
+                    if (
+                        cur_env.parcel_boundary is not None
+                        and cur_env.parcel_boundary.provenance
+                        == RelationshipProvenance.USER_CONFIRMED
+                        and cur_env.buildable_envelope is None
+                    ):
+                        cur_v = cur_env.parcel_boundary.vertices
+                        prop_v = prop.vertices
+                        if len(cur_v) == len(prop_v) and all(
+                            Decimal(str(cv.x_m)) == Decimal(str(pv.x_m))
+                            and Decimal(str(cv.y_m)) == Decimal(str(pv.y_m))
+                            for cv, pv in zip(cur_v, prop_v, strict=True)
+                        ):
+                            record = SiteGeometryApprovalRecord(
+                                proposal_status="user_approved",
+                                approved_at=now,
+                                project_id=clean_project_id,
+                                proposal_id=prop.proposal_id,
+                                geometry_id=cur_env.parcel_boundary.id,
+                                role=SiteGeometryRole.PARCEL_BOUNDARY,
+                                resulting_state_version=current_plan_input_state.state_version,
+                                context_fingerprint=request.current_fingerprint,
+                                generation_id=request.current_generation_id,
+                            )
+                            return SiteGeometryApprovalResponse(
+                                success=True,
+                                resulting_plan_input_state=current_plan_input_state,
+                                approval_record=record,
+                                error=None,
+                            )
+                elif (
+                    prop.role == SiteGeometryRole.BUILDABLE_ENVELOPE
+                    and cur_env.buildable_envelope is not None
+                    and cur_env.buildable_envelope.provenance
+                    == RelationshipProvenance.USER_CONFIRMED
+                ):
+                    cur_v = cur_env.buildable_envelope.vertices
+                    prop_v = prop.vertices
+                    if len(cur_v) == len(prop_v) and all(
+                        Decimal(str(cv.x_m)) == Decimal(str(pv.x_m))
+                        and Decimal(str(cv.y_m)) == Decimal(str(pv.y_m))
+                        for cv, pv in zip(cur_v, prop_v, strict=True)
+                    ):
+                        record = SiteGeometryApprovalRecord(
+                            proposal_status="user_approved",
+                            approved_at=now,
+                            project_id=clean_project_id,
+                            proposal_id=prop.proposal_id,
+                            geometry_id=cur_env.buildable_envelope.id,
+                            role=SiteGeometryRole.BUILDABLE_ENVELOPE,
+                            resulting_state_version=current_plan_input_state.state_version,
+                            context_fingerprint=request.current_fingerprint,
+                            generation_id=request.current_generation_id,
+                        )
+                        return SiteGeometryApprovalResponse(
+                            success=True,
+                            resulting_plan_input_state=current_plan_input_state,
+                            approval_record=record,
+                            error=None,
+                        )
+
+            # 6. Validate expected plan input state version
+            if request.expected_plan_input_state_version is None:
+                if current_plan_input_state is not None:
+                    raise PlanInputStateVersionConflictError(
+                        f"Expected plan input state to be uninitialized, but version "
+                        f"{current_plan_input_state.state_version} exists."
+                    )
+            else:
+                if current_plan_input_state is None:
+                    raise PlanInputStateVersionConflictError(
+                        f"Expected plan input state version "
+                        f"{request.expected_plan_input_state_version}, "
+                        "but plan input state does not exist."
+                    )
+                if (
+                    current_plan_input_state.state_version
+                    != request.expected_plan_input_state_version
+                ):
+                    raise PlanInputStateVersionConflictError(
+                        f"Stale plan input state: expected "
+                        f"{request.expected_plan_input_state_version}, "
+                        f"but latest version is {current_plan_input_state.state_version}."
+                    )
+
+            # 7. Persist site geometry evidence record
+            evidence = persistent_site_evidence_repository.save_site_evidence(
+                project_id=clean_project_id,
+                source_reference=request.source_reference,
+                user_message=request.user_message,
+            )
+
+            # 8. Build SiteBuildableEnvelope using SiteBuildableEnvelopeBuilder
+            site_builder = SiteBuildableEnvelopeBuilder()
+            if prop.role == SiteGeometryRole.PARCEL_BOUNDARY:
+                parcel_input = SitePolygonInput(
+                    vertices=prop.vertices,
+                    provenance=RelationshipProvenance.USER_CONFIRMED,
+                    evidence_ids=[evidence.id],
+                    rationale=prop.rationale,
+                )
+                # Replacing parcel boundary ALWAYS clears existing buildable_envelope
+                new_site_envelope = site_builder.build(
+                    program=program,
+                    parcel_boundary=parcel_input,
+                    buildable_envelope=None,
+                    created_at=now,
+                )
+                if new_site_envelope.parcel_boundary is None:
+                    raise PolicyValidationError("Parsel sınırı üretilemedi.")
+                geometry_id = new_site_envelope.parcel_boundary.id
+            elif prop.role == SiteGeometryRole.BUILDABLE_ENVELOPE:
+                if (
+                    current_plan_input_state is None
+                    or current_plan_input_state.site_envelope is None
+                    or current_plan_input_state.site_envelope.parcel_boundary is None
+                ):
+                    raise SiteEnvelopeWithoutParcelError(
+                        "Yapılaşma zarfı onayı için önce geçerli bir parsel sınırı tanımlanmalıdır."
+                    )
+                existing_parcel = current_plan_input_state.site_envelope.parcel_boundary
+                if existing_parcel.provenance != RelationshipProvenance.USER_CONFIRMED:
+                    raise PolicyValidationError(
+                        "Mevcut parsel sınırı kullanıcı onaylı (USER_CONFIRMED) olmadığı için "
+                        "yapılaşma zarfı onaylanamaz."
+                    )
+                if (
+                    existing_parcel.id
+                    not in current_plan_input_state.site_envelope.authoritative_geometry_ids
+                ):
+                    raise PolicyValidationError(
+                        "Mevcut parsel sınırı yetkili geometri listesinde bulunamadı."
+                    )
+                parcel_input = SitePolygonInput(
+                    vertices=existing_parcel.vertices,
+                    provenance=RelationshipProvenance.USER_CONFIRMED,
+                    evidence_ids=existing_parcel.evidence_ids,
+                    rationale=existing_parcel.rationale,
+                )
+                envelope_input = SitePolygonInput(
+                    vertices=prop.vertices,
+                    provenance=RelationshipProvenance.USER_CONFIRMED,
+                    evidence_ids=[evidence.id],
+                    rationale=prop.rationale,
+                )
+                new_site_envelope = site_builder.build(
+                    program=program,
+                    parcel_boundary=parcel_input,
+                    buildable_envelope=envelope_input,
+                    created_at=now,
+                )
+                if new_site_envelope.buildable_envelope is None:
+                    raise PolicyValidationError("Yapılaşma zarfı üretilemedi.")
+                geometry_id = new_site_envelope.buildable_envelope.id
+            else:
+                raise PolicyValidationError(f"Desteklenmeyen site geometri rolü: {prop.role}")
+
+            # 9. Persist AuthoritativePlanInputState (advance version N -> N+1)
+            if current_plan_input_state is None:
+                new_state = persistent_plan_input_service.initialize_state(
+                    project_id=clean_project_id,
+                    source_brief_version=persisted_brief.brief_version,
+                    site_envelope=new_site_envelope,
+                    created_at=now,
+                )
+            else:
+                new_state = persistent_plan_input_service.update_state(
+                    project_id=clean_project_id,
+                    expected_state_version=current_plan_input_state.state_version,
+                    source_brief_version=persisted_brief.brief_version,
+                    site_envelope=new_site_envelope,
+                    created_at=now,
+                )
+
+            record = SiteGeometryApprovalRecord(
+                proposal_status="user_approved",
+                approved_at=now,
+                project_id=clean_project_id,
+                proposal_id=prop.proposal_id,
+                geometry_id=geometry_id,
+                role=prop.role,
+                resulting_state_version=new_state.state_version,
+                context_fingerprint=request.current_fingerprint,
+                generation_id=request.current_generation_id,
+            )
+            return SiteGeometryApprovalResponse(
+                success=True,
+                resulting_plan_input_state=new_state,
+                approval_record=record,
+                error=None,
+            )
+        except (
+            BriefVersionConflictError,
+            PlanInputStateVersionConflictError,
+            SpatialProgramProjectMismatchError,
+            SpatialProgramVersionMismatchError,
+            SpatialProgramMissingInputError,
+            BriefNotReadyError,
+            SpatialProgramConflictBlockerError,
+            SpatialProgramNodeMismatchError,
+            StaleContextError,
+        ) as error:
+            return JSONResponse(
+                status_code=409,
+                content=SiteGeometryApprovalResponse(
+                    success=False,
+                    resulting_plan_input_state=None,
+                    approval_record=None,
+                    error=str(error),
+                ).model_dump(mode="json"),
+            )
+        except (
+            BriefNotFoundError,
+            PlanInputStateNotFoundError,
+        ) as error:
+            return JSONResponse(
+                status_code=404,
+                content=SiteGeometryApprovalResponse(
+                    success=False,
+                    resulting_plan_input_state=None,
+                    approval_record=None,
+                    error=str(error),
+                ).model_dump(mode="json"),
+            )
+        except (
+            PolicyValidationError,
+            InvalidProjectIdError,
+            SiteEnvelopeOutsideParcelError,
+            SiteEnvelopeWithoutParcelError,
+            SiteInvalidCoordinateError,
+            SitePolygonDegenerateError,
+            SitePolygonSelfIntersectionError,
+            SiteSourceBindingError,
+            PlanInputStateValidationError,
+            PlanInputStateBriefVersionMismatchError,
+            PlanInputStateProjectMismatchError,
+            ValueError,
+        ) as error:
+            return JSONResponse(
+                status_code=422,
+                content=SiteGeometryApprovalResponse(
+                    success=False,
+                    resulting_plan_input_state=None,
+                    approval_record=None,
+                    error=str(error),
+                ).model_dump(mode="json"),
+            )
+        except (
+            BriefPersistenceError,
+            SpatialGraphPersistenceError,
+            PlanInputStatePersistenceError,
+            SiteEvidencePersistenceError,
+        ):
+            return JSONResponse(
+                status_code=500,
+                content=SiteGeometryApprovalResponse(
+                    success=False,
+                    resulting_plan_input_state=None,
+                    approval_record=None,
+                    error="Kalıcı depolama hatası oluştu.",
+                ).model_dump(mode="json"),
+            )
+        except Exception:
+            return JSONResponse(
+                status_code=500,
+                content=SiteGeometryApprovalResponse(
+                    success=False,
+                    resulting_plan_input_state=None,
+                    approval_record=None,
+                    error="Sunucu içi beklenmeyen bir hata oluştu.",
                 ).model_dump(mode="json"),
             )
 

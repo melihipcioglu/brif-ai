@@ -21,6 +21,7 @@ from brif_ai.spatial.metrics.models import (
 )
 from brif_ai.spatial.models import ProposedSpatialRelationship, SpatialRelationshipGraph
 from brif_ai.spatial.plan_input.models import AuthoritativePlanInputState
+from brif_ai.spatial.site.models import SiteGeometryRole, SitePoint
 
 if sys.version_info >= (3, 11):  # noqa: UP036
     from enum import StrEnum
@@ -224,6 +225,13 @@ class ProposedAction(StrictContract):
     requires_user_confirmation: bool
 
 
+class ProposedSiteGeometry(StrictContract):
+    proposal_id: NonEmptyString
+    role: SiteGeometryRole
+    vertices: list[SitePoint] = Field(min_length=3)
+    rationale: str | None = None
+
+
 class PendingProposalContext(StrictContract):
     status: Literal["pending_user_confirmation"] = "pending_user_confirmation"
     context_fingerprint: NonEmptyString
@@ -232,6 +240,7 @@ class PendingProposalContext(StrictContract):
     brief_mutation: ProposedBriefMutation | None = None
     spatial_relationship: ProposedSpatialRelationship | None = None
     metric_requirement: ProposedMetricRequirement | None = None
+    site_geometry: ProposedSiteGeometry | None = None
 
     @model_validator(mode="after")
     def validate_proposal_content_xor(self) -> PendingProposalContext:
@@ -240,12 +249,13 @@ class PendingProposalContext(StrictContract):
             self.brief_mutation,
             self.spatial_relationship,
             self.metric_requirement,
+            self.site_geometry,
         ]
         non_none_count = sum(1 for p in proposals if p is not None)
         if non_none_count != 1:
             raise ValueError(
                 "Exactly one of action, brief_mutation, spatial_relationship, "
-                "or metric_requirement must be populated in PendingProposalContext"
+                "metric_requirement, or site_geometry must be populated in PendingProposalContext"
             )
         return self
 
@@ -262,6 +272,7 @@ class ArchitecturalIntentResult(StrictContract):
     proposed_brief_mutations: list[ProposedBriefMutation] = Field(default_factory=list)
     proposed_spatial_relationships: list[ProposedSpatialRelationship] = Field(default_factory=list)
     proposed_metric_requirements: list[ProposedMetricRequirement] = Field(default_factory=list)
+    proposed_site_geometries: list[ProposedSiteGeometry] = Field(default_factory=list)
     household_composition: HouseholdComposition | None = None
     answers_current_open_question: bool = False
     needs_follow_up: bool
@@ -284,6 +295,31 @@ class ArchitecturalIntentResult(StrictContract):
             if self.follow_up_question is not None:
                 raise ValueError("follow_up_question must be None when needs_follow_up is false")
 
+        # Invariant: Maximum one site geometry proposal
+        if len(self.proposed_site_geometries) > 1:
+            raise ValueError("maximum one site geometry proposal allowed")
+
+        # Invariant: If site geometry proposals are present, enforce safety invariants
+        if self.proposed_site_geometries:
+            if not self.needs_user_confirmation:
+                raise ValueError("proposed site geometries require user confirmation")
+            if self.needs_follow_up:
+                raise ValueError("needs_follow_up must be false when site geometries are present")
+            if self.proposed_actions:
+                raise ValueError("cannot mix proposed site geometries with proposed actions")
+            if self.proposed_brief_mutations:
+                raise ValueError(
+                    "cannot mix proposed site geometries with proposed brief mutations"
+                )
+            if self.proposed_spatial_relationships:
+                raise ValueError(
+                    "cannot mix proposed site geometries with proposed spatial relationships"
+                )
+            if self.proposed_metric_requirements:
+                raise ValueError(
+                    "cannot mix proposed site geometries with proposed metric requirements"
+                )
+
         # Invariant: If spatial relationships are present, enforce safety invariants
         if self.proposed_spatial_relationships:
             if not self.needs_user_confirmation:
@@ -301,6 +337,10 @@ class ArchitecturalIntentResult(StrictContract):
             if self.proposed_metric_requirements:
                 raise ValueError(
                     "cannot mix proposed spatial relationships with proposed metric requirements"
+                )
+            if self.proposed_site_geometries:
+                raise ValueError(
+                    "cannot mix proposed spatial relationships with proposed site geometries"
                 )
 
         # Invariant: If metric requirements are present, enforce safety invariants
@@ -321,6 +361,10 @@ class ArchitecturalIntentResult(StrictContract):
                 raise ValueError(
                     "cannot mix proposed metric requirements with proposed spatial relationships"
                 )
+            if self.proposed_site_geometries:
+                raise ValueError(
+                    "cannot mix proposed metric requirements with proposed site geometries"
+                )
 
         # Enforce single proposal category in V0 (mutations vs actions)
         if self.proposed_brief_mutations and self.proposed_actions:
@@ -332,6 +376,7 @@ class ArchitecturalIntentResult(StrictContract):
             or self.proposed_actions
             or self.proposed_spatial_relationships
             or self.proposed_metric_requirements
+            or self.proposed_site_geometries
         ) and self.needs_follow_up:
             raise ValueError("needs_follow_up must be false when proposals are present")
 
@@ -341,12 +386,13 @@ class ArchitecturalIntentResult(StrictContract):
         if self.proposed_brief_mutations and not self.needs_user_confirmation:
             raise ValueError("proposed brief mutations require user confirmation")
 
-        if self.intent is IntentType.COMPARE_ALTERNATIVES and (
-            self.proposed_brief_mutations or self.proposed_metric_requirements
-        ):
-            raise ValueError(
-                "compare_alternatives cannot produce brief mutations or metric proposals"
-            )
+        if self.intent is IntentType.COMPARE_ALTERNATIVES:
+            if self.proposed_brief_mutations or self.proposed_metric_requirements:
+                raise ValueError(
+                    "compare_alternatives cannot produce brief mutations or metric proposals"
+                )
+            if self.proposed_site_geometries:
+                raise ValueError("compare_alternatives cannot produce site geometry proposals")
 
         for action in self.proposed_actions:
             if action.action_type in PLAN_CHANGE_ACTIONS:
@@ -366,10 +412,12 @@ class ArchitecturalIntentResult(StrictContract):
                 not self.proposed_brief_mutations
                 and not self.proposed_spatial_relationships
                 and not self.proposed_metric_requirements
+                and not self.proposed_site_geometries
             ):
                 raise ValueError(
-                    "answers_current_open_question requires at least one proposed_brief_mutation, "
-                    "proposed_spatial_relationship, or proposed_metric_requirement"
+                    "answers_current_open_question requires at least one "
+                    "proposed_brief_mutation, proposed_spatial_relationship, "
+                    "proposed_metric_requirement, or proposed_site_geometry"
                 )
             if self.needs_follow_up:
                 raise ValueError(
@@ -549,4 +597,42 @@ class MetricRequirementApprovalResponse(StrictContract):
     success: bool
     resulting_plan_input_state: AuthoritativePlanInputState | None = None
     approval_record: MetricRequirementApprovalRecord | None = None
+    error: str | None = None
+
+
+class SiteGeometryApprovalRecord(StrictContract):
+    proposal_status: Literal["user_approved"] = "user_approved"
+    approved_at: datetime
+    project_id: NonEmptyString
+    proposal_id: NonEmptyString
+    geometry_id: NonEmptyString
+    role: SiteGeometryRole
+    resulting_state_version: int = Field(ge=1)
+    context_fingerprint: NonEmptyString
+    generation_id: int = Field(ge=0)
+
+
+class SiteGeometryApprovalRequest(StrictContract):
+    proposed_geometry: ProposedSiteGeometry
+    current_project_id: NonEmptyString
+    expected_brief_version: int = Field(ge=1)
+    expected_plan_input_state_version: int | None = None
+    proposal_fingerprint: NonEmptyString
+    current_fingerprint: NonEmptyString
+    proposal_generation_id: int = Field(ge=0)
+    current_generation_id: int = Field(ge=0)
+    user_message: NonEmptyString
+    source_reference: NonEmptyString
+
+    @model_validator(mode="after")
+    def validate_proposal(self) -> SiteGeometryApprovalRequest:
+        if self.proposed_geometry.proposal_id.strip() == "":
+            raise ValueError("proposal_id cannot be empty")
+        return self
+
+
+class SiteGeometryApprovalResponse(StrictContract):
+    success: bool
+    resulting_plan_input_state: AuthoritativePlanInputState | None = None
+    approval_record: SiteGeometryApprovalRecord | None = None
     error: str | None = None
