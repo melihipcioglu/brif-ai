@@ -566,6 +566,12 @@ class ConversationOrchestrator {
     const pendingCommand = await this.handlePendingProposalCommand(messageText);
     if (pendingCommand) return pendingCommand;
 
+    // Explicit plan preview conversational command check
+    if (this.isExplicitPlanPreviewRequest(messageText)) {
+      const previewResult = await this.requestProjectPlanPreview();
+      return { status: 'plan_preview_requested', previewResult };
+    }
+
     if (this.isRequestPending) return null;
 
     // Always refresh the active brief from the authoritative server before
@@ -1971,6 +1977,13 @@ class ConversationOrchestrator {
         this.appendAssistantMessage(
           'Taslak plan oluşturuldu. Bu görünüm sunucuda doğrulanmış proje girdileri üzerinden oluşturulan şematik yerleşimdir.'
         );
+      } else if (result && result.kind === 'not_ready') {
+        const userFacingBlockers = this.getUserFacingBlockers(result);
+        if (userFacingBlockers.length === 1) {
+          this.appendAssistantMessage(`Taslak plan henüz oluşturulamıyor: ${userFacingBlockers[0]}`);
+        } else {
+          this.appendAssistantMessage(`Taslak plan henüz oluşturulamıyor:\n• ${userFacingBlockers.join('\n• ')}`);
+        }
       }
       return result;
     } catch (err) {
@@ -1978,6 +1991,38 @@ class ConversationOrchestrator {
       this.renderPlanPreviewResult(errRes);
       return errRes;
     }
+  }
+
+  isExplicitPlanPreviewRequest(messageText) {
+    return isExplicitPlanPreviewRequest(messageText);
+  }
+
+  formatUserFacingBlocker(blocker) {
+    return formatUserFacingBlocker(blocker);
+  }
+
+  getUserFacingBlockers(result) {
+    if (!result) return ['Plan taslağını oluşturmak için bazı proje girdileri henüz hazır değil.'];
+    const messages = [];
+    const readiness = result.readiness;
+    if (readiness) {
+      if (Array.isArray(readiness.project_blockers) && readiness.project_blockers.length > 0) {
+        readiness.project_blockers.forEach(b => {
+          messages.push(this.formatUserFacingBlocker(b));
+        });
+      }
+      if (readiness.preparation && Array.isArray(readiness.preparation.blockers) && readiness.preparation.blockers.length > 0) {
+        readiness.preparation.blockers.forEach(b => {
+          messages.push(this.formatUserFacingBlocker(b));
+        });
+      }
+    }
+    if (messages.length === 0 && Array.isArray(result.blockers) && result.blockers.length > 0) {
+      result.blockers.forEach(b => {
+        messages.push(this.formatUserFacingBlocker(b));
+      });
+    }
+    return messages.length > 0 ? messages : ['Plan taslağını oluşturmak için bazı proje girdileri henüz hazır değil.'];
   }
 
   renderPlanPreviewLoading() {
@@ -2065,10 +2110,11 @@ class ConversationOrchestrator {
       title.textContent = 'Taslak plan henüz oluşturulamıyor';
       blockedBox.appendChild(title);
 
-      if (Array.isArray(result.blockers) && result.blockers.length > 0) {
+      const userFacingBlockers = this.getUserFacingBlockers(result);
+      if (userFacingBlockers.length > 0) {
         const list = document.createElement('ul');
         list.className = 'blocked-list';
-        result.blockers.forEach(msg => {
+        userFacingBlockers.forEach(msg => {
           const item = document.createElement('li');
           item.className = 'blocked-item';
           item.textContent = msg;
@@ -2078,7 +2124,7 @@ class ConversationOrchestrator {
       } else {
         const fallbackText = document.createElement('p');
         fallbackText.className = 'blocked-text';
-        fallbackText.textContent = 'Proje henüz plan önizlemesi için hazır değil.';
+        fallbackText.textContent = 'Plan taslağını oluşturmak için bazı proje girdileri henüz hazır değil.';
         blockedBox.appendChild(fallbackText);
       }
 
@@ -2132,6 +2178,91 @@ class ConversationOrchestrator {
   }
 }
 
+const USER_FACING_BLOCKER_MESSAGES = {
+  FLOOR_PLATE_INPUT_MISSING: 'Taslak planı oluşturabilmem için bina taban oturumu henüz onaylanmadı.',
+  METRIC_REQUIREMENTS_MISSING: 'Taslak plan için gerekli mekân ölçüleri henüz tamamlanmadı.',
+  SITE_ENVELOPE_MISSING: 'Taslak plan için parsel ve yapılaşma sınırları henüz tamamlanmadı.',
+  SPATIAL_GRAPH_MISSING: 'Mekânlar arasındaki ilişkiler henüz tamamlanmadı.',
+  PLAN_INPUT_STATE_MISSING: 'Projeye ait plan girdi durumu henüz oluşturulmadı.',
+  PLAN_INPUT_STATE_STALE: 'Proje girdilerinin bir bölümü güncel brief ile eşleşmiyor. Yeniden değerlendirilmesi gerekiyor.',
+  SPATIAL_GRAPH_STALE: 'Mekânsal ilişkiler güncel brief ile eşleşmiyor. Yeniden değerlendirilmesi gerekiyor.',
+  BRIEF_MISSING: 'Projeye ait doğrulanmış brief bilgisi bulunamadı.',
+  BRIEF_NOT_READY: 'Brief henüz plan aşamasına geçiş için hazır değil.',
+  DIRECTIVE_SET_MISSING: 'Plan yerleşim kuralları eksik.',
+  DIRECTIVE_DERIVATION_FAILED: 'Plan yerleşim kuralları türetilemedi.',
+  SOLVER_CONFIG_MISSING: 'Plan hesaplama parametreleri eksik.',
+  SOLVER_INPUT_INVALID: 'Plan girdileri birbiriyle uyumlu değil.',
+  FLOOR_PLATE_INVALID: 'Taban oturumu parsel ve yapılaşma sınırlarına uygun değil.'
+};
+
+function formatUserFacingBlocker(blocker) {
+  if (!blocker) return 'Plan taslağını oluşturmak için bazı proje girdileri henüz hazır değil.';
+  if (typeof blocker === 'object' && blocker !== null) {
+    if (blocker.code) {
+      return USER_FACING_BLOCKER_MESSAGES[blocker.code] || 'Plan taslağını oluşturmak için bazı proje girdileri henüz hazır değil.';
+    }
+    if (typeof blocker.message === 'string' && blocker.message.trim()) {
+      const msg = blocker.message.trim();
+      if (
+        msg.includes('FloorPlateInput') ||
+        msg.includes('MetricSpatialRequirements') ||
+        msg.includes('SiteBuildableEnvelope') ||
+        msg.includes('SolverDirectiveSet') ||
+        msg.includes('RoomGeometrySolverConfig')
+      ) {
+        return 'Plan taslağını oluşturmak için bazı proje girdileri henüz hazır değil.';
+      }
+      return msg;
+    }
+    return 'Plan taslağını oluşturmak için bazı proje girdileri henüz hazır değil.';
+  }
+  if (typeof blocker === 'string') {
+    const trimmed = blocker.trim();
+    if (USER_FACING_BLOCKER_MESSAGES[trimmed]) {
+      return USER_FACING_BLOCKER_MESSAGES[trimmed];
+    }
+    if (
+      trimmed.includes('FloorPlateInput') ||
+      trimmed.includes('MetricSpatialRequirements') ||
+      trimmed.includes('SiteBuildableEnvelope') ||
+      trimmed.includes('SolverDirectiveSet') ||
+      trimmed.includes('RoomGeometrySolverConfig')
+    ) {
+      return 'Plan taslağını oluşturmak için bazı proje girdileri henüz hazır değil.';
+    }
+    return trimmed;
+  }
+  return 'Plan taslağını oluşturmak için bazı proje girdileri henüz hazır değil.';
+}
+
+function isExplicitPlanPreviewRequest(messageText) {
+  if (!messageText || typeof messageText !== 'string') return false;
+  const text = messageText.trim().toLocaleLowerCase('tr-TR');
+  if (!text) return false;
+
+  // 1. Negative Guards: questions, negative phrasing, future/delay intents, conversational topics
+  const negativeGuards = [
+    'gösterme', 'göstermeyelim', 'istemiyorum', 'istemem',
+    'sonra', 'daha sonra', 'iptal', 'vazgeç', 'değiştir', 'değiştirelim',
+    'konuşalım', 'düzenle', 'düzenleyelim', 'nasıl', 'ne zaman', 'neden',
+    'niçin', 'hangi', 'mı', 'mi', 'mu', 'mü', '?', 'önce', 'şimdilik',
+    'hakkında', 'incele', 'inceleyelim', 'ne kadar'
+  ];
+  for (const guard of negativeGuards) {
+    if (text.includes(guard)) return false;
+  }
+
+  // 2. Strict Positive Patterns
+  const positivePatterns = [
+    /^(lütfen\s+)?(taslak\s+)?plan(ı|ı\s+da)?\s+(göster|hazırla|çiz|oluştur|getir|çıkar)(\s+lütfen)?$/,
+    /^(lütfen\s+)?plan\s+taslağını\s+(göster|hazırla|çiz|oluştur|getir)(\s+lütfen)?$/,
+    /^(lütfen\s+)?plan\s+önizleme(sini|si)?\s+(göster|hazırla|oluştur|getir)(\s+lütfen)?$/,
+    /^(lütfen\s+)?taslak\s+plan\s+(göster|hazırla|çiz|oluştur)(\s+lütfen)?$/
+  ];
+
+  return positivePatterns.some(pattern => pattern.test(text));
+}
+
 function escapeHtml(str) {
   if (!str) return '';
   return String(str).replace(/[&<>"']/g, match => {
@@ -2142,7 +2273,13 @@ function escapeHtml(str) {
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = ConversationOrchestrator;
+  module.exports.USER_FACING_BLOCKER_MESSAGES = USER_FACING_BLOCKER_MESSAGES;
+  module.exports.formatUserFacingBlocker = formatUserFacingBlocker;
+  module.exports.isExplicitPlanPreviewRequest = isExplicitPlanPreviewRequest;
 }
 if (typeof window !== 'undefined') {
   window.ConversationOrchestrator = ConversationOrchestrator;
+  window.USER_FACING_BLOCKER_MESSAGES = USER_FACING_BLOCKER_MESSAGES;
+  window.formatUserFacingBlocker = formatUserFacingBlocker;
+  window.isExplicitPlanPreviewRequest = isExplicitPlanPreviewRequest;
 }
