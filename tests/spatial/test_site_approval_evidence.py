@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
+from pytest import MonkeyPatch
 
 from brif_ai.brief.models.common import EvidenceSource
 from brif_ai.spatial.site.approval_evidence import (
@@ -99,11 +101,16 @@ def test_site_approval_evidence_rejects_path_traversal_and_invalid_project_ids(
             assert str(item.resolve()).startswith(str(projects_dir.resolve()))
 
 
-def test_atomic_write_does_not_leave_temp_files_on_failure(tmp_path: Path, monkeypatch) -> None:
+def test_atomic_write_does_not_leave_temp_files_on_failure(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
     repo = SiteApprovalEvidenceRepository(root_dir=tmp_path)
 
     # Monkeypatch os.replace to simulate sudden failure
-    def _mock_replace(src, dst):
+    def _mock_replace(
+        src: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        dst: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+    ) -> None:
         raise OSError("Simulated disk error during atomic replace")
 
     monkeypatch.setattr("os.replace", _mock_replace)

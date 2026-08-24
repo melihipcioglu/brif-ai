@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, TypedDict
 
 import pytest
 from apps.api.main import create_app
 from fastapi.testclient import TestClient
+from pytest import MonkeyPatch
 
 from brif_ai.brief.models.common import (
     ConfirmationStatus,
@@ -26,6 +28,8 @@ from brif_ai.brief.persistence import JSONBriefRepository
 from brif_ai.conversation.elicitation.models import ElicitationTopic
 from brif_ai.core.models.common import SpaceFunction
 from brif_ai.llm.contracts import (
+    ArchitecturalIntentResult,
+    ConversationRequest,
     LocalModelInfo,
     ProposedSiteGeometry,
     ProviderHealth,
@@ -65,6 +69,14 @@ CANONICAL_TOPICS = [
 ]
 
 
+class ApiTestEnv(TypedDict):
+    client: TestClient
+    brief_repo: JSONBriefRepository
+    spatial_repo: JSONSpatialRelationshipRepository
+    plan_input_repo: JSONPlanInputStateRepository
+    site_evidence_repo: SiteApprovalEvidenceRepository
+
+
 def _closed_topic_questions() -> list[OpenQuestion]:
     return [
         OpenQuestion(
@@ -88,6 +100,17 @@ class MockProvider:
         return [
             LocalModelInfo(name="qwen2.5:7b-instruct-q4_K_M", size=4500000000, modified_at=None)
         ]
+
+    async def interpret(
+        self,
+        request: ConversationRequest,
+        output_schema: dict[str, object],
+        *args: Any,
+        **kwargs: Any,
+    ) -> ArchitecturalIntentResult:
+        raise AssertionError(
+            "MockProvider.interpret should not be called in site approval API tests."
+        )
 
 
 def _seed_valid_brief_and_graph(
@@ -176,7 +199,7 @@ def _seed_valid_brief_and_graph(
 
 
 @pytest.fixture
-def api_test_env(tmp_path: Path):
+def api_test_env(tmp_path: Path) -> ApiTestEnv:
     settings = LocalLLMSettings(
         enabled=True,
         model="qwen2.5:7b-instruct-q4_K_M",
@@ -205,7 +228,7 @@ def api_test_env(tmp_path: Path):
     }
 
 
-def test_approve_parcel_boundary_from_uninitialized_state(api_test_env) -> None:
+def test_approve_parcel_boundary_from_uninitialized_state(api_test_env: ApiTestEnv) -> None:
     client = api_test_env["client"]
     pid = "proj_site_01"
     _seed_valid_brief_and_graph(api_test_env["brief_repo"], api_test_env["spatial_repo"], pid)
@@ -254,7 +277,7 @@ def test_approve_parcel_boundary_from_uninitialized_state(api_test_env) -> None:
     assert data["approval_record"]["resulting_state_version"] == 1
 
 
-def test_approve_parcel_idempotent_replay(api_test_env) -> None:
+def test_approve_parcel_idempotent_replay(api_test_env: ApiTestEnv) -> None:
     client = api_test_env["client"]
     pid = "proj_site_02"
     _seed_valid_brief_and_graph(api_test_env["brief_repo"], api_test_env["spatial_repo"], pid)
@@ -300,7 +323,7 @@ def test_approve_parcel_idempotent_replay(api_test_env) -> None:
     assert resp2.json()["resulting_plan_input_state"]["state_version"] == 1
 
 
-def test_approve_buildable_envelope_inside_parcel(api_test_env) -> None:
+def test_approve_buildable_envelope_inside_parcel(api_test_env: ApiTestEnv) -> None:
     client = api_test_env["client"]
     pid = "proj_site_03"
     _seed_valid_brief_and_graph(api_test_env["brief_repo"], api_test_env["spatial_repo"], pid)
@@ -371,13 +394,15 @@ def test_approve_buildable_envelope_inside_parcel(api_test_env) -> None:
         data2["resulting_plan_input_state"]
     )
     assert resulting_state.state_version == 2
-    assert resulting_state.site_envelope.parcel_boundary is not None
-    assert resulting_state.site_envelope.buildable_envelope is not None
-    assert len(resulting_state.site_envelope.buildable_envelope.vertices) == 4
-    assert len(resulting_state.site_envelope.authoritative_geometry_ids) == 2
+    assert resulting_state.site_envelope is not None
+    site = resulting_state.site_envelope
+    assert site.parcel_boundary is not None
+    assert site.buildable_envelope is not None
+    assert len(site.buildable_envelope.vertices) == 4
+    assert len(site.authoritative_geometry_ids) == 2
 
 
-def test_approve_buildable_envelope_without_parcel_fails(api_test_env) -> None:
+def test_approve_buildable_envelope_without_parcel_fails(api_test_env: ApiTestEnv) -> None:
     client = api_test_env["client"]
     pid = "proj_site_04"
     _seed_valid_brief_and_graph(api_test_env["brief_repo"], api_test_env["spatial_repo"], pid)
@@ -413,7 +438,7 @@ def test_approve_buildable_envelope_without_parcel_fails(api_test_env) -> None:
     assert "parsel sınırı" in resp.json()["error"].lower()
 
 
-def test_approve_envelope_outside_parcel_fails(api_test_env) -> None:
+def test_approve_envelope_outside_parcel_fails(api_test_env: ApiTestEnv) -> None:
     client = api_test_env["client"]
     pid = "proj_site_05"
     _seed_valid_brief_and_graph(api_test_env["brief_repo"], api_test_env["spatial_repo"], pid)
@@ -478,7 +503,9 @@ def test_approve_envelope_outside_parcel_fails(api_test_env) -> None:
     assert resp.status_code == 422
 
 
-def test_parcel_replacement_clears_existing_buildable_envelope(api_test_env) -> None:
+def test_parcel_replacement_clears_existing_buildable_envelope(
+    api_test_env: ApiTestEnv,
+) -> None:
     client = api_test_env["client"]
     pid = "proj_site_06"
     _seed_valid_brief_and_graph(api_test_env["brief_repo"], api_test_env["spatial_repo"], pid)
@@ -571,7 +598,9 @@ def test_parcel_replacement_clears_existing_buildable_envelope(api_test_env) -> 
     assert st3["site_envelope"]["buildable_envelope"] is None
 
 
-def test_endpoint_revalidates_source_and_blocks_tampered_proposal(api_test_env) -> None:
+def test_endpoint_revalidates_source_and_blocks_tampered_proposal(
+    api_test_env: ApiTestEnv,
+) -> None:
     client = api_test_env["client"]
     pid = "proj_site_07"
     _seed_valid_brief_and_graph(api_test_env["brief_repo"], api_test_env["spatial_repo"], pid)
@@ -611,7 +640,7 @@ def test_endpoint_revalidates_source_and_blocks_tampered_proposal(api_test_env) 
     assert "Kaynak doğrulama hatası" in resp.json()["error"]
 
 
-def test_project_id_route_mismatch_returns_422(api_test_env) -> None:
+def test_project_id_route_mismatch_returns_422(api_test_env: ApiTestEnv) -> None:
     client = api_test_env["client"]
     pid = "proj_site_08"
     _seed_valid_brief_and_graph(api_test_env["brief_repo"], api_test_env["spatial_repo"], pid)
@@ -644,7 +673,7 @@ def test_project_id_route_mismatch_returns_422(api_test_env) -> None:
     assert resp.status_code == 422
 
 
-def test_missing_brief_returns_404(api_test_env) -> None:
+def test_missing_brief_returns_404(api_test_env: ApiTestEnv) -> None:
     client = api_test_env["client"]
     pid = "non_existent_project"
 
@@ -676,7 +705,7 @@ def test_missing_brief_returns_404(api_test_env) -> None:
     assert resp.status_code == 404
 
 
-def test_stale_brief_version_returns_409(api_test_env) -> None:
+def test_stale_brief_version_returns_409(api_test_env: ApiTestEnv) -> None:
     client = api_test_env["client"]
     pid = "proj_site_09"
     _seed_valid_brief_and_graph(api_test_env["brief_repo"], api_test_env["spatial_repo"], pid)
@@ -709,7 +738,9 @@ def test_stale_brief_version_returns_409(api_test_env) -> None:
     assert resp.status_code == 409
 
 
-def test_stale_plan_input_state_version_conflict_returns_409(api_test_env) -> None:
+def test_stale_plan_input_state_version_conflict_returns_409(
+    api_test_env: ApiTestEnv,
+) -> None:
     client = api_test_env["client"]
     pid = "proj_site_10"
     _seed_valid_brief_and_graph(api_test_env["brief_repo"], api_test_env["spatial_repo"], pid)
@@ -770,7 +801,7 @@ def test_stale_plan_input_state_version_conflict_returns_409(api_test_env) -> No
     assert resp_stale.status_code == 409
 
 
-def test_stale_fingerprint_or_generation_returns_409(api_test_env) -> None:
+def test_stale_fingerprint_or_generation_returns_409(api_test_env: ApiTestEnv) -> None:
     client = api_test_env["client"]
     pid = "proj_site_11"
     _seed_valid_brief_and_graph(api_test_env["brief_repo"], api_test_env["spatial_repo"], pid)
@@ -803,7 +834,7 @@ def test_stale_fingerprint_or_generation_returns_409(api_test_env) -> None:
     assert resp.status_code == 409
 
 
-def test_self_intersecting_polygon_returns_422(api_test_env) -> None:
+def test_self_intersecting_polygon_returns_422(api_test_env: ApiTestEnv) -> None:
     client = api_test_env["client"]
     pid = "proj_site_12"
     _seed_valid_brief_and_graph(api_test_env["brief_repo"], api_test_env["spatial_repo"], pid)
@@ -844,7 +875,7 @@ def test_self_intersecting_polygon_returns_422(api_test_env) -> None:
     assert "intersect" in resp.json()["error"].lower() or "overlap" in resp.json()["error"].lower()
 
 
-def test_persistent_evidence_stored_and_reloadable(api_test_env) -> None:
+def test_persistent_evidence_stored_and_reloadable(api_test_env: ApiTestEnv) -> None:
     client = api_test_env["client"]
     pid = "proj_site_13"
     _seed_valid_brief_and_graph(api_test_env["brief_repo"], api_test_env["spatial_repo"], pid)
@@ -883,7 +914,9 @@ def test_persistent_evidence_stored_and_reloadable(api_test_env) -> None:
     assert records[0].source_reference == "msg_01"
 
 
-def test_direct_endpoint_bypass_defense_exact_tampered_vertex(api_test_env) -> None:
+def test_direct_endpoint_bypass_defense_exact_tampered_vertex(
+    api_test_env: ApiTestEnv,
+) -> None:
     # Requirement 5: Direct endpoint bypass defense with exact (21,0) tampered point
     client = api_test_env["client"]
     pid = "proj_bypass_01"
@@ -924,7 +957,9 @@ def test_direct_endpoint_bypass_defense_exact_tampered_vertex(api_test_env) -> N
     assert plan_input_repo.get_latest(pid) is None
 
 
-def test_evidence_failure_order_leaves_state_unchanged(api_test_env, monkeypatch) -> None:
+def test_evidence_failure_order_leaves_state_unchanged(
+    api_test_env: ApiTestEnv, monkeypatch: MonkeyPatch
+) -> None:
     # Requirement 6: Force SiteApprovalEvidenceRepository persistence to fail
     client = api_test_env["client"]
     pid = "proj_evidence_fail_01"
@@ -932,7 +967,7 @@ def test_evidence_failure_order_leaves_state_unchanged(api_test_env, monkeypatch
 
     evidence_repo = api_test_env["site_evidence_repo"]
 
-    def _mock_save(*args, **kwargs):
+    def _mock_save(project_id: str, source_reference: str, user_message: str) -> Evidence:
         raise SiteEvidencePersistenceError("Simulated disk error during evidence save")
 
     monkeypatch.setattr(evidence_repo, "save_site_evidence", _mock_save)
@@ -969,7 +1004,7 @@ def test_evidence_failure_order_leaves_state_unchanged(api_test_env, monkeypatch
     assert plan_input_repo.get_latest(pid) is None
 
 
-def test_empty_brief_evidence_succeeds_independently(api_test_env) -> None:
+def test_empty_brief_evidence_succeeds_independently(api_test_env: ApiTestEnv) -> None:
     # Requirement 7A: Site approval operates independently and does not mutate brief evidence
     client = api_test_env["client"]
     pid = "proj_empty_brief_ev"
@@ -1022,7 +1057,7 @@ def test_empty_brief_evidence_succeeds_independently(api_test_env) -> None:
 
 
 def test_unrelated_brief_evidence_not_reused_and_resolves_through_site_repo(
-    api_test_env,
+    api_test_env: ApiTestEnv,
 ) -> None:
     # Requirement 7B: Unrelated brief evidence not reused;
     # polygon evidence resolves through site repo
@@ -1121,7 +1156,7 @@ def test_unrelated_brief_evidence_not_reused_and_resolves_through_site_repo(
 
 
 def test_buildable_envelope_rejected_if_parcel_not_user_confirmed_or_not_authoritative(
-    api_test_env,
+    api_test_env: ApiTestEnv,
 ) -> None:
     # Requirement 8: Authority tests
     client = api_test_env["client"]
@@ -1158,6 +1193,8 @@ def test_buildable_envelope_rejected_if_parcel_not_user_confirmed_or_not_authori
     # Test Case A: Corrupt parcel provenance = USER_STATED (not USER_CONFIRMED)
     state1 = api_test_env["plan_input_repo"].get_latest(pid)
     assert state1 is not None
+    assert state1.site_envelope is not None
+    assert state1.site_envelope.parcel_boundary is not None
     bad_parcel = state1.site_envelope.parcel_boundary.model_copy(
         update={"provenance": RelationshipProvenance.USER_STATED}
     )
@@ -1196,7 +1233,7 @@ def test_buildable_envelope_rejected_if_parcel_not_user_confirmed_or_not_authori
 
 
 def test_parcel_replay_with_existing_envelope_clears_envelope_and_advances_version(
-    api_test_env,
+    api_test_env: ApiTestEnv,
 ) -> None:
     # Requirement 9: Important parcel replay case
     client = api_test_env["client"]
@@ -1325,7 +1362,9 @@ def test_parcel_replay_with_existing_envelope_clears_envelope_and_advances_versi
     assert resp_idem.json()["resulting_plan_input_state"]["state_version"] == 3
 
 
-def test_safe_internal_errors_do_not_leak_filesystem_paths(api_test_env, monkeypatch) -> None:
+def test_safe_internal_errors_do_not_leak_filesystem_paths(
+    api_test_env: ApiTestEnv, monkeypatch: MonkeyPatch
+) -> None:
     # Requirement 11: 500 error must not leak raw paths
     client = api_test_env["client"]
     pid = "proj_safe_error_01"
@@ -1333,7 +1372,7 @@ def test_safe_internal_errors_do_not_leak_filesystem_paths(api_test_env, monkeyp
 
     evidence_repo = api_test_env["site_evidence_repo"]
 
-    def _mock_save(*args, **kwargs):
+    def _mock_save(project_id: str, source_reference: str, user_message: str) -> Evidence:
         raise SiteEvidencePersistenceError(
             "Fatal write failure at C:\\secret\\site\\evidence.json [Errno 13]"
         )
