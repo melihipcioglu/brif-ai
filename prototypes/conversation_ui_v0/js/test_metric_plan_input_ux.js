@@ -1,7 +1,7 @@
 /**
  * BRIF.AI — JS Unit Test Suite for Conversation Metric Plan Input UI V0
  * Tests metric proposal capture, rendering, approval gateway, stale rejection,
- * dismissal, browser validation, and regression boundaries (Tests 1-42).
+ * dismissal, browser validation, source freezing, operation semantics, and regressions.
  */
 
 const assert = require('assert');
@@ -102,8 +102,22 @@ function setupEnvironment(projectId = 'proj_test_123') {
   return { orchestrator, stateMachine, briefSnapshot, activeSnapshot };
 }
 
+function metricApprovalResponse(stateVersion, operation = 'created', stateChanged = true) {
+  return {
+    success: true,
+    approval_record: {
+      operation,
+      state_changed: stateChanged,
+      previous_value: operation === 'replaced' ? 25 : null,
+      resulting_evidence_id: 'ev_metric_test',
+      resulting_state_version: stateVersion
+    },
+    resulting_plan_input_state: { state_version: stateVersion }
+  };
+}
+
 async function runAllTests() {
-  console.log('Running Metric Plan Input UI V0 JS Unit Tests (1-42)...');
+  console.log('Running Metric Plan Input UI V0 JS Unit Tests (1-60)...');
 
   // Test 1: Interpret response metric proposal is captured
   {
@@ -324,10 +338,7 @@ async function runAllTests() {
         capturedBody = JSON.parse(opts.body);
         return {
           status: 200,
-          json: async () => ({
-            success: true,
-            resulting_plan_input_state: { state_version: 3 }
-          })
+          json: async () => metricApprovalResponse(3)
         };
       }
     });
@@ -359,10 +370,7 @@ async function runAllTests() {
         capturedBody = JSON.parse(opts.body);
         return {
           status: 200,
-          json: async () => ({
-            success: true,
-            resulting_plan_input_state: { state_version: 4 }
-          })
+          json: async () => metricApprovalResponse(4)
         };
       }
     });
@@ -388,7 +396,7 @@ async function runAllTests() {
       proposed_brief_mutations: [],
       proposed_spatial_relationships: [],
       proposed_metric_requirements: [prop]
-    }, 'fp_test_1', 1, 3, 3);
+    }, 'fp_test_1', 1, 3, 3, 'Salon en az 30 m² olsun.', 'chatmsg_42');
 
     const pending = orchestrator.getActivePendingProposals();
     const record = await orchestrator.approveProposalById(pending[0].id);
@@ -433,10 +441,7 @@ async function runAllTests() {
     const gateway = new LocalLLMGateway({
       fetchFn: async () => ({
         status: 200,
-        json: async () => ({
-          success: true,
-          resulting_plan_input_state: { state_version: 7 }
-        })
+        json: async () => metricApprovalResponse(7)
       })
     });
     orchestrator.setLocalLLMGateway(gateway);
@@ -456,7 +461,7 @@ async function runAllTests() {
         value: 30.0,
         unit: 'SQUARE_METRE'
       }]
-    }, 'fp_test_1', 1, 6, 3);
+    }, 'fp_test_1', 1, 6, 3, 'Salon en az 30 m² olsun.', 'chatmsg_20');
 
     const pending = orchestrator.getActivePendingProposals();
     const record = await orchestrator.approveProposalById(pending[0].id);
@@ -467,7 +472,7 @@ async function runAllTests() {
     console.log('✓ 20. approval success does NOT replace BriefSnapshot');
 
     // 21. Resulting state version recorded
-    assert.strictEqual(record.resulting_plan_input_state_version, 7);
+    assert.strictEqual(record.resulting_state_version, 7);
     assert.strictEqual(orchestrator.lastPlanInputStateVersion, 7);
     console.log('✓ 21. approval success records resulting state version');
   }
@@ -478,10 +483,7 @@ async function runAllTests() {
     const gateway = new LocalLLMGateway({
       fetchFn: async () => ({
         status: 200,
-        json: async () => ({
-          success: true,
-          resulting_plan_input_state: { state_version: 2 }
-        })
+        json: async () => metricApprovalResponse(2)
       })
     });
     orchestrator.setLocalLLMGateway(gateway);
@@ -501,7 +503,7 @@ async function runAllTests() {
         value: 30.0,
         unit: 'SQUARE_METRE'
       }]
-    }, 'fp_test_1', 1, 1, 3);
+    }, 'fp_test_1', 1, 1, 3, 'Salon en az 30 m² olsun.', 'chatmsg_22');
 
     const pendingId = orchestrator.getActivePendingProposals()[0].id;
     await orchestrator.approveProposalById(pendingId);
@@ -512,7 +514,7 @@ async function runAllTests() {
 
     // 23. Confirmation message truthful
     const lastMsg = orchestrator.allChatMessages[orchestrator.allChatMessages.length - 1];
-    assert.strictEqual(lastMsg.text, 'Salon için minimum 30 m² gereksinimi plan girdilerine kaydedildi.');
+    assert.strictEqual(lastMsg.text, 'Ölçü gereksinimi plan girdilerine eklendi.');
     assert(!lastMsg.text.includes('plan çizildi'));
     assert(!lastMsg.text.includes('optimize edildi'));
     console.log('✓ 23. success message truthful');
@@ -551,7 +553,7 @@ async function runAllTests() {
         value: 30.0,
         unit: 'SQUARE_METRE'
       }]
-    }, 'fp_test_1', 1, 1, 3);
+    }, 'fp_test_1', 1, 1, 3, 'Salon en az 30 m² olsun.', 'chatmsg_24');
 
     const pending = orchestrator.getActivePendingProposals();
     const res = await orchestrator.approveProposalById(pending[0].id);
@@ -597,7 +599,7 @@ async function runAllTests() {
         value: 30.0,
         unit: 'SQUARE_METRE'
       }]
-    }, 'fp_test_1', 1, 1, 3);
+    }, 'fp_test_1', 1, 1, 3, 'Salon en az 30 m² olsun.', 'chatmsg_26');
 
     const pending = orchestrator.getActivePendingProposals();
     await orchestrator.approveProposalById(pending[0].id);
@@ -635,7 +637,7 @@ async function runAllTests() {
         value: 30.0,
         unit: 'SQUARE_METRE'
       }]
-    }, 'fp_test_1', 1, 1, 3);
+    }, 'fp_test_1', 1, 1, 3, 'Salon en az 30 m² olsun.', 'chatmsg_27');
 
     const pending = orchestrator.getActivePendingProposals();
     await orchestrator.approveProposalById(pending[0].id);
@@ -669,7 +671,7 @@ async function runAllTests() {
         value: 30.0,
         unit: 'SQUARE_METRE'
       }]
-    }, 'fp_test_1', 1, 1, 3);
+    }, 'fp_test_1', 1, 1, 3, 'Salon en az 30 m² olsun.', 'chatmsg_28');
 
     const pending = orchestrator.getActivePendingProposals();
     await orchestrator.approveProposalById(pending[0].id);
@@ -696,7 +698,7 @@ async function runAllTests() {
         value: 30.0,
         unit: 'SQUARE_METRE'
       }]
-    }, 'fp_test_1', 1, 1, 3);
+    }, 'fp_test_1', 1, 1, 3, 'Salon en az 30 m² olsun.', 'chatmsg_29');
 
     const pending = orchestrator.getActivePendingProposals();
     const dismissed = orchestrator.dismissProposalById(pending[0].id);
@@ -713,10 +715,7 @@ async function runAllTests() {
     const gateway = new LocalLLMGateway({
       fetchFn: async () => ({
         status: 200,
-        json: async () => ({
-          success: true,
-          resulting_plan_input_state: { state_version: 2 }
-        })
+        json: async () => metricApprovalResponse(2)
       })
     });
     orchestrator.setLocalLLMGateway(gateway);
@@ -745,7 +744,7 @@ async function runAllTests() {
           unit: 'SQUARE_METRE'
         }
       ]
-    }, 'fp_test_1', 1, 1, 3);
+    }, 'fp_test_1', 1, 1, 3, 'Salon en az 30 m² olsun.', 'chatmsg_30');
 
     assert.strictEqual(orchestrator.getActivePendingProposals().length, 2);
     const propAId = orchestrator.getActivePendingProposals()[0].id;
@@ -968,7 +967,7 @@ async function runAllTests() {
         value: 30.0,
         unit: 'SQUARE_METRE'
       }]
-    }, 'fp_test_1', 1, 1, 3);
+    }, 'fp_test_1', 1, 1, 3, 'Salon en az 30 m² olsun.', 'chatmsg_39');
 
     // Call fallback handler
     const fallbackRes = orchestrator.handleLocalLLMFallback('test', 'error');
@@ -1103,7 +1102,7 @@ async function runAllTests() {
         value: 30.0,
         unit: 'SQUARE_METRE'
       }]
-    }, 'fp_test_1', 1, 2, 3);
+    }, 'fp_test_1', 1, 2, 3, 'Salon en az 30 m² olsun.', 'chatmsg_43');
     const pending = orchestrator.getActivePendingProposals();
     assert.strictEqual(pending.length, 1);
     assert.strictEqual(pending[0].expectedBriefVersion, 3);
@@ -1119,10 +1118,7 @@ async function runAllTests() {
         capturedBody = JSON.parse(opts.body);
         return {
           status: 200,
-          json: async () => ({
-            success: true,
-            resulting_plan_input_state: { state_version: 3 }
-          })
+          json: async () => metricApprovalResponse(3)
         };
       }
     });
@@ -1143,7 +1139,7 @@ async function runAllTests() {
         value: 30.0,
         unit: 'SQUARE_METRE'
       }]
-    }, 'fp_test_1', 1, 2, 3);
+    }, 'fp_test_1', 1, 2, 3, 'Salon en az 30 m² olsun.', 'chatmsg_44');
 
     const pending = orchestrator.getActivePendingProposals();
     await orchestrator.approveProposalById(pending[0].id);
@@ -1187,7 +1183,7 @@ async function runAllTests() {
         value: 30.0,
         unit: 'SQUARE_METRE'
       }]
-    }, 'fp_test_1', 1, 2, 3);
+    }, 'fp_test_1', 1, 2, 3, 'Salon en az 30 m² olsun.', 'chatmsg_45');
 
     const pending = orchestrator.getActivePendingProposals();
     assert.strictEqual(pending[0].expectedBriefVersion, 3);
@@ -1212,7 +1208,7 @@ async function runAllTests() {
     console.log('✓ 45. stale brief v3 -> v4 sends expected_brief_version = 3 and handles 409 safely without retry/rewrite');
   }
 
-  // Test 46: LocalLLMGateway.interpret extracts requestBody.brief_snapshot?.brief_version and passes to handleStructuredLLMResponse
+  // Test 46: LocalLLMGateway.interpret forwards the server-authoritative brief version
   {
     const { orchestrator, briefSnapshot } = setupEnvironment('proj_test_123');
     let capturedProposalBriefVersion = null;
@@ -1233,6 +1229,7 @@ async function runAllTests() {
           success: true,
           context_fingerprint: 'fp_46',
           generation_id: 1,
+          authoritative_brief_version: 9,
           authoritative_plan_input_state_version: 5,
           result: {
             assistant_message: 'Mutfak en fazla 20 m².',
@@ -1255,8 +1252,8 @@ async function runAllTests() {
 
     await gateway.interpret('Mutfak en fazla 20 m² olsun');
     assert.strictEqual(capturedStateVersion, 5);
-    assert.strictEqual(capturedProposalBriefVersion, 3);
-    console.log('✓ 46. LocalLLMGateway.interpret forwards proposalBriefVersion and stateVersion');
+    assert.strictEqual(capturedProposalBriefVersion, 9);
+    console.log('✓ 46. LocalLLMGateway.interpret forwards server brief version and state version');
   }
 
   // Test 47: Missing / null expectedBriefVersion fails safely
@@ -1284,7 +1281,7 @@ async function runAllTests() {
         value: 30.0,
         unit: 'SQUARE_METRE'
       }]
-    }, 'fp_test_1', 1, 2, null); // null expectedBriefVersion
+    }, 'fp_test_1', 1, 2, null, 'Salon en az 30 m² olsun.', 'chatmsg_47'); // null expectedBriefVersion
 
     const pending = orchestrator.getActivePendingProposals();
     const res = await orchestrator.approveProposalById(pending[0].id);
@@ -1327,7 +1324,7 @@ async function runAllTests() {
         value: 30.0,
         unit: 'SQUARE_METRE'
       }]
-    }, 'fp_test_1', 1, 2, 3);
+    }, 'fp_test_1', 1, 2, 3, 'Salon en az 30 m² olsun.', 'chatmsg_48');
 
     const pending = orchestrator.getActivePendingProposals();
     const res = await orchestrator.approveProposalById(pending[0].id);
@@ -1372,7 +1369,7 @@ async function runAllTests() {
         value: 30.0,
         unit: 'SQUARE_METRE'
       }]
-    }, 'fp_test_1', 1, 2, 3);
+    }, 'fp_test_1', 1, 2, 3, 'Salon en az 30 m² olsun.', 'chatmsg_49');
 
     const pending = orchestrator.getActivePendingProposals();
     const res = await orchestrator.approveProposalById(pending[0].id);
@@ -1414,7 +1411,7 @@ async function runAllTests() {
         value: 30.0,
         unit: 'SQUARE_METRE'
       }]
-    }, 'fp_test_1', 1, 2, 3);
+    }, 'fp_test_1', 1, 2, 3, 'Salon en az 30 m² olsun.', 'chatmsg_50');
 
     const pending = orchestrator.getActivePendingProposals();
     const res = await orchestrator.approveProposalById(pending[0].id);
@@ -1484,7 +1481,7 @@ async function runAllTests() {
         value: 30.0,
         unit: 'SQUARE_METRE'
       }]
-    }, 'fp_test_1', 1, 2, 3);
+    }, 'fp_test_1', 1, 2, 3, 'Salon en az 30 m² olsun.', 'chatmsg_52');
 
     const pending = orchestrator.getActivePendingProposals();
     const res = await orchestrator.approveProposalById(pending[0].id);
@@ -1528,7 +1525,7 @@ async function runAllTests() {
         value: 30.0,
         unit: 'SQUARE_METRE'
       }]
-    }, 'fp_test_1', 1, 2, 3);
+    }, 'fp_test_1', 1, 2, 3, 'Salon en az 30 m² olsun.', 'chatmsg_53');
 
     const pending = orchestrator.getActivePendingProposals();
     const res = await orchestrator.approveProposalById(pending[0].id);
@@ -1538,7 +1535,256 @@ async function runAllTests() {
     console.log('✓ 53 (F). timeout failure returns safe timeout message');
   }
 
-  console.log('\nAll 53 Metric Plan Input UI V0 JS Unit Tests Passed Successfully!');
+  // Test 54: Metric approval uses the exact message/reference frozen when interpret started
+  {
+    const { orchestrator, stateMachine } = setupEnvironment('proj_test_123');
+    let releaseInterpret;
+    let capturedApprovalBody = null;
+    let httpCallCount = 0;
+    const interpretResponse = new Promise(resolve => { releaseInterpret = resolve; });
+    const gateway = new LocalLLMGateway({
+      orchestrator,
+      hierarchy: new MockEntityHierarchy(),
+      stateMachine,
+      fetchFn: async (url, opts) => {
+        httpCallCount += 1;
+        if (url.endsWith('/conversation/interpret')) return interpretResponse;
+        capturedApprovalBody = JSON.parse(opts.body);
+        return {
+          status: 200,
+          json: async () => metricApprovalResponse(3, 'replaced', true)
+        };
+      }
+    });
+    orchestrator.setLocalLLMGateway(gateway);
+    orchestrator.lastUserMessageRef = 'chatmsg_frozen_54';
+
+    const interpretPromise = gateway.interpret('Salonu en az 35 m² yap.');
+    orchestrator.lastUserMessageText = 'Bu daha sonraki bir mesajdır.';
+    orchestrator.lastUserMessageRef = 'chatmsg_later_54';
+    releaseInterpret({
+      status: 200,
+      ok: true,
+      json: async () => ({
+        success: true,
+        context_fingerprint: 'fp_test_1',
+        generation_id: 1,
+        authoritative_brief_version: 3,
+        authoritative_plan_input_state_version: 2,
+        result: {
+          assistant_message: 'Salon minimum alanı 35 m² olsun mu?',
+          intent: 'modify_space',
+          confidence: 0.98,
+          needs_user_confirmation: true,
+          proposed_actions: [],
+          proposed_brief_mutations: [],
+          proposed_spatial_relationships: [],
+          proposed_metric_requirements: [{
+            proposal_id: 'pm_54',
+            space_id: 'sn_living_01',
+            requirement_type: 'MIN_AREA',
+            value: 35,
+            unit: 'SQUARE_METRE'
+          }]
+        }
+      })
+    });
+
+    const interpreted = await interpretPromise;
+    assert.strictEqual(interpreted.status, 'success');
+    const proposal = orchestrator.getActivePendingProposals()[0];
+    assert.strictEqual(proposal.projectId, 'proj_test_123');
+    assert.strictEqual(proposal.userMessageText, 'Salonu en az 35 m² yap.');
+    assert.strictEqual(proposal.userMessageRef, 'chatmsg_frozen_54');
+    await orchestrator.approveProposalById(proposal.id);
+    assert.strictEqual(capturedApprovalBody.user_message, 'Salonu en az 35 m² yap.');
+    assert.strictEqual(capturedApprovalBody.source_reference, 'chatmsg_frozen_54');
+    assert.strictEqual(httpCallCount, 2);
+    console.log('✓ 54. request-time metric source message/reference remain frozen through approval');
+  }
+
+  // Test 55: Missing frozen source text aborts before HTTP
+  {
+    let httpCallCount = 0;
+    const { orchestrator } = setupEnvironment('proj_test_123');
+    orchestrator.setLocalLLMGateway(new LocalLLMGateway({
+      fetchFn: async () => {
+        httpCallCount += 1;
+        throw new Error('HTTP must not be called');
+      }
+    }));
+    orchestrator.handleStructuredLLMResponse({
+      assistant_message: 'Öneri.',
+      intent: 'modify_space',
+      confidence: 0.95,
+      needs_user_confirmation: true,
+      proposed_actions: [],
+      proposed_metric_requirements: [{
+        proposal_id: 'pm_55', space_id: 'sn_living_01', requirement_type: 'MIN_AREA',
+        value: 35, unit: 'SQUARE_METRE'
+      }]
+    }, 'fp_test_1', 1, 2, 3, '', 'chatmsg_55');
+    const result = await orchestrator.approveProposalById(
+      orchestrator.getActivePendingProposals()[0].id
+    );
+    assert.strictEqual(result, null);
+    assert.strictEqual(httpCallCount, 0);
+    console.log('✓ 55. missing metric source text causes zero HTTP calls');
+  }
+
+  // Test 56: Missing frozen source reference aborts before HTTP
+  {
+    let httpCallCount = 0;
+    const { orchestrator } = setupEnvironment('proj_test_123');
+    orchestrator.setLocalLLMGateway(new LocalLLMGateway({
+      fetchFn: async () => {
+        httpCallCount += 1;
+        throw new Error('HTTP must not be called');
+      }
+    }));
+    orchestrator.handleStructuredLLMResponse({
+      assistant_message: 'Öneri.',
+      intent: 'modify_space',
+      confidence: 0.95,
+      needs_user_confirmation: true,
+      proposed_actions: [],
+      proposed_metric_requirements: [{
+        proposal_id: 'pm_56', space_id: 'sn_living_01', requirement_type: 'MIN_AREA',
+        value: 35, unit: 'SQUARE_METRE'
+      }]
+    }, 'fp_test_1', 1, 2, 3, 'Salonu en az 35 m² yap.', null);
+    const result = await orchestrator.approveProposalById(
+      orchestrator.getActivePendingProposals()[0].id
+    );
+    assert.strictEqual(result, null);
+    assert.strictEqual(httpCallCount, 0);
+    console.log('✓ 56. missing metric source reference causes zero HTTP calls');
+  }
+
+  // Test 57: state_changed=false preserves sibling proposals even if response version differs
+  {
+    const { orchestrator } = setupEnvironment('proj_test_123');
+    orchestrator.setLocalLLMGateway(new LocalLLMGateway({
+      fetchFn: async () => ({
+        status: 200,
+        json: async () => metricApprovalResponse(99, 'replayed', false)
+      })
+    }));
+    orchestrator.handleStructuredLLMResponse({
+      assistant_message: 'İki öneri.',
+      intent: 'modify_space',
+      confidence: 0.95,
+      needs_user_confirmation: true,
+      proposed_actions: [],
+      proposed_metric_requirements: [
+        { proposal_id: 'pm_57a', space_id: 'sn_living_01', requirement_type: 'MIN_AREA', value: 35, unit: 'SQUARE_METRE' },
+        { proposal_id: 'pm_57b', space_id: 'sn_kitchen_01', requirement_type: 'MAX_AREA', value: 20, unit: 'SQUARE_METRE' }
+      ]
+    }, 'fp_test_1', 1, 2, 3, 'Salonu en az 35 m² yap.', 'chatmsg_57');
+    const first = orchestrator.getActivePendingProposals()[0];
+    await orchestrator.approveProposalById(first.id);
+    assert.strictEqual(orchestrator.getActivePendingProposals().length, 1);
+    assert.strictEqual(
+      orchestrator.allChatMessages[orchestrator.allChatMessages.length - 1].text,
+      'Bu ölçü gereksinimi zaten güncel plan girdilerinde kayıtlı.'
+    );
+    console.log('✓ 57. replayed state_changed=false preserves siblings without version inference');
+  }
+
+  // Test 58: state_changed=true invalidates siblings even if response version is unchanged
+  {
+    const { orchestrator } = setupEnvironment('proj_test_123');
+    orchestrator.setLocalLLMGateway(new LocalLLMGateway({
+      fetchFn: async () => ({
+        status: 200,
+        json: async () => metricApprovalResponse(2, 'replaced', true)
+      })
+    }));
+    orchestrator.handleStructuredLLMResponse({
+      assistant_message: 'İki öneri.',
+      intent: 'modify_space',
+      confidence: 0.95,
+      needs_user_confirmation: true,
+      proposed_actions: [],
+      proposed_metric_requirements: [
+        { proposal_id: 'pm_58a', space_id: 'sn_living_01', requirement_type: 'MIN_AREA', value: 35, unit: 'SQUARE_METRE' },
+        { proposal_id: 'pm_58b', space_id: 'sn_kitchen_01', requirement_type: 'MAX_AREA', value: 20, unit: 'SQUARE_METRE' }
+      ]
+    }, 'fp_test_1', 1, 2, 3, 'Salonu en az 35 m² yap.', 'chatmsg_58');
+    const first = orchestrator.getActivePendingProposals()[0];
+    await orchestrator.approveProposalById(first.id);
+    assert.strictEqual(orchestrator.getActivePendingProposals().length, 0);
+    assert(orchestrator.allChatMessages.some(message => message.text === 'Ölçü gereksinimi güncellendi.'));
+    console.log('✓ 58. replaced state_changed=true invalidates siblings without version inference');
+  }
+
+  // Test 59: Remaining backend operations use their exact user-facing wording
+  {
+    const expectedMessages = {
+      created: 'Ölçü gereksinimi plan girdilerine eklendi.',
+      evidence_merged: 'Ölçü gereksiniminin kullanıcı kaynağı güncellendi.'
+    };
+    for (const [operation, expectedMessage] of Object.entries(expectedMessages)) {
+      const { orchestrator } = setupEnvironment('proj_test_123');
+      orchestrator.setLocalLLMGateway(new LocalLLMGateway({
+        fetchFn: async () => ({
+          status: 200,
+          json: async () => metricApprovalResponse(3, operation, true)
+        })
+      }));
+      orchestrator.handleStructuredLLMResponse({
+        assistant_message: 'Öneri.',
+        intent: 'modify_space',
+        confidence: 0.95,
+        needs_user_confirmation: true,
+        proposed_actions: [],
+        proposed_metric_requirements: [{
+          proposal_id: `pm_59_${operation}`,
+          space_id: 'sn_living_01',
+          requirement_type: 'MIN_AREA',
+          value: 35,
+          unit: 'SQUARE_METRE'
+        }]
+      }, 'fp_test_1', 1, 2, 3, 'Salonu en az 35 m² yap.', `chatmsg_59_${operation}`);
+      await orchestrator.approveProposalById(orchestrator.getActivePendingProposals()[0].id);
+      assert.strictEqual(
+        orchestrator.allChatMessages[orchestrator.allChatMessages.length - 1].text,
+        expectedMessage
+      );
+    }
+    console.log('✓ 59. created and evidence_merged use exact backend-operation wording');
+  }
+
+  // Test 60: A proposal frozen for another project aborts before HTTP
+  {
+    let httpCallCount = 0;
+    const { orchestrator } = setupEnvironment('proj_test_123');
+    orchestrator.setLocalLLMGateway(new LocalLLMGateway({
+      fetchFn: async () => {
+        httpCallCount += 1;
+        throw new Error('HTTP must not be called');
+      }
+    }));
+    orchestrator.handleStructuredLLMResponse({
+      assistant_message: 'Öneri.',
+      intent: 'modify_space',
+      confidence: 0.95,
+      needs_user_confirmation: true,
+      proposed_actions: [],
+      proposed_metric_requirements: [{
+        proposal_id: 'pm_60', space_id: 'sn_living_01', requirement_type: 'MIN_AREA',
+        value: 35, unit: 'SQUARE_METRE'
+      }]
+    }, 'fp_test_1', 1, 2, 3, 'Salonu en az 35 m² yap.', 'chatmsg_60', 'proj_other');
+    const result = await orchestrator.approveProposalById(
+      orchestrator.getActivePendingProposals()[0].id
+    );
+    assert.strictEqual(result, null);
+    assert.strictEqual(httpCallCount, 0);
+    console.log('✓ 60. frozen project mismatch causes zero HTTP calls');
+  }
+
+  console.log('\nAll 60 Metric Plan Input UI V0 JS Unit Tests Passed Successfully!');
 }
 
 runAllTests().catch(err => {

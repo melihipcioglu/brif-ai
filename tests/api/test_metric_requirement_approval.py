@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 from apps.api.main import create_app
@@ -33,8 +34,10 @@ from brif_ai.llm.contracts import (
     IntentType,
     LocalModelInfo,
     MetricConversationContext,
-    MetricRequirementApprovalRequest,
     ProviderHealth,
+)
+from brif_ai.llm.contracts import (
+    MetricRequirementApprovalRequest as MetricRequirementApprovalRequestContract,
 )
 from brif_ai.llm.settings import LocalLLMSettings
 from brif_ai.spatial.metrics.models import (
@@ -56,6 +59,8 @@ from brif_ai.spatial.persistence import JSONSpatialRelationshipRepository
 from brif_ai.spatial.plan_input import (
     AuthoritativePlanInputState,
     JSONPlanInputStateRepository,
+    PlanInputApprovalEvidenceRepository,
+    PlanInputStateService,
 )
 
 CANONICAL_TOPICS = [
@@ -151,6 +156,26 @@ ApiClientFixture = tuple[
     JSONPlanInputStateRepository,
     MockMetricInterpretationProvider,
 ]
+
+
+def MetricRequirementApprovalRequest(**values: Any) -> MetricRequirementApprovalRequestContract:
+    """Build legacy approval fixtures with exact source-bound conversation evidence."""
+    proposal = values["proposed_requirement"]
+    assert isinstance(proposal, ProposedMetricRequirement)
+    space_name = {
+        "sn_living_room_01": "Salon",
+        "sn_kitchen_01": "Mutfak",
+    }.get(proposal.space_id, "Bilinmeyen mekân")
+    display_value = str(proposal.value).replace(".", ",")
+    if proposal.requirement_type == MetricRequirementType.MIN_AREA:
+        source_message = f"{space_name} en az {display_value} m² olsun."
+    elif proposal.requirement_type == MetricRequirementType.MAX_AREA:
+        source_message = f"{space_name} en fazla {display_value} m² olsun."
+    else:
+        source_message = f"{space_name} net genişliği en az {display_value} metre olsun."
+    values.setdefault("user_message", source_message)
+    values.setdefault("source_reference", f"msg_{proposal.proposal_id}")
+    return MetricRequirementApprovalRequestContract(**values)
 
 
 def _init_test_brief(
@@ -305,7 +330,9 @@ def test_approve_metric_requirement_initializes_state(api_client: ApiClientFixtu
     assert req_item["requirement_type"] == "MIN_AREA"
     assert req_item["value"] == 30.0
     assert req_item["provenance"] == "USER_CONFIRMED"
-    assert req_item["evidence_ids"] == ["ev_init_1"]
+    assert req_item["evidence_ids"] == [data["approval_record"]["resulting_evidence_id"]]
+    assert data["approval_record"]["operation"] == "created"
+    assert data["approval_record"]["state_changed"] is True
 
 
 def test_approve_metric_requirement_advances_existing_state(api_client: ApiClientFixture) -> None:
@@ -868,6 +895,7 @@ def test_conversation_interpret_populates_metric_context_and_state_version(
     assert response.status_code == 200
     data = response.json()
     assert data["success"] is True
+    assert data["authoritative_brief_version"] == 1
     assert data["authoritative_plan_input_state_version"] == 1
 
     # Verify provider received server-derived metric_context
@@ -1111,8 +1139,12 @@ def test_approval_evidence_and_provenance_strictly_authoritative(
         if sr.space_id == "sn_living_room_01"
     )
     approved_req = living_reqs.requirements[0]
-    # Invariant: Evidence IDs come strictly from authoritative ProgramSpace (ev_init_1)
-    assert approved_req.evidence_ids == ["ev_init_1"]
+    evidence_repo = PlanInputApprovalEvidenceRepository(root_dir=plan_input_repo.root_dir)
+    assert approved_req.evidence_ids == [r.json()["approval_record"]["resulting_evidence_id"]]
+    evidence = evidence_repo.get_evidence(pid, approved_req.evidence_ids[0])
+    assert evidence is not None
+    assert evidence.source_reference == "msg_prop_m_1"
+    assert evidence.user_message == "Salon en az 30,0 m² olsun."
     # Invariant: Provenance is USER_CONFIRMED
     assert approved_req.provenance == RelationshipProvenance.USER_CONFIRMED
 
@@ -1402,3 +1434,96 @@ def test_zero_llm_during_approval(api_client: ApiClientFixture) -> None:
 
     # Invariant: zero LLM calls during approval
     assert mock_provider.call_count == 0
+
+
+@pytest.mark.parametrize(
+    ("field_name", "invalid_value", "remove_field"),
+    [
+        ("user_message", None, True),
+        ("user_message", "   ", False),
+        ("source_reference", None, True),
+        ("source_reference", "   ", False),
+        ("expected_plan_input_state_version", 0, False),
+    ],
+)
+def test_approval_request_requires_source_and_positive_optional_state_version(
+    api_client: ApiClientFixture,
+    field_name: str,
+    invalid_value: object,
+    remove_field: bool,
+) -> None:
+    client, brief_repo, spatial_repo, _, _ = api_client
+    pid = "proj_test_metrics"
+    _init_test_brief(brief_repo, pid)
+    _init_test_graph(spatial_repo, pid)
+    request = MetricRequirementApprovalRequest(
+        proposed_requirement=ProposedMetricRequirement(
+            proposal_id="prop_hardened_request",
+            space_id="sn_living_room_01",
+            requirement_type=MetricRequirementType.MIN_AREA,
+            value=35.0,
+            unit=MetricUnit.SQUARE_METRE,
+        ),
+        current_project_id=pid,
+        expected_brief_version=1,
+        expected_plan_input_state_version=1,
+        proposal_fingerprint="fp_hardened_request",
+        current_fingerprint="fp_hardened_request",
+        proposal_generation_id=1,
+        current_generation_id=1,
+        user_message="Salonu en az 35 m² yap.",
+        source_reference="chatmsg_hardened_request",
+    ).model_dump(mode="json")
+    if remove_field:
+        request.pop(field_name)
+    else:
+        request[field_name] = invalid_value
+
+    response = client.post(
+        f"/api/v1/projects/{pid}/plan/input/metrics/approve",
+        json=request,
+    )
+
+    assert response.status_code == 422
+
+
+def test_approval_rejects_plan_input_state_bound_to_different_brief_version(
+    api_client: ApiClientFixture,
+) -> None:
+    client, brief_repo, spatial_repo, plan_input_repo, _ = api_client
+    pid = "proj_test_metrics"
+    _init_test_brief(brief_repo, pid)
+    _init_test_graph(spatial_repo, pid)
+    stale_state = PlanInputStateService(plan_input_repo).initialize_state(
+        project_id=pid,
+        source_brief_version=2,
+        created_at=datetime(2026, 8, 25, 9, 0, tzinfo=UTC),
+    )
+    request = MetricRequirementApprovalRequest(
+        proposed_requirement=ProposedMetricRequirement(
+            proposal_id="prop_wrong_source_brief",
+            space_id="sn_living_room_01",
+            requirement_type=MetricRequirementType.MIN_AREA,
+            value=35.0,
+            unit=MetricUnit.SQUARE_METRE,
+        ),
+        current_project_id=pid,
+        expected_brief_version=1,
+        expected_plan_input_state_version=stale_state.state_version,
+        proposal_fingerprint="fp_wrong_source_brief",
+        current_fingerprint="fp_wrong_source_brief",
+        proposal_generation_id=1,
+        current_generation_id=1,
+        user_message="Salonu en az 35 m² yap.",
+        source_reference="chatmsg_wrong_source_brief",
+    )
+
+    response = client.post(
+        f"/api/v1/projects/{pid}/plan/input/metrics/approve",
+        json=request.model_dump(mode="json"),
+    )
+
+    assert response.status_code == 409
+    assert plan_input_repo.get_latest(pid) == stale_state
+    evidence_repo = PlanInputApprovalEvidenceRepository(root_dir=plan_input_repo.root_dir)
+    assert evidence_repo.list_evidence(pid) == []

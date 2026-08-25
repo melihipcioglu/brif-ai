@@ -1250,6 +1250,7 @@ async function runAllTests() {
                 llm_enabled: true,
                 context_fingerprint: 'fp_test_1',
                 generation_id: 1,
+                authoritative_brief_version: 3,
                 authoritative_plan_input_state_version: 1,
                 result: {
                   assistant_message: 'Parsel önerisi.',
@@ -1724,7 +1725,7 @@ async function runAllTests() {
         value: 30,
         unit: 'SQUARE_METRE'
       }]
-    }, 'fp_test_1', 1, 1, 3);
+    }, 'fp_test_1', 1, 1, 3, 'Salon en az 30 m² olsun.', 'chatmsg_metric_51', 'proj_test_123');
 
     assert.strictEqual(orchestrator.getActivePendingProposals().length, 2);
     const sitePropId = orchestrator.getActivePendingProposals().find(p => p.siteGeometry).id;
@@ -1775,6 +1776,13 @@ async function runAllTests() {
       status: 200,
       json: async () => ({
         success: true,
+        approval_record: {
+          operation: 'replaced',
+          state_changed: true,
+          previous_value: 25,
+          resulting_evidence_id: 'ev_metric_52',
+          resulting_state_version: 2
+        },
         resulting_plan_input_state: { state_version: 2 }
       })
     }));
@@ -1794,7 +1802,7 @@ async function runAllTests() {
         value: 30,
         unit: 'SQUARE_METRE'
       }]
-    }, 'fp_test_1', 1, 1, 3);
+    }, 'fp_test_1', 1, 1, 3, 'Salon en az 30 m² olsun.', 'chatmsg_metric_52', 'proj_test_123');
 
     // Site proposal created against plan input version 1
     orchestrator.handleStructuredLLMResponse({
@@ -1938,6 +1946,13 @@ async function runAllTests() {
       status: 200,
       json: async () => ({
         success: true,
+        approval_record: {
+          operation: 'replayed',
+          state_changed: false,
+          previous_value: 30,
+          resulting_evidence_id: 'ev_metric_53b',
+          resulting_state_version: 1
+        },
         resulting_plan_input_state: { state_version: 1 } // Exact replay: returns 1
       })
     }));
@@ -1957,7 +1972,7 @@ async function runAllTests() {
         value: 30,
         unit: 'SQUARE_METRE'
       }]
-    }, 'fp_test_1', 1, 1, 3);
+    }, 'fp_test_1', 1, 1, 3, 'Salon en az 30 m² olsun.', 'chatmsg_metric_53b', 'proj_test_123');
 
     // Site proposal against version 1
     orchestrator.handleStructuredLLMResponse({

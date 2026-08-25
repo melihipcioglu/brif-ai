@@ -88,8 +88,8 @@ class LocalLLMGateway {
         return { status: 'invalid', payload };
       }
 
-      const proposalBriefVersion = requestBody && requestBody.brief_snapshot
-        ? requestBody.brief_snapshot.brief_version
+      const proposalBriefVersion = Number.isInteger(payload.authoritative_brief_version)
+        ? payload.authoritative_brief_version
         : null;
 
       this.orchestrator.handleStructuredLLMResponse(
@@ -99,7 +99,8 @@ class LocalLLMGateway {
         payload.authoritative_plan_input_state_version,
         proposalBriefVersion,
         proposalSourceMessageText,
-        proposalSourceMessageRef
+        proposalSourceMessageRef,
+        requestSnapshot.projectId
       );
 
       // Sync resulting_brief_snapshot from server if present
@@ -193,7 +194,8 @@ class LocalLLMGateway {
 
   isCurrentResponse(payload, requestSnapshot) {
     const currentSnapshot = this.stateMachine.getSnapshot();
-    return payload.context_fingerprint === requestSnapshot.contextFingerprint
+    return requestSnapshot.projectId === currentSnapshot.projectId
+      && payload.context_fingerprint === requestSnapshot.contextFingerprint
       && payload.context_fingerprint === currentSnapshot.contextFingerprint
       && payload.generation_id === requestSnapshot.generationId
       && payload.generation_id === currentSnapshot.generationId;

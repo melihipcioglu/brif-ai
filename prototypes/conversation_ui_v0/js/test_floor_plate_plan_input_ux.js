@@ -457,6 +457,7 @@ async function runTests() {
                   llm_enabled: true,
                   context_fingerprint: 'fp_test_1',
                   generation_id: 1,
+                  authoritative_brief_version: 1,
                   authoritative_plan_input_state_version: 1,
                   result: {
                     assistant_message: 'Taban oturumu önerisi.',
@@ -645,6 +646,13 @@ async function runTests() {
     const { orchestrator, localLLMGateway } = setupEnvironment();
     localLLMGateway.approveMetricRequirement = async () => ({
       success: true,
+      approval_record: {
+        operation: 'replayed',
+        state_changed: false,
+        previous_value: 30,
+        resulting_evidence_id: 'ev_metric_replay',
+        resulting_state_version: 1
+      },
       resulting_plan_input_state: { state_version: 1 }
     });
 
@@ -663,9 +671,12 @@ async function runTests() {
       id: 'prop_metric_1',
       contextFingerprint: 'fp_test_1',
       generationId: 1,
+      projectId: 'proj_test_123',
       expectedBriefVersion: 1,
       expectedPlanInputStateVersion: 1,
-      metricRequirement: { space_id: 'living_room', requirement_type: 'MIN_AREA', value: 30 }
+      userMessageText: 'Salon en az 30 m² olsun.',
+      userMessageRef: 'chatmsg_metric_replay',
+      metricRequirement: { space_id: 'living_room', requirement_type: 'MIN_AREA', value: 30, unit: 'SQUARE_METRE' }
     });
 
     await orchestrator.approveProposalById('prop_metric_1');
@@ -777,6 +788,13 @@ async function runTests() {
     const { orchestrator, localLLMGateway } = setupEnvironment();
     localLLMGateway.approveMetricRequirement = async () => ({
       success: true,
+      approval_record: {
+        operation: 'replaced',
+        state_changed: true,
+        previous_value: 25,
+        resulting_evidence_id: 'ev_metric_mutation',
+        resulting_state_version: 2
+      },
       resulting_plan_input_state: { state_version: 2 }
     });
 
@@ -795,9 +813,12 @@ async function runTests() {
       id: 'prop_metric_target',
       contextFingerprint: 'fp_test_1',
       generationId: 1,
+      projectId: 'proj_test_123',
       expectedBriefVersion: 1,
       expectedPlanInputStateVersion: 1,
-      metricRequirement: { space_id: 'living_room', requirement_type: 'MIN_AREA', value: 30 }
+      userMessageText: 'Salon en az 30 m² olsun.',
+      userMessageRef: 'chatmsg_metric_mutation',
+      metricRequirement: { space_id: 'living_room', requirement_type: 'MIN_AREA', value: 30, unit: 'SQUARE_METRE' }
     });
     orchestrator.pendingProposals.set('prop_fp_sib', {
       id: 'prop_fp_sib',

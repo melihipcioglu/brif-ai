@@ -6,6 +6,12 @@ from brif_ai.spatial.plan_input.api_models import (
     PlanInputStateInitializeRequest,
     PlanInputStateUpdateRequest,
 )
+from brif_ai.spatial.plan_input.approval_evidence import (
+    PlanInputApprovalEvidence,
+    PlanInputApprovalEvidencePersistenceError,
+    PlanInputApprovalEvidenceRepository,
+    generate_plan_input_approval_evidence_id,
+)
 from brif_ai.spatial.plan_input.errors import (
     PlanInputStateBriefVersionMismatchError,
     PlanInputStateError,
@@ -23,6 +29,9 @@ from brif_ai.spatial.plan_input.service import UNCHANGED, PlanInputStateService
 __all__ = [
     "AuthoritativePlanInputState",
     "JSONPlanInputStateRepository",
+    "PlanInputApprovalEvidence",
+    "PlanInputApprovalEvidencePersistenceError",
+    "PlanInputApprovalEvidenceRepository",
     "PlanInputStateBriefVersionMismatchError",
     "PlanInputStateError",
     "PlanInputStateInitializeRequest",
@@ -35,4 +44,5 @@ __all__ = [
     "PlanInputStateValidationError",
     "PlanInputStateVersionConflictError",
     "UNCHANGED",
+    "generate_plan_input_approval_evidence_id",
 ]

@@ -24,6 +24,12 @@ from brif_ai.spatial.metrics.models import (
     SpaceMetricRequirements,
     generate_metric_requirement_id,
 )
+from brif_ai.spatial.metrics.source_binding import (
+    MetricSourceBindingError,
+    normalize_metric_source_text,
+    split_metric_clauses,
+    validate_metric_source_binding,
+)
 
 __all__ = [
     "DuplicateMetricRequirementError",
@@ -39,9 +45,13 @@ __all__ = [
     "MetricSpatialError",
     "MetricSpatialRequirements",
     "MetricSpatialRequirementsBuilder",
+    "MetricSourceBindingError",
     "MetricUnit",
     "MetricUnitMismatchError",
     "ProposedMetricRequirement",
     "SpaceMetricRequirements",
     "generate_metric_requirement_id",
+    "normalize_metric_source_text",
+    "split_metric_clauses",
+    "validate_metric_source_binding",
 ]

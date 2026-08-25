@@ -6,7 +6,7 @@ import os
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI
@@ -86,7 +86,12 @@ from brif_ai.spatial.metrics.errors import (
     MetricUnitMismatchError,
 )
 from brif_ai.spatial.metrics.models import (
+    MetricRequirement,
     MetricRequirementInput,
+)
+from brif_ai.spatial.metrics.source_binding import (
+    MetricSourceBindingError,
+    validate_metric_source_binding,
 )
 from brif_ai.spatial.models import (
     RelationshipProvenance,
@@ -103,6 +108,8 @@ from brif_ai.spatial.plan_input import (
     UNCHANGED,
     AuthoritativePlanInputState,
     JSONPlanInputStateRepository,
+    PlanInputApprovalEvidencePersistenceError,
+    PlanInputApprovalEvidenceRepository,
     PlanInputStateBriefVersionMismatchError,
     PlanInputStateInitializeRequest,
     PlanInputStateNotFoundError,
@@ -231,6 +238,11 @@ def build_metric_conversation_context(
     """Build server-authoritative metric conversation context from SpatialProgram."""
     if snapshot is None or graph is None:
         return None
+    if plan_input_state is not None and (
+        plan_input_state.project_id != snapshot.project_id
+        or plan_input_state.source_brief_version != snapshot.brief_version
+    ):
+        return None
     try:
         program = SpatialProgramBuilder().build(snapshot, graph)
     except (
@@ -285,6 +297,7 @@ def create_app(
     brief_repository: BriefRepository | None = None,
     spatial_repository: SpatialRelationshipRepository | None = None,
     plan_input_repository: PlanInputStateRepository | None = None,
+    plan_input_evidence_repository: PlanInputApprovalEvidenceRepository | None = None,
     site_evidence_repository: SiteApprovalEvidenceRepository | None = None,
 ) -> FastAPI:
     resolved_settings = settings or LocalLLMSettings.from_env()
@@ -295,6 +308,16 @@ def create_app(
     persistent_spatial_service = PersistentSpatialService(resolved_spatial_repo)
     resolved_plan_input_repo = plan_input_repository or JSONPlanInputStateRepository()
     persistent_plan_input_service = PlanInputStateService(resolved_plan_input_repo)
+    persistent_plan_input_evidence_repository = (
+        plan_input_evidence_repository
+        or PlanInputApprovalEvidenceRepository(
+            root_dir=(
+                resolved_plan_input_repo.root_dir
+                if isinstance(resolved_plan_input_repo, JSONPlanInputStateRepository)
+                else None
+            )
+        )
+    )
     persistent_site_evidence_repository = (
         site_evidence_repository or SiteApprovalEvidenceRepository()
     )
@@ -452,6 +475,7 @@ def create_app(
                         result=None,
                         error=None,
                         resulting_brief_snapshot=new_snapshot,
+                        authoritative_brief_version=new_snapshot.brief_version,
                     )
 
             # Step 6: Replace client brief with authoritative snapshot and build metric context
@@ -518,6 +542,7 @@ def create_app(
             return interpretation_result.model_copy(
                 update={
                     "resulting_brief_snapshot": resulting_snapshot,
+                    "authoritative_brief_version": authoritative_snapshot.brief_version,
                     "authoritative_plan_input_state_version": plan_input_version,
                 }
             )
@@ -1222,42 +1247,101 @@ def create_app(
                 clean_project_id
             )
 
-            # 5. Idempotent replay check:
-            # Match identical USER_CONFIRMED requirement with same space, type, value, unit
+            if (
+                current_plan_input_state is not None
+                and current_plan_input_state.source_brief_version != request.expected_brief_version
+            ):
+                raise PlanInputStateVersionConflictError(
+                    "Stale plan input state source brief: proposal expects brief version "
+                    f"{request.expected_brief_version}, but current plan input state is bound to "
+                    f"brief version {current_plan_input_state.source_brief_version}."
+                )
+
+            # 5. Revalidate the exact source message at the authoritative approval boundary.
+            validate_metric_source_binding(
+                user_message=request.user_message,
+                proposed_requirement=prop,
+                available_spaces={space.id: space.display_name for space in program.spaces},
+            )
+
+            candidate_evidence = persistent_plan_input_evidence_repository.build_chat_evidence(
+                project_id=clean_project_id,
+                source_reference=request.source_reference,
+                user_message=request.user_message,
+                created_at=now,
+            )
+            persisted_candidate_evidence = persistent_plan_input_evidence_repository.get_evidence(
+                clean_project_id,
+                candidate_evidence.id,
+            )
+
+            existing_requirement: MetricRequirement | None = None
             if (
                 current_plan_input_state is not None
                 and current_plan_input_state.metric_requirements is not None
             ):
-                for space_req in current_plan_input_state.metric_requirements.space_requirements:
-                    if space_req.space_id == prop.space_id:
-                        for req in space_req.requirements:
-                            if (
-                                req.requirement_type == prop.requirement_type
-                                and req.value == prop.value
-                                and req.unit == prop.unit
-                                and req.provenance == RelationshipProvenance.USER_CONFIRMED
-                            ):
-                                record = MetricRequirementApprovalRecord(
-                                    proposal_status="user_approved",
-                                    approved_at=now,
-                                    project_id=clean_project_id,
-                                    proposal_id=prop.proposal_id,
-                                    space_id=prop.space_id,
-                                    requirement_type=prop.requirement_type,
-                                    value=prop.value,
-                                    unit=prop.unit,
-                                    resulting_state_version=current_plan_input_state.state_version,
-                                    context_fingerprint=request.current_fingerprint,
-                                    generation_id=request.current_generation_id,
-                                )
-                                return MetricRequirementApprovalResponse(
-                                    success=True,
-                                    resulting_plan_input_state=current_plan_input_state,
-                                    approval_record=record,
-                                    error=None,
-                                )
+                existing_requirement = next(
+                    (
+                        requirement
+                        for space_requirements in (
+                            current_plan_input_state.metric_requirements.space_requirements
+                        )
+                        if space_requirements.space_id == prop.space_id
+                        for requirement in space_requirements.requirements
+                        if requirement.requirement_type == prop.requirement_type
+                    ),
+                    None,
+                )
 
-            # 6. Validate expected plan input state version (for mutating changes)
+            semantic_match = (
+                existing_requirement is not None
+                and existing_requirement.value == prop.value
+                and existing_requirement.unit == prop.unit
+                and existing_requirement.provenance == RelationshipProvenance.USER_CONFIRMED
+                and existing_requirement.priority == Priority.MUST
+            )
+            evidence_record_matches = (
+                persisted_candidate_evidence is not None
+                and persisted_candidate_evidence.project_id == clean_project_id
+                and persisted_candidate_evidence.source_reference == request.source_reference
+                and persisted_candidate_evidence.user_message == request.user_message
+            )
+            exact_replay = (
+                semantic_match
+                and existing_requirement is not None
+                and candidate_evidence.id in existing_requirement.evidence_ids
+                and evidence_record_matches
+            )
+
+            # Full replay is the only safe stale-version exception: it performs no write.
+            if exact_replay:
+                assert current_plan_input_state is not None
+                assert existing_requirement is not None
+                replay_record = MetricRequirementApprovalRecord(
+                    proposal_status="user_approved",
+                    approved_at=now,
+                    project_id=clean_project_id,
+                    proposal_id=prop.proposal_id,
+                    space_id=prop.space_id,
+                    requirement_type=prop.requirement_type,
+                    value=prop.value,
+                    unit=prop.unit,
+                    operation="replayed",
+                    state_changed=False,
+                    previous_value=existing_requirement.value,
+                    resulting_evidence_id=candidate_evidence.id,
+                    resulting_state_version=current_plan_input_state.state_version,
+                    context_fingerprint=request.current_fingerprint,
+                    generation_id=request.current_generation_id,
+                )
+                return MetricRequirementApprovalResponse(
+                    success=True,
+                    resulting_plan_input_state=current_plan_input_state,
+                    approval_record=replay_record,
+                    error=None,
+                )
+
+            # 6. Validate expected plan input state version for every mutating operation.
             if request.expected_plan_input_state_version is None:
                 if current_plan_input_state is not None:
                     raise PlanInputStateVersionConflictError(
@@ -1281,7 +1365,23 @@ def create_app(
                         f"but latest version is {current_plan_input_state.state_version}."
                     )
 
-            # 6. Collect existing requirements, replace matching (space_id, requirement_type)
+            operation: Literal["created", "replaced", "evidence_merged"]
+            if existing_requirement is None:
+                operation = "created"
+                approved_evidence_ids = [candidate_evidence.id]
+                approved_rationale = prop.rationale
+            elif semantic_match:
+                operation = "evidence_merged"
+                approved_evidence_ids = sorted(
+                    {*existing_requirement.evidence_ids, candidate_evidence.id}
+                )
+                approved_rationale = existing_requirement.rationale
+            else:
+                operation = "replaced"
+                approved_evidence_ids = [candidate_evidence.id]
+                approved_rationale = prop.rationale
+
+            # 7. Collect existing requirements and replace only the matching key.
             existing_inputs: list[MetricRequirementInput] = []
             if (
                 current_plan_input_state is not None
@@ -1307,7 +1407,7 @@ def create_app(
                             )
                         )
 
-            # Add approved requirement with USER_CONFIRMED and ProgramSpace evidence_ids
+            # The approved fact is bound to revision-message evidence, never generated geometry.
             approved_input = MetricRequirementInput(
                 space_id=prop.space_id,
                 requirement_type=prop.requirement_type,
@@ -1315,12 +1415,12 @@ def create_app(
                 unit=prop.unit,
                 provenance=RelationshipProvenance.USER_CONFIRMED,
                 priority=Priority.MUST,
-                evidence_ids=target_space.evidence_ids,
-                rationale=prop.rationale,
+                evidence_ids=approved_evidence_ids,
+                rationale=approved_rationale,
             )
             all_inputs = [*existing_inputs, approved_input]
 
-            # 7. Deterministic build of new MetricSpatialRequirements
+            # 8. Validate the complete candidate before any persistence.
             builder = MetricSpatialRequirementsBuilder()
             new_metric_spatial_requirements = builder.build(
                 program=program,
@@ -1328,7 +1428,19 @@ def create_app(
                 created_at=now,
             )
 
-            # 8. Plan input state initialization / update
+            # 9. Evidence-first immutable persistence.
+            saved_evidence = persistent_plan_input_evidence_repository.save_chat_evidence(
+                project_id=clean_project_id,
+                source_reference=request.source_reference,
+                user_message=request.user_message,
+                created_at=now,
+            )
+            if saved_evidence.id != candidate_evidence.id:  # pragma: no cover - defensive guard
+                raise PlanInputApprovalEvidencePersistenceError(
+                    "Saved plan-input approval evidence identity changed unexpectedly."
+                )
+
+            # 10. Initialize or compare-and-swap the sole authoritative metric state.
             if current_plan_input_state is None:
                 new_state = persistent_plan_input_service.initialize_state(
                     project_id=clean_project_id,
@@ -1354,6 +1466,12 @@ def create_app(
                 requirement_type=prop.requirement_type,
                 value=prop.value,
                 unit=prop.unit,
+                operation=operation,
+                state_changed=True,
+                previous_value=(
+                    existing_requirement.value if existing_requirement is not None else None
+                ),
+                resulting_evidence_id=saved_evidence.id,
                 resulting_state_version=new_state.state_version,
                 context_fingerprint=request.current_fingerprint,
                 generation_id=request.current_generation_id,
@@ -1407,6 +1525,7 @@ def create_app(
             PlanInputStateValidationError,
             PlanInputStateBriefVersionMismatchError,
             PlanInputStateProjectMismatchError,
+            MetricSourceBindingError,
             ValueError,
         ) as error:
             return JSONResponse(
@@ -1422,6 +1541,7 @@ def create_app(
             BriefPersistenceError,
             SpatialGraphPersistenceError,
             PlanInputStatePersistenceError,
+            PlanInputApprovalEvidencePersistenceError,
         ) as error:
             return JSONResponse(
                 status_code=500,
