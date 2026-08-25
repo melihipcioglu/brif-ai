@@ -575,6 +575,24 @@ def test_metric_language_safety_min_area_invented_value_rejected() -> None:
         validator.validate(res, req, metric_context=ctx)
 
 
+def test_metric_language_negative_source_value_cannot_bind_positive_proposal() -> None:
+    validator = ArchitecturalIntentPolicyValidator()
+    proposal = ProposedMetricRequirement(
+        proposal_id="p_negative_source",
+        space_id="sn_living_01",
+        requirement_type=MetricRequirementType.MIN_AREA,
+        value=35.0,
+        unit=MetricUnit.SQUARE_METRE,
+    )
+
+    with pytest.raises(PolicyValidationError, match="eşleşmiyor"):
+        validator.validate(
+            _make_metric_result(proposal),
+            _make_request("Salon en az -35 m² olsun."),
+            metric_context=_make_metric_context(),
+        )
+
+
 def test_metric_language_safety_max_area_explicit_accepted() -> None:
     # Case E: "Mutfak en fazla 20 m2 olsun." MAX_AREA 20 => accepted
     validator = ArchitecturalIntentPolicyValidator()
@@ -729,3 +747,172 @@ def test_metric_language_min_clear_width_standalone_m_accepted() -> None:
     validated = validator.validate(res, req, metric_context=ctx)
     assert len(validated.proposed_metric_requirements) == 1
     assert validated.proposed_metric_requirements[0].value == 1.20
+
+
+def test_metric_language_turkish_target_suffix_is_bound_to_salon() -> None:
+    validator = ArchitecturalIntentPolicyValidator()
+    context = _make_metric_context()
+    request = _make_request("Salonu en az 35 m² yap.")
+    proposal = ProposedMetricRequirement(
+        proposal_id="p_suffix",
+        space_id="sn_living_01",
+        requirement_type=MetricRequirementType.MIN_AREA,
+        value=35.0,
+        unit=MetricUnit.SQUARE_METRE,
+    )
+
+    validated = validator.validate(
+        _make_metric_result(proposal),
+        request,
+        metric_context=context,
+    )
+
+    assert validated.proposed_metric_requirements == [proposal]
+
+
+def test_metric_language_softened_turkish_target_suffix_is_bound_to_kitchen() -> None:
+    validator = ArchitecturalIntentPolicyValidator()
+    context = _make_metric_context()
+    request = _make_request("Mutfağı en fazla 20 m² yap.")
+    proposal = ProposedMetricRequirement(
+        proposal_id="p_soft_suffix",
+        space_id="sn_kitchen_01",
+        requirement_type=MetricRequirementType.MAX_AREA,
+        value=20.0,
+        unit=MetricUnit.SQUARE_METRE,
+    )
+
+    validated = validator.validate(
+        _make_metric_result(proposal),
+        request,
+        metric_context=context,
+    )
+
+    assert validated.proposed_metric_requirements == [proposal]
+
+
+def test_metric_language_ambiguous_target_binding_is_rejected() -> None:
+    validator = ArchitecturalIntentPolicyValidator()
+    context = MetricConversationContext(
+        spaces=[
+            SpaceMetricContext(
+                space_id="sn_child_01",
+                display_name="Çocuk Odası",
+                function="SLEEPING",
+            ),
+            SpaceMetricContext(
+                space_id="sn_child_02",
+                display_name="Çocuk Odası",
+                function="SLEEPING",
+            ),
+        ],
+        source_brief_version=1,
+    )
+    request = _make_request("Çocuk odasını en az 12 m² yap.")
+    proposal = ProposedMetricRequirement(
+        proposal_id="p_ambiguous",
+        space_id="sn_child_01",
+        requirement_type=MetricRequirementType.MIN_AREA,
+        value=12.0,
+        unit=MetricUnit.SQUARE_METRE,
+    )
+
+    with pytest.raises(PolicyValidationError, match="belirsiz"):
+        validator.validate(_make_metric_result(proposal), request, metric_context=context)
+
+
+def test_metric_language_separately_named_targets_in_one_clause_are_ambiguous() -> None:
+    validator = ArchitecturalIntentPolicyValidator()
+    context = MetricConversationContext(
+        spaces=[
+            SpaceMetricContext(space_id="sn_room_01", display_name="Oda", function="SLEEPING"),
+            SpaceMetricContext(
+                space_id="sn_big_kitchen_01",
+                display_name="Büyük Mutfak",
+                function="COOKING",
+            ),
+        ],
+        source_brief_version=1,
+    )
+    proposal = ProposedMetricRequirement(
+        proposal_id="p_two_targets",
+        space_id="sn_big_kitchen_01",
+        requirement_type=MetricRequirementType.MIN_AREA,
+        value=35.0,
+        unit=MetricUnit.SQUARE_METRE,
+    )
+
+    with pytest.raises(PolicyValidationError, match="belirsiz"):
+        validator.validate(
+            _make_metric_result(proposal),
+            _make_request("Oda ile Büyük Mutfağı en az 35 m² yap."),
+            metric_context=context,
+        )
+
+
+def test_metric_language_longer_target_safely_shadows_nested_generic_name() -> None:
+    validator = ArchitecturalIntentPolicyValidator()
+    context = MetricConversationContext(
+        spaces=[
+            SpaceMetricContext(space_id="sn_room_01", display_name="Oda", function="SLEEPING"),
+            SpaceMetricContext(
+                space_id="sn_child_01",
+                display_name="Çocuk Odası",
+                function="SLEEPING",
+            ),
+        ],
+        source_brief_version=1,
+    )
+    proposal = ProposedMetricRequirement(
+        proposal_id="p_nested_target",
+        space_id="sn_child_01",
+        requirement_type=MetricRequirementType.MIN_AREA,
+        value=12.0,
+        unit=MetricUnit.SQUARE_METRE,
+    )
+
+    validated = validator.validate(
+        _make_metric_result(proposal),
+        _make_request("Çocuk odasını en az 12 m² yap."),
+        metric_context=context,
+    )
+
+    assert validated.proposed_metric_requirements == [proposal]
+
+
+def test_metric_language_wrong_target_binding_is_rejected() -> None:
+    validator = ArchitecturalIntentPolicyValidator()
+    request = _make_request("Mutfak en az 12 m² olsun.")
+    proposal = ProposedMetricRequirement(
+        proposal_id="p_wrong_target",
+        space_id="sn_living_01",
+        requirement_type=MetricRequirementType.MIN_AREA,
+        value=12.0,
+        unit=MetricUnit.SQUARE_METRE,
+    )
+
+    with pytest.raises(PolicyValidationError, match="açıkça bağlanmıyor"):
+        validator.validate(
+            _make_metric_result(proposal),
+            request,
+            metric_context=_make_metric_context(),
+        )
+
+
+def test_metric_language_forged_requirement_type_is_rejected() -> None:
+    validator = ArchitecturalIntentPolicyValidator()
+    request = _make_request("Salon en az 35 m² olsun.")
+    forged = ProposedMetricRequirement(
+        proposal_id="p_forged_type",
+        space_id="sn_living_01",
+        requirement_type=MetricRequirementType.MAX_AREA,
+        value=35.0,
+        unit=MetricUnit.SQUARE_METRE,
+    )
+
+    with pytest.raises(PolicyValidationError, match="açık azami niteleyici"):
+        validator.validate(
+            _make_metric_result(forged),
+            request,
+            metric_context=_make_metric_context(),
+        )

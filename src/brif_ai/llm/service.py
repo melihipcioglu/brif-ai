@@ -701,6 +701,15 @@ class LocalLLMConversationService:
             generation_id=request.active_context.generation_id,
             result=safe_result,
             error=None,
+            authoritative_brief_version=(
+                metric_context.source_brief_version
+                if metric_context is not None
+                else (
+                    request.brief_snapshot.brief_version
+                    if request.brief_snapshot is not None
+                    else None
+                )
+            ),
             authoritative_plan_input_state_version=state_version,
         )
 

@@ -492,11 +492,21 @@ class ConversationOrchestrator {
           if (proposal.status === 'approved') {
             button.disabled = true;
             button.classList.add('proposal-approved');
-            button.textContent = (proposal.siteGeometry || proposal.metricRequirement || proposal.floorPlate)
-              ? 'Plan girdisine eklendi'
-              : (proposal.spatialRelationship
-                ? 'İlişki onaylandı'
-                : (proposal.briefMutation ? 'Brief\'e eklendi' : 'Onaylandı'));
+            if (proposal.metricRequirement) {
+              button.textContent = proposal.approvalOperation === 'replaced'
+              ? 'Ölçü güncellendi'
+              : (proposal.approvalOperation === 'replayed'
+                  ? 'Ölçü zaten güncel'
+                  : (proposal.approvalOperation === 'evidence_merged'
+                    ? 'Kullanıcı kaynağı güncellendi'
+                    : 'Plan girdisine eklendi'));
+            } else {
+              button.textContent = (proposal.siteGeometry || proposal.floorPlate)
+                ? 'Plan girdisine eklendi'
+                : (proposal.spatialRelationship
+                  ? 'İlişki onaylandı'
+                  : (proposal.briefMutation ? 'Brief\'e eklendi' : 'Onaylandı'));
+            }
             button.setAttribute('aria-disabled', 'true');
           } else if (proposal.status === 'stale') {
             button.disabled = true;
@@ -633,7 +643,8 @@ class ConversationOrchestrator {
     authoritativePlanInputStateVersion = null,
     proposalBriefVersion = null,
     proposalSourceMessageText = null,
-    proposalSourceMessageRef = null
+    proposalSourceMessageRef = null,
+    proposalProjectId = null
   ) {
     const needsSeparateQuestion = result.needs_follow_up
       && result.follow_up_question
@@ -756,6 +767,16 @@ class ConversationOrchestrator {
       );
       if (existing) return existing;
 
+      const frozenUserMessageText = typeof proposalSourceMessageText === 'string'
+        ? proposalSourceMessageText
+        : '';
+      const frozenUserMessageRef = typeof proposalSourceMessageRef === 'string'
+        ? proposalSourceMessageRef
+        : null;
+      const frozenProjectId = typeof proposalProjectId === 'string' && proposalProjectId
+        ? proposalProjectId
+        : current.projectId;
+
       this.proposalSequence += 1;
       const id = `proposal_${this.proposalSequence}`;
       const proposal = {
@@ -765,6 +786,7 @@ class ConversationOrchestrator {
         spatialRelationship: null,
         metricRequirement: metricCopy,
         siteGeometry: null,
+        projectId: frozenProjectId,
         expectedBriefVersion: proposalBriefVersion !== undefined
           ? proposalBriefVersion
           : null,
@@ -773,8 +795,8 @@ class ConversationOrchestrator {
           : null,
         contextFingerprint,
         generationId: proposalGenerationId,
-        userMessageText: this.lastUserMessageText || '',
-        userMessageRef: this.lastUserMessageRef || 'chatmsg_1'
+        userMessageText: frozenUserMessageText,
+        userMessageRef: frozenUserMessageRef
       };
       this.pendingProposals.set(id, proposal);
       return proposal;
@@ -1155,9 +1177,16 @@ class ConversationOrchestrator {
         this.appendAssistantMessage('Yerel LLM ağ geçidi tanımlı değil; ölçü gereksinimi onaylanamadı.');
         return null;
       }
-      const activeBrief = this.getActiveBriefSnapshot();
-      if (!activeBrief) {
-        this.appendAssistantMessage('Aktif brief snapshot bulunamadı.');
+      if (!proposal.userMessageText || typeof proposal.userMessageText !== 'string' || !proposal.userMessageText.trim()) {
+        this.appendAssistantMessage('Kullanıcı kaynak mesajı bulunamadığı için ölçü gereksinimi onaylanamadı.');
+        return null;
+      }
+      if (!proposal.userMessageRef || typeof proposal.userMessageRef !== 'string' || !proposal.userMessageRef.trim()) {
+        this.appendAssistantMessage('Kullanıcı kaynak referansı bulunamadığı için ölçü gereksinimi onaylanamadı.');
+        return null;
+      }
+      if (!proposal.projectId || proposal.projectId !== current.projectId) {
+        this.appendAssistantMessage('Öneri farklı bir projeye ait olduğu için onaylanamadı.');
         return null;
       }
       if (proposal.expectedBriefVersion === null || proposal.expectedBriefVersion === undefined) {
@@ -1166,26 +1195,24 @@ class ConversationOrchestrator {
       }
       const payload = {
         proposed_requirement: proposal.metricRequirement,
-        current_project_id: current.projectId,
+        current_project_id: proposal.projectId,
         expected_brief_version: proposal.expectedBriefVersion,
         expected_plan_input_state_version: proposal.expectedPlanInputStateVersion,
         proposal_fingerprint: proposal.contextFingerprint,
         current_fingerprint: current.contextFingerprint,
         proposal_generation_id: proposal.generationId,
         current_generation_id: current.generationId,
-        user_message: proposal.userMessageText || '',
-        source_reference: proposal.userMessageRef || 'chatmsg_1'
+        user_message: proposal.userMessageText,
+        source_reference: proposal.userMessageRef
       };
-      const response = await this.localLLMGateway.approveMetricRequirement(current.projectId, payload);
+      const response = await this.localLLMGateway.approveMetricRequirement(proposal.projectId, payload);
       if (response && response.success && response.resulting_plan_input_state) {
-        const record = response.approval_record || {
-          proposal_status: 'user_approved',
-          approved_at: new Date().toISOString(),
-          context_fingerprint: current.contextFingerprint,
-          generation_id: current.generationId,
-          proposed_metric_requirement: proposal.metricRequirement,
-          resulting_plan_input_state_version: response.resulting_plan_input_state.state_version
-        };
+        const record = response.approval_record;
+        const validOperations = new Set(['created', 'replaced', 'evidence_merged', 'replayed']);
+        if (!record || !validOperations.has(record.operation) || typeof record.state_changed !== 'boolean') {
+          this.appendAssistantMessage('Ölçü onay servisi geçersiz bir sonuç döndürdü.');
+          return null;
+        }
         if (!Array.isArray(this.metricRequirementProposalRecords)) {
           this.metricRequirementProposalRecords = [];
         }
@@ -1195,16 +1222,16 @@ class ConversationOrchestrator {
         this.allChatMessages.forEach(message => {
           if (!Array.isArray(message.proposedActions)) return;
           message.proposedActions.forEach(candidate => {
-            if (candidate.id === proposalId) candidate.status = 'approved';
+            if (candidate.id === proposalId) {
+              candidate.status = 'approved';
+              candidate.approvalOperation = record.operation;
+            }
           });
         });
 
-        // Invalidate other metric/site proposals created against the same old expectedPlanInputStateVersion only if state version changed
-        const resultingVersion = response.resulting_plan_input_state.state_version;
-        const expectedVersion = proposal.expectedPlanInputStateVersion;
-
+        // Backend state_changed is authoritative; do not infer mutation from versions.
         let stalePlanInputProposals = [];
-        if (resultingVersion !== expectedVersion) {
+        if (record.state_changed === true) {
           stalePlanInputProposals = Array.from(this.pendingProposals.values()).filter(p =>
             (p.metricRequirement || p.siteGeometry || p.floorPlate) &&
             p.expectedPlanInputStateVersion === proposal.expectedPlanInputStateVersion
@@ -1223,21 +1250,13 @@ class ConversationOrchestrator {
           });
         }
 
-        const spaceName = this.getSpaceDisplayName(proposal.metricRequirement.space_id);
-        const req = proposal.metricRequirement;
-        const valStr = typeof req.value === 'number'
-          ? String(req.value).replace('.', ',')
-          : String(req.value || '');
-        let confirmationText = '';
-        if (req.requirement_type === 'MIN_AREA') {
-          confirmationText = `${spaceName} için minimum ${valStr} m² gereksinimi plan girdilerine kaydedildi.`;
-        } else if (req.requirement_type === 'MAX_AREA') {
-          confirmationText = `${spaceName} için maksimum ${valStr} m² gereksinimi plan girdilerine kaydedildi.`;
-        } else if (req.requirement_type === 'MIN_CLEAR_WIDTH') {
-          confirmationText = `${spaceName} için minimum ${valStr} m net genişlik gereksinimi plan girdilerine kaydedildi.`;
-        } else {
-          confirmationText = `${spaceName} için ölçü gereksinimi plan girdilerine kaydedildi.`;
-        }
+        const confirmationByOperation = {
+          created: 'Ölçü gereksinimi plan girdilerine eklendi.',
+          replaced: 'Ölçü gereksinimi güncellendi.',
+          evidence_merged: 'Ölçü gereksiniminin kullanıcı kaynağı güncellendi.',
+          replayed: 'Bu ölçü gereksinimi zaten güncel plan girdilerinde kayıtlı.'
+        };
+        const confirmationText = confirmationByOperation[record.operation];
         this.appendAssistantMessage(confirmationText);
 
         if (stalePlanInputProposals.length > 0) {

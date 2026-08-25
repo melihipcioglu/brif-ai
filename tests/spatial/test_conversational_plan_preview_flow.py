@@ -82,6 +82,8 @@ def _setup_test_project(
     include_site: bool = True,
     graph_brief_version: int | None = None,
     state_brief_version: int | None = None,
+    living_display_name: str = "Living Room",
+    kitchen_display_name: str = "Kitchen",
 ) -> tuple[
     JSONBriefRepository,
     JSONSpatialRelationshipRepository,
@@ -103,7 +105,7 @@ def _setup_test_project(
     spaces = [
         SpaceRequest(
             id="sr_living",
-            display_name="Living Room",
+            display_name=living_display_name,
             space_function=SpaceFunction.LIVING,
             minimum_quantity=1,
             mandatory=True,
@@ -113,7 +115,7 @@ def _setup_test_project(
         ),
         SpaceRequest(
             id="sr_kitchen",
-            display_name="Kitchen",
+            display_name=kitchen_display_name,
             space_function=SpaceFunction.COOKING,
             minimum_quantity=1,
             mandatory=True,

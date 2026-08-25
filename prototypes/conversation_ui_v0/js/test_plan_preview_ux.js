@@ -1346,15 +1346,31 @@ async function runTests() {
       id: 'prop_metric',
       contextFingerprint: 'fp_test',
       generationId: 1,
+      projectId: 'proj_house_2story',
       expectedBriefVersion: 2,
       expectedPlanInputStateVersion: 1,
-      metricRequirement: { space_id: 's1', requirement_type: 'MIN_AREA', value: 20, unit: 'M2' }
+      userMessageText: 'Salonu en az 20 m² yap.',
+      userMessageRef: 'chatmsg_metric_40',
+      metricRequirement: { space_id: 's1', requirement_type: 'MIN_AREA', value: 20, unit: 'SQUARE_METRE' }
     });
-    gateway.approveMetricRequirement = async () => ({
-      success: true,
-      resulting_plan_input_state: { state_version: 2 }
-    });
-    await orchestrator.approveProposalById('prop_metric');
+    let metricApprovalCallCount = 0;
+    gateway.approveMetricRequirement = async () => {
+      metricApprovalCallCount += 1;
+      return {
+        success: true,
+        approval_record: {
+          operation: 'replaced',
+          state_changed: true,
+          previous_value: 18,
+          resulting_evidence_id: 'ev_metric_40',
+          resulting_state_version: 2
+        },
+        resulting_plan_input_state: { state_version: 2 }
+      };
+    };
+    const metricRecord = await orchestrator.approveProposalById('prop_metric');
+    assert(metricRecord);
+    assert.strictEqual(metricApprovalCallCount, 1, 'Metric approval must complete successfully');
     assert.strictEqual(previewCallCount, 0, 'Metric approval must not trigger preview');
 
     // 3. Site approval

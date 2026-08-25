@@ -519,6 +519,7 @@ class ConversationInterpretationResponse(StrictContract):
     result: ArchitecturalIntentResult | None
     error: str | None
     resulting_brief_snapshot: BriefSnapshot | None = None
+    authoritative_brief_version: int | None = Field(default=None, ge=1)
     authoritative_plan_input_state_version: int | None = None
 
 
@@ -619,6 +620,10 @@ class MetricRequirementApprovalRecord(StrictContract):
     requirement_type: MetricRequirementType
     value: float
     unit: MetricUnit
+    operation: Literal["created", "replaced", "evidence_merged", "replayed"]
+    state_changed: bool
+    previous_value: float | None = None
+    resulting_evidence_id: NonEmptyString
     resulting_state_version: int = Field(ge=1)
     context_fingerprint: NonEmptyString
     generation_id: int = Field(ge=0)
@@ -628,13 +633,13 @@ class MetricRequirementApprovalRequest(StrictContract):
     proposed_requirement: ProposedMetricRequirement
     current_project_id: NonEmptyString
     expected_brief_version: int = Field(ge=1)
-    expected_plan_input_state_version: int | None = None
+    expected_plan_input_state_version: int | None = Field(default=None, ge=1)
     proposal_fingerprint: NonEmptyString
     current_fingerprint: NonEmptyString
     proposal_generation_id: int = Field(ge=0)
     current_generation_id: int = Field(ge=0)
-    user_message: str | None = None
-    source_reference: str | None = None
+    user_message: NonEmptyString
+    source_reference: NonEmptyString
 
     @model_validator(mode="after")
     def validate_project_context(self) -> MetricRequirementApprovalRequest:
