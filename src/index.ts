@@ -11,3 +11,7 @@ export * from './priority';
 export * from './sessions';
 export * from './performance';
 export * from './exam';
+
+export * from './data/productionBank';
+
+export * from './questionBank';
