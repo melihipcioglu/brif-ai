@@ -38,3 +38,8 @@ Thumbs.db
 
 # Local runtime/test artifacts
 tmp/
+
+# YÖKDİL TypeScript modules
+node_modules/
+dist-yokdil/
+coverage-yokdil/

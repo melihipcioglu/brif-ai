@@ -1,0 +1,44 @@
+@layer theme, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+@source './WordPopover.tsx';
+
+/* No preflight, page overlay, scroll lock, or global element styles. */
+.yokdil-word-trigger {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px dotted currentColor;
+  padding: 0;
+  cursor: help;
+  touch-action: manipulation;
+}
+.yokdil-word-trigger:focus-visible,
+.yokdil-word-popover button:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
+}
+.yokdil-word-popover {
+  box-sizing: border-box;
+  position: fixed;
+  z-index: 1000;
+  width: 320px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100dvh - 16px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  font: 14px/1.5 system-ui, sans-serif;
+  overflow-wrap: anywhere;
+  color-scheme: light;
+}
+.yokdil-word-popover button { font: inherit; cursor: pointer; }
+.yokdil-word-popover p { margin: 0; }
+.yokdil-word-popover .yokdil-frost {
+  filter: blur(5px);
+  user-select: none;
+  pointer-events: none;
+}
+@media (forced-colors: active) {
+  .yokdil-word-popover { border: 1px solid CanvasText; }
+}
