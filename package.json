@@ -6,7 +6,12 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "build": "npm run typecheck && vite build"
+    "build": "npm run typecheck && vite build",
+    "dev": "vite --config vite.app.config.ts",
+    "build:app": "vite build --config vite.app.config.ts",
+    "preview:app": "vite preview --config vite.app.config.ts",
+    "phone": "npm run build:app && npm run preview:app",
+    "icons": "node scripts/generate-icons.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

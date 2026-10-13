@@ -628,3 +628,183 @@
     align-items: flex-start;
   }
 }
+
+/* ==========================================================================
+   Phone / touch support
+   ========================================================================== */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+.exam-app-container button,
+.exam-app-container [role="button"],
+.exam-app-container label {
+  touch-action: manipulation; /* no 300ms double-tap delay */
+  -webkit-tap-highlight-color: rgba(29, 78, 216, 0.12);
+}
+
+.exam-app-container {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+@media (max-width: 640px) {
+  /* iOS zooms into inputs under 16px */
+  .exam-app-container input,
+  .exam-app-container select,
+  .exam-app-container textarea {
+    font-size: 16px;
+  }
+
+  .exam-app-container {
+    overflow-x: clip;
+  }
+
+  .exam-app-header {
+    flex-direction: row;
+    align-items: center;
+    padding: 10px 16px;
+    padding-top: calc(10px + env(safe-area-inset-top));
+    padding-left: calc(16px + env(safe-area-inset-left));
+    padding-right: calc(16px + env(safe-area-inset-right));
+  }
+
+  .exam-brand-title {
+    font-size: 1rem;
+  }
+
+  /* Primary navigation becomes a bottom tab bar within thumb reach */
+  .exam-app-header > nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
+    background: var(--yokdil-surface);
+    border-top: 1px solid var(--yokdil-border);
+    box-shadow: 0 -2px 12px rgba(15, 23, 42, 0.08);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .exam-nav-tabs {
+    width: 100%;
+    gap: 4px;
+    padding: 6px 8px;
+    box-sizing: border-box;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .exam-nav-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .exam-nav-tabs > li {
+    flex: 0 0 auto;
+  }
+
+  .exam-nav-button {
+    min-height: 44px;
+    padding: 8px 14px;
+    white-space: nowrap;
+  }
+
+  .exam-main-content {
+    padding: 16px;
+    padding-left: calc(16px + env(safe-area-inset-left));
+    padding-right: calc(16px + env(safe-area-inset-right));
+    padding-bottom: calc(88px + env(safe-area-inset-bottom));
+  }
+
+  .exam-card {
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+
+  .exam-passage-box,
+  .exam-stem-box {
+    padding: 16px;
+  }
+  .exam-passage-box {
+    max-height: 45vh;
+  }
+
+  /* Long words / URLs never push the page sideways */
+  .exam-main-content,
+  .exam-main-content * {
+    overflow-wrap: anywhere;
+  }
+}
+
+/* Phone: exam runner */
+@media (max-width: 640px) {
+  .exam-runner-header {
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    padding: 10px 12px;
+    padding-top: calc(10px + env(safe-area-inset-top));
+    padding-left: calc(12px + env(safe-area-inset-left));
+    padding-right: calc(12px + env(safe-area-inset-right));
+  }
+  .exam-runner-meta {
+    flex: 1 1 0;
+    min-width: 0;
+    gap: 8px;
+  }
+  .exam-runner-meta > span:first-child {
+    white-space: nowrap;
+  }
+  .exam-family-pill {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.6875rem;
+  }
+  .exam-countdown-timer {
+    font-size: 0.9375rem;
+    padding: 6px 10px;
+    white-space: nowrap;
+  }
+  /* Flag + finish get their own full-width row, easy to hit with a thumb */
+  .exam-runner-header > div:last-child {
+    flex: 1 1 100%;
+    gap: 8px;
+  }
+  .exam-runner-header > div:last-child > .exam-btn {
+    flex: 1 1 0;
+    min-height: 44px;
+    justify-content: center;
+  }
+
+  .exam-main-content {
+    /* the runner has its own sticky footer, no bottom tab bar to clear */
+  }
+  .exam-runner-header ~ .exam-main-content {
+    padding-bottom: 16px;
+  }
+
+  .exam-runner-footer {
+    padding: 10px 12px;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+    padding-left: calc(12px + env(safe-area-inset-left));
+    padding-right: calc(12px + env(safe-area-inset-right));
+    gap: 8px;
+  }
+  .exam-runner-footer .exam-btn {
+    min-height: 46px;
+  }
+
+  .exam-option-item {
+    min-height: 56px;
+  }
+  .exam-eliminate-btn {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 10px 12px;
+  }
+
+  .palette-container {
+    padding: 12px;
+  }
+}
