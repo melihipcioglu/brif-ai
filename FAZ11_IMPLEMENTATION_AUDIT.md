@@ -106,7 +106,7 @@ Soru bankasının ve üretilen form setinin güvenliğini denetlemek üzere `src
 
 ## 4. USABILITY & OPERATIONAL EXAM READINESS AUDIT
 
-Kod tabanındaki 9 temel operasyonel boyutun mevcut durumu doğrudan kaynak kodlar üzerinden incelenmiş ve nesnel kanıtlarla sınıflandırılmıştır:
+Kod tabanındaki 9 temel operasyonel boyutun mevcut durumu doğrudan kaynak kodlar üzerinden incelenmiş ve nesnel kanıtlarla sınıflandırılmıştır (6 WORKING, 3 PARTIAL, 0 MISSING, 0 UNVERIFIED):
 
 | No | Operasyonel Boyut | Durum | Kanıt & Kaynak Kodu | Açıklama |
 |---|---|:---:|---|---|

@@ -18,3 +18,14 @@ export * from './questionBank';
 export * from './formCapacity';
 export * from './types/similarity';
 export * from './services/exam/similarityAudit';
+
+export * from './types/examSession';
+export * from './services/exam/examSessionService';
+export * from './components/exam/ExamApp';
+export * from './components/exam/ExamStartScreen';
+export * from './components/exam/ExamActiveScreen';
+export * from './components/exam/QuestionPalette';
+export * from './components/exam/ExamResultsScreen';
+export * from './components/exam/ExamHistoryScreen';
+export * from './components/exam/PerformanceDashboard';
+export * from './components/exam/VocabularyStudyScreen';
