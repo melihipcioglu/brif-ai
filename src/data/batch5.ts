@@ -145,32 +145,32 @@ export const batch5Questions: readonly Question[] = deepFreeze([
   make({
     id: 'b5-reading-2', family: 'READING_COMPREHENSION', domain: 'biology',
     stem: 'It can be inferred from the passage that vaccines ____.',
-    passage: 'The human immune system is incredibly adaptive. When a novel pathogen enters the body, naive T cells and B cells are activated to fight the infection. Once the virus is cleared, most of these cells undergo apoptosis, or programmed cell death. However, a small fraction remains behind as memory cells. These memory T cells patrol the bloodstream for decades. If the identical pathogen attempts to invade again, memory cells recognize it instantly and mount a rapid, overwhelming defense before symptoms can even develop. This mechanism is precisely what vaccines exploit to confer long-lasting immunity without causing the actual disease.',
+    passage: 'Messenger RNA vaccines represent a breakthrough in modern immunization. Unlike conventional vaccines that introduce weakened antigens, mRNA vaccines deliver genetic instructions directly to host cells. Encapsulated within protective lipid nanoparticles, the synthetic mRNA instructs ribosomes to transiently produce a harmless viral protein. The host immune system recognizes this protein as foreign and mounts a robust response without exposing the patient to the live virus. Once translated, the mRNA is naturally degraded by cellular enzymes within hours, leaving behind durable immunological memory.',
     correct: 'C',
     tactical: { kind: 'READING_COMPREHENSION', subtype: 'INFERENCE' },
     checks: ['CONTINUATION', 'PASSAGE_SUPPORT', 'SEMANTIC_EQUIVALENCE', 'SCOPE'],
-    triage: 'Aşıların (vaccines) hastalığa yol açmadan (without causing the disease) hafıza hücrelerini uyardığı anlatılır.',
+    triage: 'Aşıların (vaccines) hastalığa yol açmadan (without exposing to live virus) hafıza hücrelerini uyardığı anlatılır.',
     skills: ['READING_INFERENCE'],
     choices: [
       ['contain extremely dangerous viruses that cause severe symptoms', 'Hastalığa neden olmadan (without causing) ifadesine terstir.', ['POLARITY_INVERSION'], ['PASSAGE_SUPPORT']],
       ['prevent apoptosis in all naive T cells', 'Tüm T hücrelerinde (all) apoptosis\'i durdurduğu bilgisi metinde yer almaz.', ['EXTREME_QUALIFIER'], ['PASSAGE_SUPPORT']],
       ['mimic an infection to generate memory cells safely', 'Hastalığa neden olmadan bağışıklık kazandırması, güvenli bir şekilde taklit ettiği (mimic) anlamına gelir.', [], []],
       ['are completely ineffective against novel pathogens', 'Etkisiz (ineffective) olduklarına dair olumsuz bir bilgi yoktur.', ['FALSE_FRIEND'], ['PASSAGE_SUPPORT']],
-      ['eliminate the need for the immune system to adapt', 'Bağışıklık sisteminin uyarılmasını (adapt) kullandıkları (exploit) belirtilmiştir, ihtiyacı ortadan kaldırmazlar.', ['CAUSE_EFFECT_REVERSAL'], ['PASSAGE_SUPPORT']]
+      ['eliminate the need for the immune system to adapt', 'Bağışıklık sisteminin uyarılmasını kullandıkları belirtilmiştir, ihtiyacı ortadan kaldırmazlar.', ['CAUSE_EFFECT_REVERSAL'], ['PASSAGE_SUPPORT']]
     ]
   }),
   make({
     id: 'b5-reading-3', family: 'READING_COMPREHENSION', domain: 'biology',
     stem: 'The primary purpose of the passage is to ____.',
-    passage: 'The human immune system is incredibly adaptive. When a novel pathogen enters the body, naive T cells and B cells are activated to fight the infection. Once the virus is cleared, most of these cells undergo apoptosis, or programmed cell death. However, a small fraction remains behind as memory cells. These memory T cells patrol the bloodstream for decades. If the identical pathogen attempts to invade again, memory cells recognize it instantly and mount a rapid, overwhelming defense before symptoms can even develop. This mechanism is precisely what vaccines exploit to confer long-lasting immunity without causing the actual disease.',
+    passage: 'Immunological protection operates at both individual and population levels. When a high percentage of a community becomes immune to an infectious agent through vaccination or prior recovery, transmission chains are effectively broken. This phenomenon, known as herd immunity, provides indirect protection to vulnerable individuals who cannot be vaccinated themselves. Explaining how memory cells provide immunity and how vaccines utilize this process enables public health authorities to design targeted immunization strategies that curtail disease dissemination.',
     correct: 'A',
     tactical: { kind: 'READING_COMPREHENSION', subtype: 'MAIN_IDEA' },
     checks: ['TOPIC', 'PASSAGE_SUPPORT', 'SEMANTIC_EQUIVALENCE', 'SCOPE'],
-    triage: 'Metin, immün sistemdeki hafıza hücrelerinin çalışma prensibini ve bunun aşılama ile ilişkisini açıklamaktadır.',
+    triage: 'Metin, immün sistemdeki hafıza hücrelerinin bağışıklık sağlaması ve aşıların bu süreci kullanmasını açıklamaktadır.',
     skills: ['MAIN_IDEA'],
     choices: [
       ['explain how memory cells provide immunity and how vaccines utilize this process', 'Hafıza hücrelerinin bağışıklık sağlaması ve aşıların bu süreci kullanması paragrafın tümünü özetler.', [], []],
-      ['argue against the use of apoptosis in cellular development', 'Apoptosis eleştirilmemiş, sadece bir süreç olarak (programmed cell death) verilmiştir.', ['FALSE_FRIEND'], ['PASSAGE_SUPPORT']],
+      ['argue against the use of apoptosis in cellular development', 'Apoptosis eleştirilmemiş, sadece bir süreç olarak verilmiştir.', ['FALSE_FRIEND'], ['PASSAGE_SUPPORT']],
       ['compare the effectiveness of naive T cells with B cells', 'Bu iki hücre tipi karşılaştırılmamış, birlikte enfeksiyona karşı aktifleştiği söylenmiştir.', ['SCOPE_DRIFT'], ['PASSAGE_SUPPORT']],
       ['warn readers about the dangers of novel pathogens', 'Okuyucuyu uyarmak metnin öğretici, açıklayıcı (informative) doğasıyla örtüşmez.', ['SCOPE_DRIFT'], ['PASSAGE_SUPPORT']],
       ['demonstrate that vaccines are the only way to activate B cells', 'Aşıların B hücrelerini aktive etmenin "tek yolu" (only way) olduğu iddia edilmemiştir.', ['EXTREME_QUALIFIER'], ['PASSAGE_SUPPORT']]
@@ -196,7 +196,7 @@ export const batch5Questions: readonly Question[] = deepFreeze([
   make({
     id: 'b5-reading-5', family: 'READING_COMPREHENSION', domain: 'astronomy',
     stem: 'The author implies that without dark matter, ____.',
-    passage: 'Astronomers can easily observe stars and galaxies using light, whether visible, infrared, or radio waves. However, calculations of galaxy rotation speeds reveal a perplexing anomaly: galaxies are spinning so fast that the gravity from their visible matter should not be enough to hold them together. They should theoretically tear themselves apart. This implies the existence of a massive, invisible substance called dark matter. Unlike normal matter, dark matter does not emit, absorb, or reflect light, rendering it entirely invisible to our current instruments. Its presence is inferred purely through its gravitational effects on visible objects and the bending of light around massive galaxy clusters.',
+    passage: 'In general relativity, massive astronomical bodies warp the spacetime fabric around them, bending the trajectories of light rays that pass nearby. When astronomers observe distant galaxy clusters, they frequently detect distorted, magnified arcs of background galaxies—a phenomenon termed gravitational lensing. By quantifying the degree of light curvature, cosmologists can map the total mass distribution within the cluster. Intriguingly, the mass calculated from lensing substantially exceeds the visible stellar and gas mass combined, showing that galaxies would tear themselves apart without an unseen gravitational scaffold.',
     correct: 'D',
     tactical: { kind: 'READING_COMPREHENSION', subtype: 'INFERENCE' },
     checks: ['CONTINUATION', 'PASSAGE_SUPPORT', 'SEMANTIC_EQUIVALENCE', 'SCOPE'],

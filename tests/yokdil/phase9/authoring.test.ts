@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { productionBank } from '../../../src/data/productionBank';
+import { phase9Bank } from '../../../src/data/productionBank';
 import { validateQuestionBank, planQuestionBankExpansion } from '../../../src/questionBank';
 import { initialQuestions } from '../../../src/data/initialQuestions';
 import { batch1Questions } from '../../../src/data/batch1';
@@ -29,7 +29,7 @@ describe('Phase 9: Question Authoring & Coverage Expansion', () => {
     expect(bankWithB1.productionEligible).toBe(29);
     expect(bankWithB1.results.filter(r => !r.valid)).toHaveLength(0);
 
-    const bankFinal = validateQuestionBank(productionBank);
+    const bankFinal = validateQuestionBank(phase9Bank);
     expect(bankFinal.productionEligible).toBe(80);
     expect(bankFinal.results.filter(r => !r.valid)).toHaveLength(0);
 
@@ -62,7 +62,7 @@ describe('Phase 9: Question Authoring & Coverage Expansion', () => {
 
   it('ensures rejected candidates do not enter FAZ 7 exam pool', () => {
     const badQuestion = { ...batch1Questions[0], id: 'bad-id', stem: '' }; // Invalid stem
-    const pool = [...productionBank, badQuestion];
+    const pool = [...phase9Bank, badQuestion];
     const validated = validateQuestionBank(pool);
     expect(validated.productionEligible).toBe(80); // Bad question rejected
     
@@ -72,15 +72,15 @@ describe('Phase 9: Question Authoring & Coverage Expansion', () => {
   });
 
   it('verifies that expanded validated bank is successfully passed to FAZ 7 pool analyzer', () => {
-    const ctx = { ...controlled(productionBank), as_of: 2000 };
-    const analysis = analyzeExamPool(targetBlueprint, productionBank, ctx);
+    const ctx = { ...controlled(phase9Bank), as_of: 2000 };
+    const analysis = analyzeExamPool(targetBlueprint, phase9Bank, ctx);
     expect(analysis.status).toBe('ADEQUATE');
   });
 
   it('verifies full form capability, constraints, and determinism', () => {
-    const ctx = { ...controlled(productionBank), as_of: 2000 };
+    const ctx = { ...controlled(phase9Bank), as_of: 2000 };
     
-    const request1 = { id: 'test-exam-1', blueprint: targetBlueprint, questions: productionBank, context: ctx, seed: 'stable-seed-9' };
+    const request1 = { id: 'test-exam-1', blueprint: targetBlueprint, questions: phase9Bank, context: ctx, seed: 'stable-seed-9' };
     const form1 = buildExamForm(request1);
     
     expect(form1.form?.questions).toHaveLength(80); // target question count
@@ -100,14 +100,14 @@ describe('Phase 9: Question Authoring & Coverage Expansion', () => {
     expect(families?.CLOZE_TEST).toBe(10);
     
     // deterministic
-    const request2 = { id: 'test-exam-2', blueprint: targetBlueprint, questions: productionBank, context: ctx, seed: 'stable-seed-9' };
+    const request2 = { id: 'test-exam-2', blueprint: targetBlueprint, questions: phase9Bank, context: ctx, seed: 'stable-seed-9' };
     const form2 = buildExamForm(request2);
     expect(form2.form?.questions.map(q => q.id)).toEqual(ids);
   });
 
   it('mutation sanity: removing a required question fails coverage and acceptance tests', () => {
     // b5-irrelevant-1 is required to have 10 IRRELEVANT_SENTENCE
-    const mutatedBank = productionBank.filter(q => q.id !== 'b5-irrelevant-1');
+    const mutatedBank = phase9Bank.filter(q => q.id !== 'b5-irrelevant-1');
     const newPlan = planQuestionBankExpansion(validateQuestionBank(mutatedBank), targetBlueprint, 1);
     
     expect(newPlan.canBuildOneForm).toBe(false);

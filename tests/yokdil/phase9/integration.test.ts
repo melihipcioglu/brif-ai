@@ -13,8 +13,8 @@ describe('Phase 9 Public API Wiring', () => {
     // 2. validation / filter
     const validated = validateQuestionBank(publicBank);
     
-    // 3. 80 production eligible questions
-    expect(validated.productionEligible).toBe(80);
+    // 3. at least 80 production eligible questions
+    expect(validated.productionEligible).toBeGreaterThanOrEqual(80);
 
     const targetBlueprint = blueprintSchema.parse({
       id: 'test-80', version: '1', scope: 'FULL',

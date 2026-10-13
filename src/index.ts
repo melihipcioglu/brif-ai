@@ -15,3 +15,6 @@ export * from './exam';
 export * from './data/productionBank';
 
 export * from './questionBank';
+export * from './formCapacity';
+export * from './types/similarity';
+export * from './services/exam/similarityAudit';
