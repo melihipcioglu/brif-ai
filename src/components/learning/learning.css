@@ -1,0 +1,413 @@
+/* YÖKDİL Fen V1.1 Adaptive Learning System Styles */
+
+:root {
+  --learn-primary: #0f766e;
+  --learn-primary-hover: #115e59;
+  --learn-primary-light: #f0fdfa;
+  --learn-accent: #0284c7;
+  --learn-accent-light: #f0f9ff;
+  --learn-success: #16a34a;
+  --learn-success-light: #f0fdf4;
+  --learn-warning: #d97706;
+  --learn-warning-light: #fffbeb;
+  --learn-danger: #dc2626;
+  --learn-danger-light: #fef2f2;
+  --learn-bg: #f8fafc;
+  --learn-card-bg: #ffffff;
+  --learn-border: #e2e8f0;
+  --learn-text: #0f172a;
+  --learn-text-muted: #64748b;
+}
+
+/* Container */
+.learn-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 16px;
+  font-family: inherit;
+  color: var(--learn-text);
+}
+
+/* Hero & Day Banner */
+.learn-hero-card {
+  background: linear-gradient(135deg, #0f766e 0%, #0d9488 50%, #0284c7 100%);
+  color: #ffffff;
+  border-radius: 16px;
+  padding: 32px 28px;
+  margin-bottom: 28px;
+  box-shadow: 0 10px 25px -5px rgba(15, 118, 110, 0.2);
+}
+
+.learn-hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.learn-hero-title {
+  font-size: 1.875rem;
+  font-weight: 800;
+  line-height: 1.25;
+  margin: 0 0 8px 0;
+}
+
+.learn-hero-subtitle {
+  font-size: 1rem;
+  opacity: 0.92;
+  line-height: 1.5;
+  margin: 0 0 20px 0;
+}
+
+.learn-progress-wrapper {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 9999px;
+  height: 10px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.learn-progress-bar {
+  background: #38bdf8;
+  height: 100%;
+  border-radius: 9999px;
+  transition: width 0.4s ease;
+}
+
+/* Section Header */
+.learn-section-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--learn-text);
+  margin: 0 0 16px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Learning Steps Stepper */
+.learn-stepper-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 18px;
+  margin-bottom: 28px;
+}
+
+.learn-step-card {
+  background: var(--learn-card-bg);
+  border: 2px solid var(--learn-border);
+  border-radius: 14px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+
+.learn-step-card:hover {
+  border-color: var(--learn-primary);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(15, 118, 110, 0.08);
+}
+
+.learn-step-card.is-completed {
+  border-color: var(--learn-success);
+  background: #fcfdfc;
+}
+
+.learn-step-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.learn-step-number {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--learn-primary-light);
+  color: var(--learn-primary);
+  font-weight: 800;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.learn-step-card.is-completed .learn-step-number {
+  background: var(--learn-success-light);
+  color: var(--learn-success);
+}
+
+.learn-step-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--learn-text);
+}
+
+.learn-step-desc {
+  font-size: 0.875rem;
+  color: var(--learn-text-muted);
+  line-height: 1.5;
+  margin: 0 0 16px 0;
+}
+
+.learn-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.learn-pill {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+}
+
+.learn-pill-teal {
+  background: var(--learn-primary-light);
+  color: var(--learn-primary);
+  border-color: #ccfbf1;
+}
+
+.learn-pill-blue {
+  background: var(--learn-accent-light);
+  color: var(--learn-accent);
+  border-color: #bae6fd;
+}
+
+.learn-pill-amber {
+  background: var(--learn-warning-light);
+  color: var(--learn-warning);
+  border-color: #fde68a;
+}
+
+.learn-pill-green {
+  background: var(--learn-success-light);
+  color: var(--learn-success);
+  border-color: #bbf7d0;
+}
+
+/* Stats Cards */
+.learn-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.learn-stat-card {
+  background: var(--learn-card-bg);
+  border: 1px solid var(--learn-border);
+  border-radius: 12px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+}
+
+.learn-stat-val {
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: var(--learn-primary);
+  line-height: 1.2;
+}
+
+.learn-stat-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--learn-text-muted);
+  margin-top: 4px;
+}
+
+/* Session Selection Cards */
+.learn-session-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.learn-session-card {
+  background: var(--learn-card-bg);
+  border: 1px solid var(--learn-border);
+  border-radius: 12px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.learn-session-card:hover {
+  border-color: var(--learn-accent);
+  box-shadow: 0 4px 14px rgba(2, 132, 199, 0.1);
+  transform: translateY(-2px);
+}
+
+/* Buttons */
+.learn-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  cursor: pointer;
+  border: none;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.learn-btn-primary {
+  background: var(--learn-primary);
+  color: #ffffff;
+}
+.learn-btn-primary:hover {
+  background: var(--learn-primary-hover);
+}
+
+.learn-btn-secondary {
+  background: #f1f5f9;
+  color: var(--learn-text);
+  border: 1px solid var(--learn-border);
+}
+.learn-btn-secondary:hover {
+  background: #e2e8f0;
+}
+
+.learn-btn-accent {
+  background: var(--learn-accent);
+  color: #ffffff;
+}
+.learn-btn-accent:hover {
+  background: #0369a1;
+}
+
+.learn-btn-outline {
+  background: transparent;
+  color: var(--learn-primary);
+  border: 1.5px solid var(--learn-primary);
+}
+.learn-btn-outline:hover {
+  background: var(--learn-primary-light);
+}
+
+/* Sentence Syntactic Parsing Colors */
+.syntax-token {
+  display: inline-block;
+  padding: 2px 6px;
+  margin: 2px 3px;
+  border-radius: 4px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+  border: 1px solid transparent;
+}
+
+.syntax-token:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.syntax-role-SUBJECT {
+  background: #dbeafe;
+  color: #1e40af;
+  border-color: #bfdbfe;
+}
+
+.syntax-role-VERB {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fde68a;
+}
+
+.syntax-role-OBJECT {
+  background: #f3e8ff;
+  color: #6b21a8;
+  border-color: #e9d5ff;
+}
+
+.syntax-role-CONNECTOR {
+  background: #dcfce7;
+  color: #166534;
+  border-color: #bbf7d0;
+  font-weight: 700;
+}
+
+.syntax-role-SUBORDINATE {
+  background: #ffedd5;
+  color: #9a3412;
+  border-color: #fed7aa;
+}
+
+.syntax-role-MODIFIER {
+  background: #f1f5f9;
+  color: #475569;
+  border-color: #e2e8f0;
+}
+
+.syntax-role-TARGET_WORD {
+  background: #ccfbf1;
+  color: #0f766e;
+  border-color: #99f6e4;
+  font-weight: 800;
+  text-decoration: underline;
+}
+
+/* Word Card Modal / Walkthrough */
+.vocab-card-box {
+  background: #ffffff;
+  border: 1px solid var(--learn-border);
+  border-radius: 16px;
+  padding: 28px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.06);
+  margin-bottom: 24px;
+}
+
+.vocab-audio-btn {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.vocab-audio-btn:hover {
+  background: #e2e8f0;
+  transform: scale(1.08);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .learn-hero-card {
+    padding: 24px 18px;
+  }
+  .learn-hero-title {
+    font-size: 1.5rem;
+  }
+  .learn-stepper-grid {
+    grid-template-columns: 1fr;
+  }
+}

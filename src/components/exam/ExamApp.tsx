@@ -16,15 +16,41 @@ import { ExamHistoryScreen } from './ExamHistoryScreen';
 import { PerformanceDashboard } from './PerformanceDashboard';
 import { VocabularyStudyScreen } from './VocabularyStudyScreen';
 import './exam.css';
+import '../learning/learning.css';
 
-export type AppTab = 'HOME' | 'SETUP' | 'ACTIVE' | 'RESULTS' | 'HISTORY' | 'PERFORMANCE' | 'VOCABULARY';
+import type { LearnerProfile, DailyStudySessionMode, DiagnosticResult } from '../../types/learning';
+import { loadLearnerProfile, saveLearnerProfile } from '../../services/learning/learningProfileService';
+import { TodayStudyDashboard } from '../learning/TodayStudyDashboard';
+import { VocabTrainerScreen } from '../learning/VocabTrainerScreen';
+import { ReadingTutorScreen } from '../learning/ReadingTutorScreen';
+import { LearningPracticeScreen } from '../learning/LearningPracticeScreen';
+import { LearningProgressScreen } from '../learning/LearningProgressScreen';
+import { DiagnosticScreen } from '../learning/DiagnosticScreen';
+import { InteractiveDecomposerScreen } from '../learning/InteractiveDecomposerScreen';
+
+export type AppTab =
+  | 'TODAY'
+  | 'HOME'
+  | 'SETUP'
+  | 'ACTIVE'
+  | 'RESULTS'
+  | 'HISTORY'
+  | 'PERFORMANCE'
+  | 'VOCABULARY'
+  | 'LEARN_VOCAB'
+  | 'LEARN_READING'
+  | 'LEARN_PRACTICE'
+  | 'LEARN_PROGRESS'
+  | 'DIAGNOSTIC'
+  | 'DECOMPOSER';
 
 export function ExamApp() {
-  const [activeTab, setActiveTab] = useState<AppTab>('HOME');
+  const [activeTab, setActiveTab] = useState<AppTab>('TODAY');
   const [activeSession, setActiveSession] = useState<ActiveExamSession | null>(null);
   const [currentResult, setCurrentResult] = useState<ExamResultReport | null>(null);
   const [setupMode, setSetupMode] = useState<ExamSessionMode>('FULL_EXAM');
   const [exposureSummary, setExposureSummary] = useState(getExposureSummary);
+  const [learnerProfile, setLearnerProfile] = useState<LearnerProfile>(loadLearnerProfile);
 
   // Restore ongoing exam session on mount
   useEffect(() => {
@@ -108,6 +134,25 @@ export function ExamApp() {
     setActiveTab('SETUP');
   };
 
+  const handleStartStudySession = (mode: DailyStudySessionMode) => {
+    if (mode === 'SHORT_15') {
+      setActiveTab('DECOMPOSER');
+    } else {
+      setActiveTab('LEARN_VOCAB');
+    }
+  };
+
+  const handleDiagnosticComplete = (result: DiagnosticResult) => {
+    const updated: LearnerProfile = {
+      ...learnerProfile,
+      diagnosticResult: result,
+      learnerLevel: result.assignedLevel
+    };
+    setLearnerProfile(updated);
+    saveLearnerProfile(updated);
+    setActiveTab('TODAY');
+  };
+
   // If in active exam mode, show dedicated runner
   if (activeTab === 'ACTIVE' && activeSession) {
     return (
@@ -134,7 +179,7 @@ export function ExamApp() {
         </header>
         <ExamResultsScreen
           result={currentResult}
-          onReturnHome={() => setActiveTab('HOME')}
+          onReturnHome={() => setActiveTab('TODAY')}
           onNewExam={() => openSetup('FULL_EXAM')}
         />
       </div>
@@ -155,10 +200,10 @@ export function ExamApp() {
             <li>
               <button
                 type="button"
-                className={`exam-nav-button ${activeTab === 'HOME' ? 'is-active' : ''}`}
-                onClick={() => setActiveTab('HOME')}
+                className={`exam-nav-button ${activeTab === 'TODAY' ? 'is-active' : ''}`}
+                onClick={() => setActiveTab('TODAY')}
               >
-                Ana Sayfa
+                Bugünkü Çalışmam
               </button>
             </li>
             <li>
@@ -191,6 +236,15 @@ export function ExamApp() {
             <li>
               <button
                 type="button"
+                className={`exam-nav-button ${activeTab === 'LEARN_PROGRESS' ? 'is-active' : ''}`}
+                onClick={() => setActiveTab('LEARN_PROGRESS')}
+              >
+                Öğrenme Gelişimi
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
                 className={`exam-nav-button ${activeTab === 'HISTORY' ? 'is-active' : ''}`}
                 onClick={() => setActiveTab('HISTORY')}
               >
@@ -212,6 +266,84 @@ export function ExamApp() {
 
       {/* Main Tab Content */}
       <main className="exam-main-content">
+        {activeTab === 'TODAY' && (
+          <TodayStudyDashboard
+            profile={learnerProfile}
+            onStartVocabTrainer={() => setActiveTab('LEARN_VOCAB')}
+            onStartReadingTutor={() => setActiveTab('DECOMPOSER')}
+            onStartPracticeQuestions={() => setActiveTab('LEARN_PRACTICE')}
+            onStartSession={handleStartStudySession}
+            onOpenFullExam={() => openSetup('FULL_EXAM')}
+            onOpenVocabularyCatalog={() => setActiveTab('VOCABULARY')}
+            onStartDiagnostic={() => setActiveTab('DIAGNOSTIC')}
+          />
+        )}
+
+        {activeTab === 'DIAGNOSTIC' && (
+          <DiagnosticScreen
+            onComplete={handleDiagnosticComplete}
+            onSkip={() => setActiveTab('TODAY')}
+          />
+        )}
+
+        {activeTab === 'DECOMPOSER' && (
+          <InteractiveDecomposerScreen
+            profile={learnerProfile}
+            onFinish={(updated) => {
+              setLearnerProfile(updated);
+              setActiveTab('TODAY');
+            }}
+            onCancel={() => setActiveTab('TODAY')}
+          />
+        )}
+
+        {activeTab === 'LEARN_VOCAB' && (
+          <VocabTrainerScreen
+            profile={learnerProfile}
+            targetWordIds={[
+              ...learnerProfile.todayPlan.newWordIds,
+              ...learnerProfile.todayPlan.reviewWordIds,
+              ...learnerProfile.todayPlan.relapsingWordIds
+            ]}
+            onFinish={(updated) => {
+              setLearnerProfile(updated);
+              setActiveTab('TODAY');
+            }}
+            onCancel={() => setActiveTab('TODAY')}
+          />
+        )}
+
+        {activeTab === 'LEARN_READING' && (
+          <ReadingTutorScreen
+            profile={learnerProfile}
+            passageId={learnerProfile.todayPlan.readingPassageId}
+            onFinish={(updated) => {
+              setLearnerProfile(updated);
+              setActiveTab('TODAY');
+            }}
+            onCancel={() => setActiveTab('TODAY')}
+          />
+        )}
+
+        {activeTab === 'LEARN_PRACTICE' && (
+          <LearningPracticeScreen
+            profile={learnerProfile}
+            questionIds={learnerProfile.todayPlan.practiceQuestionIds}
+            onFinish={(updated) => {
+              setLearnerProfile(updated);
+              setActiveTab('TODAY');
+            }}
+            onCancel={() => setActiveTab('TODAY')}
+          />
+        )}
+
+        {activeTab === 'LEARN_PROGRESS' && (
+          <LearningProgressScreen
+            profile={learnerProfile}
+            onReturnHome={() => setActiveTab('TODAY')}
+          />
+        )}
+
         {activeTab === 'HOME' && (
           <div>
             {/* Active session resume alert if exists */}
@@ -373,7 +505,7 @@ export function ExamApp() {
           <ExamStartScreen
             initialMode={setupMode}
             onStartExam={handleStartExam}
-            onCancel={() => setActiveTab('HOME')}
+            onCancel={() => setActiveTab('TODAY')}
           />
         )}
 
